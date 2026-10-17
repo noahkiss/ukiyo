@@ -1,0 +1,2843 @@
+{
+  "schema": 1,
+  "model": "X-S10",
+  "manual": {
+    "url": "https://fujifilm-dsc.com/en/manual/x-s10/",
+    "language": "en",
+    "firmware": "3.00",
+    "firmware_source": "x-s10_nfg_en_s_f.pdf",
+    "layout": "menu list",
+    "fetched": "2026-10-17"
+  },
+  "generation": "X-Trans IV",
+  "sensor": "X-Trans CMOS 4",
+  "processor": "X-Processor 4",
+  "stats": {
+    "items": 221,
+    "described": 220
+  },
+  "tabs": [
+    {
+      "menu": "shooting",
+      "mode": "stills",
+      "name": "IMAGE QUALITY SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "IMAGE SIZE",
+              "options": [
+                "L 3:2",
+                "L 16:9",
+                "L 1:1",
+                "M 3:2",
+                "M 16:9",
+                "M 1:1",
+                "S 3:2",
+                "S 16:9",
+                "S 1:1"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#image_size"
+            },
+            {
+              "name": "IMAGE QUALITY",
+              "options": [
+                "FINE",
+                "NORMAL",
+                "FINE + RAW",
+                "NORMAL + RAW",
+                "RAW"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#image_quality"
+            },
+            {
+              "name": "RAW RECORDING",
+              "options": [
+                "UNCOMPRESSED",
+                "LOSSLESS COMPRESSED",
+                "COMPRESSED"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#raw_recording"
+            },
+            {
+              "name": "FILM SIMULATION",
+              "options": [
+                "AUTO",
+                "PROVIA/STANDARD",
+                "Velvia/VIVID",
+                "ASTIA/SOFT",
+                "CLASSIC CHROME",
+                "PRO Neg. Hi",
+                "PRO Neg. Std",
+                "CLASSIC Neg.",
+                "ETERNA/CINEMA",
+                "ETERNA BLEACH BYPASS",
+                "ACROS",
+                "ACROS+Ye FILTER",
+                "ACROS+R FILTER",
+                "ACROS+G FILTER",
+                "MONOCHROME",
+                "MONOCHROME+Ye FILTER",
+                "MONOCHROME+R FILTER",
+                "MONOCHROME+G FILTER",
+                "SEPIA"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#film_simulation"
+            },
+            {
+              "name": "MONOCHROMATIC COLOR",
+              "ref": "menu_shooting/image_quality_setting/#monochromatic"
+            },
+            {
+              "name": "GRAIN EFFECT",
+              "sub": [
+                {
+                  "name": "ROUGHNESS",
+                  "options": [
+                    "STRONG",
+                    "WEAK",
+                    "OFF"
+                  ],
+                  "ref": "menu_shooting/image_quality_setting/"
+                },
+                {
+                  "name": "SIZE",
+                  "options": [
+                    "LARGE",
+                    "SMALL"
+                  ],
+                  "ref": "menu_shooting/image_quality_setting/"
+                }
+              ],
+              "ref": "menu_shooting/image_quality_setting/#grain_effect"
+            },
+            {
+              "name": "COLOR CHROME EFFECT",
+              "options": [
+                "STRONG",
+                "WEAK",
+                "OFF"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#color_chrome_effect"
+            },
+            {
+              "name": "COLOR CHROME FX BLUE",
+              "options": [
+                "STRONG",
+                "WEAK",
+                "OFF"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#color_chrome_blue"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "WHITE BALANCE",
+              "options": [
+                "WHITE PRIORITY",
+                "AUTO",
+                "AMBIENCE PRIORITY",
+                "CUSTOM 1",
+                "CUSTOM 2",
+                "CUSTOM 3",
+                "COLOR TEMPERATURE",
+                "DAYLIGHT",
+                "SHADE",
+                "FLUORESCENT LIGHT-1",
+                "FLUORESCENT LIGHT-2",
+                "FLUORESCENT LIGHT-3",
+                "INCANDESCENT",
+                "UNDERWATER"
+              ],
+              "sub": [
+                {
+                  "name": "Color Temperature",
+                  "range": {
+                    "min": 2500,
+                    "max": 10000,
+                    "unit": "K",
+                    "step": 10
+                  },
+                  "range_from_text": true,
+                  "ref": "menu_shooting/image_quality_setting/"
+                }
+              ],
+              "ref": "menu_shooting/image_quality_setting/#white_balance"
+            },
+            {
+              "name": "DYNAMIC RANGE",
+              "options": [
+                "AUTO",
+                "100%",
+                "200%",
+                "400%"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#dynamic_range"
+            },
+            {
+              "name": "D RANGE PRIORITY",
+              "options": [
+                "AUTO",
+                "STRONG",
+                "WEAK",
+                "OFF"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#d_range_priority"
+            },
+            {
+              "name": "TONE CURVE",
+              "sub": [
+                {
+                  "name": "HIGHLIGHTS",
+                  "range": {
+                    "min": -2,
+                    "max": 4
+                  },
+                  "ref": "menu_shooting/image_quality_setting/"
+                },
+                {
+                  "name": "SHADOWS",
+                  "range": {
+                    "min": -2,
+                    "max": 4
+                  },
+                  "ref": "menu_shooting/image_quality_setting/"
+                }
+              ],
+              "ref": "menu_shooting/image_quality_setting/#tone_curve"
+            },
+            {
+              "name": "COLOR",
+              "options": [
+                "-4",
+                "-3",
+                "-2",
+                "-1",
+                "0",
+                "+1",
+                "+2",
+                "+3",
+                "+4"
+              ],
+              "range": {
+                "min": -4,
+                "max": 4,
+                "step": 1
+              },
+              "ref": "menu_shooting/image_quality_setting/#color"
+            },
+            {
+              "name": "SHARPNESS",
+              "options": [
+                "-4",
+                "-3",
+                "-2",
+                "-1",
+                "0",
+                "+1",
+                "+2",
+                "+3",
+                "+4"
+              ],
+              "range": {
+                "min": -4,
+                "max": 4,
+                "step": 1
+              },
+              "ref": "menu_shooting/image_quality_setting/#sharpness"
+            },
+            {
+              "name": "HIGH ISO NR",
+              "options": [
+                "-4",
+                "-3",
+                "-2",
+                "-1",
+                "0",
+                "+1",
+                "+2",
+                "+3",
+                "+4"
+              ],
+              "range": {
+                "min": -4,
+                "max": 4,
+                "step": 1
+              },
+              "ref": "menu_shooting/image_quality_setting/#high_iso_nr"
+            },
+            {
+              "name": "CLARITY",
+              "options": [
+                "-5",
+                "-4",
+                "-3",
+                "-2",
+                "-1",
+                "0",
+                "+1",
+                "+2",
+                "+3",
+                "+4",
+                "+5"
+              ],
+              "range": {
+                "min": -5,
+                "max": 5,
+                "step": 1
+              },
+              "ref": "menu_shooting/image_quality_setting/#clarity"
+            }
+          ]
+        },
+        {
+          "page": 3,
+          "items": [
+            {
+              "name": "LONG EXPOSURE NR",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#long_exposure_nr"
+            },
+            {
+              "name": "LENS MODULATION OPTIMIZER",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#lens_modulation_optimizer"
+            },
+            {
+              "name": "COLOR SPACE",
+              "options": [
+                "sRGB",
+                "Adobe RGB"
+              ],
+              "ref": "menu_shooting/image_quality_setting/#color_space"
+            },
+            {
+              "name": "PIXEL MAPPING",
+              "ref": "menu_shooting/image_quality_setting/#pixel_mapping"
+            },
+            {
+              "name": "EDIT/SAVE CUSTOM SETTING",
+              "ref": "menu_shooting/image_quality_setting/#edit-save_custom_setting"
+            },
+            {
+              "name": "MOUNT ADAPTOR SETTING",
+              "sub": [
+                {
+                  "name": "EDIT LENS NAME",
+                  "ref": "menu_shooting/image_quality_setting/#edit_lens_name"
+                }
+              ],
+              "ref": "menu_shooting/image_quality_setting/#mount_adaptor_setting",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "stills",
+      "name": "AF/MF SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "FOCUS AREA",
+              "ref": "menu_shooting/af_mf_setting/#focus_area"
+            },
+            {
+              "name": "FOCUS MODE",
+              "ref": "menu_shooting/af_mf_setting/#focus_mode"
+            },
+            {
+              "name": "AF MODE",
+              "ref": "menu_shooting/af_mf_setting/#af_mode"
+            },
+            {
+              "name": "AF-C CUSTOM SETTINGS",
+              "options": [
+                "SET 1 MULTI PURPOSE",
+                "SET 2 IGNORE OBSTACLES & CONTINUE TO TRACK SUBJECT",
+                "SET 3 FOR ACCELERATING/DECELERATING SUBJECT",
+                "SET 4 FOR SUDDENLY APPEARING SUBJECT",
+                "SET 5 FOR ERRATICALLY MOVING & ACCEL./DECEL. SUBJECT",
+                "SET 6 CUSTOM"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#af-c_custom"
+            },
+            {
+              "name": "STORE AF MODE BY ORIENTATION",
+              "options": [
+                "OFF",
+                "FOCUS AREA ONLY",
+                "ON"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#store_af_mode_by_orientation"
+            },
+            {
+              "name": "AF POINT DISPLAY",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#af_point_display"
+            },
+            {
+              "name": "NUMBER OF FOCUS POINTS",
+              "options": [
+                "117 POINTS (9 × 13)",
+                "425 POINTS (17 × 25)"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#number_of_the_focus_points"
+            },
+            {
+              "name": "PRE-AF",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#pre-af"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "AF ILLUMINATOR",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#af_illuminator",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "FACE/EYE DETECTION SETTING",
+              "options": [
+                "FACE DETECTION ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#face_eye_detection_setting"
+            },
+            {
+              "name": "AF+MF",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#af-mf"
+            },
+            {
+              "name": "MF ASSIST",
+              "options": [
+                "STANDARD",
+                "DIGITAL SPLIT IMAGE",
+                "DIGITAL MICROPRISM",
+                "FOCUS PEAK HIGHLIGHT"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#mf_assist"
+            },
+            {
+              "name": "FOCUS CHECK",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#focus_check"
+            },
+            {
+              "name": "INTERLOCK SPOT AE & FOCUS AREA",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#interlock_spot_ae-focus_area"
+            },
+            {
+              "name": "INSTANT AF SETTING",
+              "options": [
+                "AF-S",
+                "AF-C"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#instant-af_setting",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "DEPTH-OF-FIELD SCALE",
+              "options": [
+                "PIXEL BASIS",
+                "FILM FORMAT BASIS"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#depth-of-field_scale",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            }
+          ]
+        },
+        {
+          "page": 3,
+          "items": [
+            {
+              "name": "RELEASE/FOCUS PRIORITY",
+              "options": [
+                "RELEASE",
+                "FOCUS"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#release-focus_priority"
+            },
+            {
+              "name": "AF RANGE LIMITER",
+              "options": [
+                "OFF",
+                "CUSTOM",
+                "PRESET1",
+                "PRESET2"
+              ],
+              "ref": "menu_shooting/af_mf_setting/#af_range_limitter",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "TOUCH SCREEN MODE",
+              "options": [
+                "TOUCH SHOOTING",
+                "AF AF OFF",
+                "AREA",
+                "OFF"
+              ],
+              "option_header": "Mode",
+              "ref": "menu_shooting/af_mf_setting/#touch_panel",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "stills",
+      "name": "SHOOTING SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "SCENE POSITION",
+              "ref": "menu_shooting/shooting_setting/#scene"
+            },
+            {
+              "name": "FILTER SETTING",
+              "ref": "menu_shooting/shooting_setting/#filter_setting"
+            },
+            {
+              "name": "SPORTS FINDER MODE",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/shooting_setting/#sports"
+            },
+            {
+              "name": "PRE-SHOT",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/shooting_setting/#pre-shot"
+            },
+            {
+              "name": "SELF-TIMER",
+              "options": [
+                "2 SEC",
+                "10 SEC",
+                "OFF"
+              ],
+              "ref": "menu_shooting/shooting_setting/#self-timer"
+            },
+            {
+              "name": "SAVE SELF-TIMER SETTING",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/shooting_setting/#save_self-timer"
+            },
+            {
+              "name": "SELF-TIMER LAMP",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/shooting_setting/#self-timer_lamp"
+            },
+            {
+              "name": "INTERVAL TIMER SHOOTING",
+              "ref": "menu_shooting/shooting_setting/#interval_timer_shooting"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "INTERVAL TIMER SHOOTING EXPOSURE SMOOTHING",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/shooting_setting/#interval_exposure_smoothing"
+            },
+            {
+              "name": "AE BKT SETTING",
+              "options": [
+                "FRAMES/STEP SETTING",
+                "1 FRAME/CONTINUOUS",
+                "SEQUENCE SETTING"
+              ],
+              "ref": "menu_shooting/shooting_setting/#ae_bkt_setting"
+            },
+            {
+              "name": "FILM SIMULATION BKT",
+              "ref": "menu_shooting/shooting_setting/#film_simulation_bkt"
+            },
+            {
+              "name": "FOCUS BKT SETTING",
+              "ref": "menu_shooting/shooting_setting/#focus_bkt_setting"
+            },
+            {
+              "name": "PHOTOMETRY",
+              "ref": "menu_shooting/shooting_setting/#photometry"
+            },
+            {
+              "name": "SHUTTER TYPE",
+              "options": [
+                "MECHANICAL SHUTTER",
+                "ELECTRONIC SHUTTER",
+                "MECHANICAL + ELECTRONIC"
+              ],
+              "ref": "menu_shooting/shooting_setting/#shutter_type"
+            },
+            {
+              "name": "FLICKER REDUCTION",
+              "options": [
+                "ALL FRAMES",
+                "FIRST FRAME",
+                "OFF"
+              ],
+              "ref": "menu_shooting/shooting_setting/#flicker_reduction"
+            },
+            {
+              "name": "IS MODE",
+              "options": [
+                "CONTINUOUS + MOTION",
+                "CONTINUOUS",
+                "SHOOTING + MOTION",
+                "SHOOTING ONLY",
+                "OFF"
+              ],
+              "ref": "menu_shooting/shooting_setting/#is_mode"
+            }
+          ]
+        },
+        {
+          "page": 3,
+          "items": [
+            {
+              "name": "ISO",
+              "ref": "menu_shooting/shooting_setting/#iso"
+            },
+            {
+              "name": "WIRELESS COMMUNICATION",
+              "ref": "menu_shooting/shooting_setting/#wireless_communication",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "stills",
+      "name": "FLASH SETTING",
+      "pages": [
+        {
+          "page": null,
+          "items": [
+            {
+              "name": "FLASH FUNCTION SETTING",
+              "ref": "menu_shooting/flash_setting/#flash_function"
+            },
+            {
+              "name": "RED EYE REMOVAL",
+              "options": [
+                "FLASH+REMOVAL",
+                "FLASH",
+                "REMOVAL",
+                "OFF"
+              ],
+              "ref": "menu_shooting/flash_setting/#red_eye_removal"
+            },
+            {
+              "name": "TTL-LOCK MODE",
+              "options": [
+                "LOCK WITH LAST FLASH",
+                "LOCK WITH METERING FLASH"
+              ],
+              "ref": "menu_shooting/flash_setting/#ttl_lock"
+            },
+            {
+              "name": "LED LIGHT SETTING",
+              "options": [
+                "CATCHLIGHT",
+                "AF ASSIST",
+                "AF ASSIST+CATCHLIGHT",
+                "OFF"
+              ],
+              "ref": "menu_shooting/flash_setting/#led"
+            },
+            {
+              "name": "COMMANDER SETTING",
+              "options": [
+                "Gr A",
+                "Gr B",
+                "Gr C",
+                "OFF"
+              ],
+              "ref": "menu_shooting/flash_setting/#commander"
+            },
+            {
+              "name": "CH SETTING",
+              "options": [
+                "CH1",
+                "CH2",
+                "CH3",
+                "CH4"
+              ],
+              "ref": "menu_shooting/flash_setting/#channel"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "stills",
+      "name": "MOVIE SETTING",
+      "pages": [
+        {
+          "page": null,
+          "items": [
+            {
+              "name": "MOVIE MODE",
+              "ref": "menu_shooting/movie_setting_still_photography/#movie_mode"
+            },
+            {
+              "name": "FILE FORMAT",
+              "ref": "menu_shooting/movie_setting_still_photography/#file_format"
+            },
+            {
+              "name": "FULL HD HIGH SPEED REC",
+              "ref": "menu_shooting/movie_setting_still_photography/#full_hd_high_speed_rec"
+            },
+            {
+              "name": "IS MODE",
+              "ref": "menu_shooting/movie_setting_still_photography/#is_mode",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "IS MODE BOOST",
+              "ref": "menu_shooting/movie_setting_still_photography/#is_mode_boost",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "AUDIO SETTING",
+              "sub": [
+                {
+                  "name": "INTERNAL MIC LEVEL ADJUSTMENT",
+                  "options": [
+                    "AUTO",
+                    "MANUAL",
+                    "OFF"
+                  ],
+                  "ref": "menu_shooting/movie_setting_still_photography/"
+                },
+                {
+                  "name": "EXTERNAL MIC LEVEL ADJUSTMENT",
+                  "options": [
+                    "AUTO",
+                    "MANUAL",
+                    "OFF"
+                  ],
+                  "ref": "menu_shooting/movie_setting_still_photography/"
+                },
+                {
+                  "name": "MIC JACK SETTING",
+                  "options": [
+                    "MIC",
+                    "LINE"
+                  ],
+                  "ref": "menu_shooting/movie_setting_still_photography/"
+                },
+                {
+                  "name": "MIC LEVEL LIMITER",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_shooting/movie_setting_still_photography/"
+                },
+                {
+                  "name": "WIND FILTER",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_shooting/movie_setting_still_photography/"
+                },
+                {
+                  "name": "LOW CUT FILTER",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_shooting/movie_setting_still_photography/"
+                },
+                {
+                  "name": "HEADPHONES VOLUME",
+                  "options": [
+                    "0",
+                    "1—10"
+                  ],
+                  "range": {
+                    "min": 0,
+                    "max": 10,
+                    "step": 1
+                  },
+                  "ref": "menu_shooting/movie_setting_still_photography/"
+                },
+                {
+                  "name": "XLR MIC ADAPTER SETTING",
+                  "options": [
+                    "MIC INPUT CHANNEL",
+                    "4ch AUDIO MONITORING",
+                    "HDMI 4ch AUDIO OUTPUT"
+                  ],
+                  "ref": "menu_shooting/movie_setting_still_photography/",
+                  "changed_in": [
+                    "2.30"
+                  ]
+                }
+              ],
+              "ref": "menu_shooting/movie_setting_still_photography/#audio_setting"
+            },
+            {
+              "name": "MIC/REMOTE RELEASE",
+              "options": [
+                "MIC",
+                "REMOTE"
+              ],
+              "ref": "menu_shooting/movie_setting_still_photography/#mic_remote_release"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "movie",
+      "name": "MOVIE SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "SHOOTING MODE",
+              "options": [
+                "PROGRAM AE",
+                "SHUTTER PRIORITY AE",
+                "APERTURE PRIORITY AE",
+                "MANUAL"
+              ],
+              "ref": "menu_shooting/movie_setting/#shooting_mode"
+            },
+            {
+              "name": "MOVIE MODE",
+              "options": [
+                "23.98P",
+                "24P",
+                "25P",
+                "29.97P",
+                "50P",
+                "59.94P",
+                "50Mbps",
+                "100Mbps",
+                "200Mbps"
+              ],
+              "ref": "menu_shooting/movie_setting/#movie_mode"
+            },
+            {
+              "name": "FILE FORMAT",
+              "options": [
+                "MOV/H.264 LPCM",
+                "MP4/H.264 AAC"
+              ],
+              "ref": "menu_shooting/movie_setting/#file_format"
+            },
+            {
+              "name": "FULL HD HIGH SPEED REC",
+              "sub": [
+                {
+                  "name": "Playback",
+                  "options": [
+                    "23.98P",
+                    "24P",
+                    "25P",
+                    "29.97P",
+                    "50P",
+                    "59.94P"
+                  ],
+                  "ref": "menu_shooting/movie_setting/"
+                },
+                {
+                  "name": "Recording",
+                  "options": [
+                    "100P",
+                    "120P",
+                    "200P",
+                    "240P"
+                  ],
+                  "ref": "menu_shooting/movie_setting/"
+                }
+              ],
+              "ref": "menu_shooting/movie_setting/#full_hd"
+            },
+            {
+              "name": "FIX MOVIE CROP MAGNIFICATION",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#fix_movie_crop"
+            },
+            {
+              "name": "F-Log RECORDING",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#f_log_recording"
+            },
+            {
+              "name": "4K MOVIE OUTPUT",
+              "options": [
+                "4K 4K",
+                "4K FHD",
+                "FHD 4K",
+                "— 4K"
+              ],
+              "ref": "menu_shooting/movie_setting/#4k_movie_output"
+            },
+            {
+              "name": "FULL HD MOVIE OUTPUT",
+              "options": [
+                "FHD FHD",
+                "— FHD"
+              ],
+              "ref": "menu_shooting/movie_setting/#hd_movie_output"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "HDMI OUTPUT INFO DISPLAY",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#hdmc_output"
+            },
+            {
+              "name": "4K HDMI STANDBY QUALITY",
+              "ref": "menu_shooting/movie_setting/#standby_quality"
+            },
+            {
+              "name": "HDMI REC CONTROL",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#hdmd_rec"
+            },
+            {
+              "name": "PHOTOMETRY",
+              "ref": "menu_shooting/movie_setting/#photometry",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "IS MODE",
+              "options": [
+                "IBIS/OIS",
+                "IBIS/OIS + DIS",
+                "OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#is_mode",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "IS MODE BOOST",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#is_mode_boost",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "ISO",
+              "options": [
+                "H (25600)",
+                "160–12800",
+                "AUTO"
+              ],
+              "ref": "menu_shooting/movie_setting/#iso",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "ZEBRA SETTING",
+              "options": [
+                "ZEBRA RIGHT",
+                "ZEBRA LEFT",
+                "OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#zebra_setting"
+            }
+          ]
+        },
+        {
+          "page": 3,
+          "items": [
+            {
+              "name": "ZEBRA LEVEL",
+              "options": [
+                "50",
+                "55",
+                "60",
+                "65",
+                "70",
+                "75",
+                "80",
+                "85",
+                "90",
+                "95",
+                "100"
+              ],
+              "range": {
+                "min": 50,
+                "max": 100,
+                "step": 5
+              },
+              "ref": "menu_shooting/movie_setting/#zebra_level"
+            },
+            {
+              "name": "MOVIE OPTIMIZED CONTROL",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#movie_optimized_control"
+            },
+            {
+              "name": "TALLY LIGHT",
+              "options": [
+                "FRONT OFF REAR",
+                "FRONT",
+                "REAR",
+                "FRONT REAR OFF",
+                "FRONT OFF REAR OFF"
+              ],
+              "ref": "menu_shooting/movie_setting/#tally_light"
+            },
+            {
+              "name": "WIRELESS COMMUNICATION",
+              "ref": "menu_shooting/movie_setting/#wireless_communication",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "movie",
+      "name": "IMAGE QUALITY SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "FILM SIMULATION",
+              "ref": "menu_shooting/image_quality_setting_movie/#film_simulation",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "MONOCHROMATIC COLOR",
+              "ref": "menu_shooting/image_quality_setting_movie/#monochromatic",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "WHITE BALANCE",
+              "ref": "menu_shooting/image_quality_setting_movie/#white_balance",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "DYNAMIC RANGE",
+              "options": [
+                "100%",
+                "200%",
+                "400%"
+              ],
+              "ref": "menu_shooting/image_quality_setting_movie/#dynamic_range",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "TONE CURVE",
+              "ref": "menu_shooting/image_quality_setting_movie/#tone_curve",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "COLOR",
+              "ref": "menu_shooting/image_quality_setting_movie/#color",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "SHARPNESS",
+              "ref": "menu_shooting/image_quality_setting_movie/#sharpness",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "HIGH ISO NR",
+              "ref": "menu_shooting/image_quality_setting_movie/#high_iso_nr",
+              "modes": [
+                "movie"
+              ]
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "INTERFRAME NR",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/image_quality_setting_movie/#4k_intereframe_nr"
+            },
+            {
+              "name": "PERIPHERAL LIGHT CORRECTION",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/image_quality_setting_movie/#peripheral_light_movie",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "MOUNT ADAPTOR SETTING",
+              "ref": "menu_shooting/image_quality_setting_movie/#mount_adaptor_setting",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "movie",
+      "name": "AF/MF SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "FOCUS AREA",
+              "ref": "menu_shooting/af_mf_setting_movie/#focus_area",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "FOCUS MODE",
+              "options": [
+                "MANUAL FOCUS",
+                "CONTINUOUS AF",
+                "SINGLE AF"
+              ],
+              "ref": "menu_shooting/af_mf_setting_movie/#focus_mode",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "AF MODE",
+              "options": [
+                "MULTI",
+                "AREA"
+              ],
+              "ref": "menu_shooting/af_mf_setting_movie/#af_mode",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "AF-C CUSTOM SETTING",
+              "sub": [
+                {
+                  "name": "TRACKING SENSITIVITY",
+                  "options": [
+                    "0",
+                    "1",
+                    "2",
+                    "3",
+                    "4"
+                  ],
+                  "range": {
+                    "min": 0,
+                    "max": 4,
+                    "step": 1
+                  },
+                  "ref": "menu_shooting/af_mf_setting_movie/"
+                },
+                {
+                  "name": "AF SPEED",
+                  "options": [
+                    "-5",
+                    "-4",
+                    "-3",
+                    "-2",
+                    "-1",
+                    "0",
+                    "+1",
+                    "+2",
+                    "+3",
+                    "+4",
+                    "+5"
+                  ],
+                  "range": {
+                    "min": -5,
+                    "max": 5,
+                    "step": 1
+                  },
+                  "ref": "menu_shooting/af_mf_setting_movie/"
+                }
+              ],
+              "ref": "menu_shooting/af_mf_setting_movie/#af-c_custom",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "AF ILLUMINATOR",
+              "ref": "menu_shooting/af_mf_setting_movie/#af_illuminator",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "FACE/EYE DETECTION SETTING",
+              "options": [
+                "FACE DETECTION ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting_movie/#face_eye_detection_setting",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "MF ASSIST",
+              "options": [
+                "STANDARD",
+                "FOCUS PEAK HIGHLIGHT"
+              ],
+              "ref": "menu_shooting/af_mf_setting_movie/#mf_assist",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "FOCUS CHECK",
+              "ref": "menu_shooting/af_mf_setting_movie/#focus_check",
+              "modes": [
+                "movie"
+              ]
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "INSTANT AF SETTING",
+              "ref": "menu_shooting/af_mf_setting_movie/#instant-af_setting",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "DEPTH-OF-FIELD SCALE",
+              "ref": "menu_shooting/af_mf_setting_movie/#depth-of-field_scale",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "AF RANGE LIMITER",
+              "ref": "menu_shooting/af_mf_setting_movie/#af_range_limitter",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "TOUCH SCREEN MODE",
+              "options": [
+                "TOUCH SHOOTING",
+                "AF",
+                "AREA",
+                "OFF"
+              ],
+              "option_header": "Mode",
+              "ref": "menu_shooting/af_mf_setting_movie/#touch_panel",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "FOCUS CHECK LOCK",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/af_mf_setting_movie/#focus_check_lock"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "movie",
+      "name": "AUDIO SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "INTERNAL MIC LEVEL ADJUSTMENT",
+              "options": [
+                "AUTO",
+                "MANUAL",
+                "OFF"
+              ],
+              "ref": "menu_shooting/audio_setting/#internal_mic_level"
+            },
+            {
+              "name": "EXTERNAL MIC LEVEL ADJUSTMENT",
+              "options": [
+                "AUTO",
+                "MANUAL",
+                "OFF"
+              ],
+              "ref": "menu_shooting/audio_setting/#external_mic_level"
+            },
+            {
+              "name": "MIC JACK SETTING",
+              "options": [
+                "MIC",
+                "LINE"
+              ],
+              "ref": "menu_shooting/audio_setting/#mic_jack_setting"
+            },
+            {
+              "name": "MIC LEVEL LIMITER",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/audio_setting/#mic_level_limiter"
+            },
+            {
+              "name": "WIND FILTER",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/audio_setting/#wind_filter"
+            },
+            {
+              "name": "LOW CUT FILTER",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/audio_setting/#low_cut_filter"
+            },
+            {
+              "name": "HEADPHONES VOLUME",
+              "options": [
+                "0",
+                "1—10"
+              ],
+              "range": {
+                "min": 0,
+                "max": 10,
+                "step": 1
+              },
+              "ref": "menu_shooting/audio_setting/#headphones_volume"
+            },
+            {
+              "name": "MIC/REMOTE RELEASE",
+              "options": [
+                "MIC",
+                "REMOTE"
+              ],
+              "ref": "menu_shooting/audio_setting/#mic_remote_release"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "XLR MIC ADAPTER SETTING",
+              "sub": [
+                {
+                  "name": "MIC INPUT CHANNEL",
+                  "options": [
+                    "4ch XLR+CAMERA",
+                    "2ch XLR ONLY"
+                  ],
+                  "ref": "menu_shooting/audio_setting/"
+                },
+                {
+                  "name": "4ch AUDIO MONITORING",
+                  "options": [
+                    "XLR",
+                    "CAMERA"
+                  ],
+                  "ref": "menu_shooting/audio_setting/"
+                },
+                {
+                  "name": "HDMI 4ch AUDIO OUTPUT",
+                  "options": [
+                    "XLR",
+                    "CAMERA"
+                  ],
+                  "ref": "menu_shooting/audio_setting/"
+                }
+              ],
+              "ref": "menu_shooting/audio_setting/#xlr_mic_adapter_setting",
+              "changed_in": [
+                "2.30"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "shooting",
+      "mode": "movie",
+      "name": "TIME CODE SETTING",
+      "pages": [
+        {
+          "page": null,
+          "items": [
+            {
+              "name": "TIME CODE DISPLAY",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/time_code_setting/#time_code_display"
+            },
+            {
+              "name": "START TIME SETTING",
+              "options": [
+                "MANUAL INPUT",
+                "CURRENT TIME",
+                "RESET"
+              ],
+              "ref": "menu_shooting/time_code_setting/#start_time_setting"
+            },
+            {
+              "name": "COUNT UP SETTING",
+              "options": [
+                "REC RUN",
+                "FREE RUN"
+              ],
+              "ref": "menu_shooting/time_code_setting/#count_up_setting"
+            },
+            {
+              "name": "DROP FRAME",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/time_code_setting/#drop_frame"
+            },
+            {
+              "name": "HDMI TIME CODE OUTPUT",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_shooting/time_code_setting/#hdmi_time_code_output"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "playback",
+      "mode": null,
+      "name": "PLAY BACK MENU",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "RAW CONVERSION",
+              "sub": [
+                {
+                  "name": "Saving RAW Pictures in Another Format",
+                  "options": [
+                    "REFLECT SHOOTING COND.",
+                    "IMAGE SIZE",
+                    "IMAGE QUALITY",
+                    "PUSH/PULL PROCESSING",
+                    "DYNAMIC RANGE",
+                    "D RANGE PRIORITY",
+                    "FILM SIMULATION",
+                    "MONOCHROMATIC COLOR",
+                    "GRAIN EFFECT",
+                    "COLOR CHROME EFFECT",
+                    "COLOR CHROME FX BLUE",
+                    "WHITE BALANCE",
+                    "WB SHIFT",
+                    "TONE CURVE",
+                    "COLOR",
+                    "SHARPNESS",
+                    "HIGH ISO NR",
+                    "CLARITY",
+                    "LENS MODULATION OPTIMIZER",
+                    "COLOR SPACE",
+                    "HDR MODE"
+                  ],
+                  "option_header": "Setting",
+                  "ref": "playback/menu_playback/"
+                }
+              ],
+              "ref": "playback/menu_playback/#raw_conversion"
+            },
+            {
+              "name": "ERASE",
+              "options": [
+                "FRAME",
+                "SELECTED FRAMES",
+                "ALL FRAMES"
+              ],
+              "sub": [
+                {
+                  "name": "FRAME",
+                  "ref": "playback/menu_playback/"
+                },
+                {
+                  "name": "SELECTED FRAMES",
+                  "ref": "playback/menu_playback/"
+                },
+                {
+                  "name": "ALL FRAMES",
+                  "ref": "playback/menu_playback/"
+                }
+              ],
+              "ref": "playback/menu_playback/#erase"
+            },
+            {
+              "name": "CROP",
+              "ref": "playback/menu_playback/#crop"
+            },
+            {
+              "name": "RESIZE",
+              "ref": "playback/menu_playback/#resize"
+            },
+            {
+              "name": "PROTECT",
+              "options": [
+                "FRAME",
+                "SET ALL",
+                "RESET ALL"
+              ],
+              "ref": "playback/menu_playback/#protect"
+            },
+            {
+              "name": "IMAGE ROTATE",
+              "ref": "playback/menu_playback/#image_rotate"
+            },
+            {
+              "name": "RED EYE REMOVAL",
+              "ref": "playback/menu_playback/#red_eye_removal"
+            },
+            {
+              "name": "VOICE MEMO SETTING",
+              "ref": "playback/menu_playback/#voice_memo_setting"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "RATING",
+              "range": {
+                "min": 0,
+                "max": 5
+              },
+              "range_from_text": true,
+              "ref": "playback/menu_playback/#rating"
+            },
+            {
+              "name": "IMAGE TRANSFER ORDER",
+              "ref": "playback/menu_playback/#image_transfer_order"
+            },
+            {
+              "name": "WIRELESS COMMUNICATION",
+              "ref": "playback/menu_playback/#wireless_communication",
+              "modes": [
+                "movie",
+                "stills"
+              ]
+            },
+            {
+              "name": "SLIDE SHOW",
+              "ref": "playback/menu_playback/#slide_show"
+            },
+            {
+              "name": "PHOTOBOOK ASSIST",
+              "ref": "playback/menu_playback/#photobook_assist"
+            },
+            {
+              "name": "PC AUTO SAVE",
+              "ref": "playback/menu_playback/#pc_auto_save"
+            },
+            {
+              "name": "PRINT ORDER (DPOF)",
+              "ref": "playback/menu_playback/#print_order"
+            },
+            {
+              "name": "instax PRINTER PRINT",
+              "ref": "playback/menu_playback/#instax_printer_print",
+              "changed_in": [
+                "2.10"
+              ]
+            }
+          ]
+        },
+        {
+          "page": 3,
+          "items": [
+            {
+              "name": "DISP ASPECT",
+              "options": [
+                "16 : 9",
+                "3 : 2"
+              ],
+              "ref": "playback/menu_playback/#disp_aspect"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "setup",
+      "mode": null,
+      "name": "USER SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "FORMAT",
+              "ref": "menu_setup/user_setting/#format"
+            },
+            {
+              "name": "AREA SETTING",
+              "sub": [
+                {
+                  "name": "AREA SETTING",
+                  "ref": "menu_setup/user_setting/",
+                  "changed_in": [
+                    "3.00"
+                  ]
+                },
+                {
+                  "name": "DAYLIGHT SAVINGS",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/user_setting/"
+                }
+              ],
+              "ref": "menu_setup/user_setting/#area_setting",
+              "changed_in": [
+                "3.00"
+              ]
+            },
+            {
+              "name": "DATE/TIME",
+              "ref": "menu_setup/user_setting/#date-time"
+            },
+            {
+              "name": "TIME DIFFERENCE",
+              "options": [
+                "LOCAL",
+                "HOME"
+              ],
+              "ref": "menu_setup/user_setting/#time_difference",
+              "changed_in": [
+                "3.00"
+              ]
+            },
+            {
+              "name": "LANG."
+            },
+            {
+              "name": "MY MENU SETTING",
+              "ref": "menu_setup/user_setting/#my_menu_setting",
+              "modes": [
+                "stills"
+              ]
+            },
+            {
+              "name": "MY MENU SETTING",
+              "ref": "menu_setup/user_setting/#my_menu_setting",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "SENSOR CLEANING",
+              "options": [
+                "OK",
+                "WHEN SWITCHED ON",
+                "WHEN SWITCHED OFF"
+              ],
+              "ref": "menu_setup/user_setting/#sensor_cleaning"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "SOUND & FLASH",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/user_setting/#sound_flash"
+            },
+            {
+              "name": "RESET",
+              "options": [
+                "STILL MENU RESET",
+                "MOVIE MENU RESET",
+                "SET-UP RESET",
+                "INITIALIZE"
+              ],
+              "ref": "menu_setup/user_setting/#reset",
+              "changed_in": [
+                "3.00"
+              ]
+            },
+            {
+              "name": "REGULATORY",
+              "ref": "menu_setup/user_setting/#regulatory"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "setup",
+      "mode": null,
+      "name": "SOUND SETTING",
+      "pages": [
+        {
+          "page": null,
+          "items": [
+            {
+              "name": "AF BEEP VOL.",
+              "options": [
+                "high",
+                "medium",
+                "low",
+                "mute"
+              ],
+              "ref": "menu_setup/sound_set-up/#af_beep_volume"
+            },
+            {
+              "name": "SELF-TIMER BEEP VOL.",
+              "options": [
+                "high",
+                "medium",
+                "low",
+                "mute"
+              ],
+              "ref": "menu_setup/sound_set-up/#self-timer_beep_volume"
+            },
+            {
+              "name": "OPERATION VOL.",
+              "options": [
+                "high",
+                "medium",
+                "low",
+                "mute"
+              ],
+              "ref": "menu_setup/sound_set-up/#operation_volume"
+            },
+            {
+              "name": "SHUTTER VOLUME",
+              "options": [
+                "high",
+                "medium",
+                "low",
+                "mute"
+              ],
+              "ref": "menu_setup/sound_set-up/#shutter_volume"
+            },
+            {
+              "name": "SHUTTER SOUND",
+              "options": [
+                "SOUND 1",
+                "SOUND 2",
+                "SOUND 3"
+              ],
+              "ref": "menu_setup/sound_set-up/#shutter_sound"
+            },
+            {
+              "name": "PLAYBACK VOLUME",
+              "options": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10"
+              ],
+              "range": {
+                "min": 0,
+                "max": 10,
+                "step": 1
+              },
+              "ref": "menu_setup/sound_set-up/#playback_volume"
+            },
+            {
+              "name": "4ch AUDIO PLAYBACK",
+              "options": [
+                "XLR",
+                "CAMERA"
+              ],
+              "ref": "menu_setup/sound_set-up/#4ch_audio_playback",
+              "changed_in": [
+                "2.30"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "setup",
+      "mode": null,
+      "name": "SCREEN SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "VIEW MODE SETTING",
+              "ref": "menu_setup/screen_set-up/#eye"
+            },
+            {
+              "name": "EVF BRIGHTNESS",
+              "options": [
+                "AUTO",
+                "MANUAL"
+              ],
+              "ref": "menu_setup/screen_set-up/#evf_brightness"
+            },
+            {
+              "name": "EVF COLOR",
+              "options": [
+                "-5",
+                "-4",
+                "-3",
+                "-2",
+                "-1",
+                "0",
+                "+1",
+                "+2",
+                "+3",
+                "+4",
+                "+5"
+              ],
+              "range": {
+                "min": -5,
+                "max": 5,
+                "step": 1
+              },
+              "ref": "menu_setup/screen_set-up/#evf_color"
+            },
+            {
+              "name": "EVF COLOR ADJUSTMENT",
+              "ref": "menu_setup/screen_set-up/#evf_color_adjustment"
+            },
+            {
+              "name": "LCD BRIGHTNESS",
+              "options": [
+                "-5",
+                "-4",
+                "-3",
+                "-2",
+                "-1",
+                "0",
+                "+1",
+                "+2",
+                "+3",
+                "+4",
+                "+5"
+              ],
+              "range": {
+                "min": -5,
+                "max": 5,
+                "step": 1
+              },
+              "ref": "menu_setup/screen_set-up/#lcd_brightness"
+            },
+            {
+              "name": "LCD COLOR",
+              "options": [
+                "-5",
+                "-4",
+                "-3",
+                "-2",
+                "-1",
+                "0",
+                "+1",
+                "+2",
+                "+3",
+                "+4",
+                "+5"
+              ],
+              "range": {
+                "min": -5,
+                "max": 5,
+                "step": 1
+              },
+              "ref": "menu_setup/screen_set-up/#lcd_color"
+            },
+            {
+              "name": "LCD COLOR ADJUSTMENT",
+              "ref": "menu_setup/screen_set-up/#lcd_color_adjustment"
+            },
+            {
+              "name": "IMAGE DISP.",
+              "options": [
+                "CONTINUOUS",
+                "1.5 SEC/0.5 SEC",
+                "OFF"
+              ],
+              "ref": "menu_setup/screen_set-up/#image_disp"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "AUTOROTATE DISPLAYS",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/screen_set-up/#autorotate_displays"
+            },
+            {
+              "name": "PREVIEW EXP./WB IN MANUAL MODE",
+              "options": [
+                "PREVIEW EXP./WB",
+                "PREVIEW WB",
+                "OFF"
+              ],
+              "ref": "menu_setup/screen_set-up/#preview_exp_wb_in_manual_mode"
+            },
+            {
+              "name": "NATURAL LIVE VIEW",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/screen_set-up/#natural_live_view"
+            },
+            {
+              "name": "F-Log VIEW ASSIST",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/screen_set-up/#f-log_view_assist"
+            },
+            {
+              "name": "FRAMING GUIDELINE",
+              "ref": "menu_setup/screen_set-up/#framing_guidline"
+            },
+            {
+              "name": "AUTOROTATE PB",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/screen_set-up/#autorotate_pb"
+            },
+            {
+              "name": "FOCUS SCALE UNITS",
+              "options": [
+                "METERS",
+                "FEET"
+              ],
+              "ref": "menu_setup/screen_set-up/#focus_scale_units"
+            },
+            {
+              "name": "APERTURE UNIT FOR CINEMA LENS",
+              "options": [
+                "T NUMBER",
+                "F NUMBER"
+              ],
+              "ref": "menu_setup/screen_set-up/#aperture_cinema_lens"
+            }
+          ]
+        },
+        {
+          "page": 3,
+          "items": [
+            {
+              "name": "DISP. CUSTOM SETTING",
+              "ref": "menu_setup/screen_set-up/#disp_custom_setting"
+            },
+            {
+              "name": "LARGE INDICATORS MODE(EVF)",
+              "ref": "menu_setup/screen_set-up/#evf"
+            },
+            {
+              "name": "LARGE INDICATORS MODE(LCD)",
+              "ref": "menu_setup/screen_set-up/#lcd"
+            },
+            {
+              "name": "LARGE INDICATORS DISP. SETTING",
+              "options": [
+                "A Expo. DISP.",
+                "B Scale",
+                "C L1, L2, L3, L4",
+                "D R1, R2, R3, R4"
+              ],
+              "ref": "menu_setup/screen_set-up/#large_ind_mode_set"
+            },
+            {
+              "name": "INFORMATION CONTRAST ADJ.",
+              "options": [
+                "HIGH CONTRAST",
+                "STANDARD",
+                "LOW CONTRAST",
+                "DARK AMBIENT LIGHTING"
+              ],
+              "ref": "menu_setup/screen_set-up/#information_control_adj"
+            },
+            {
+              "name": "LOCATION INFO",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/screen_set-up/#location_info",
+              "changed_in": [
+                "3.00"
+              ]
+            },
+            {
+              "name": "Q MENU BACKGROUND",
+              "options": [
+                "TRANSPARENT",
+                "BLACK"
+              ],
+              "ref": "menu_setup/screen_set-up/#q_menu_background",
+              "modes": [
+                "stills"
+              ]
+            },
+            {
+              "name": "Q MENU BACKGROUND",
+              "options": [
+                "TRANSPARENT",
+                "BLACK"
+              ],
+              "ref": "menu_setup/screen_set-up/#q_menu_background",
+              "modes": [
+                "movie"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "setup",
+      "mode": null,
+      "name": "BUTTON/DIAL SETTING",
+      "pages": [
+        {
+          "page": 1,
+          "items": [
+            {
+              "name": "FOCUS LEVER SETTING",
+              "sub": [
+                {
+                  "name": "PUSH",
+                  "options": [
+                    "OFF",
+                    "EDIT FOCUS AREA",
+                    "ZOOM"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "TILT",
+                  "options": [
+                    "OFF",
+                    "DIRECT AF POINT SELECTION",
+                    "EDIT FOCUS AREA",
+                    "DIRECT AF POINT SELECTION/FACE SELECT"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                }
+              ],
+              "ref": "menu_setup/button-dial_setting/#focus_lever_setting"
+            },
+            {
+              "name": "EDIT/SAVE QUICK MENU",
+              "ref": "menu_setup/button-dial_setting/#edit-save_quick_menu",
+              "modes": [
+                "stills"
+              ]
+            },
+            {
+              "name": "EDIT/SAVE QUICK MENU",
+              "ref": "menu_setup/button-dial_setting/#edit-save_quick_menu",
+              "modes": [
+                "movie"
+              ]
+            },
+            {
+              "name": "FUNCTION (Fn) SETTING",
+              "ref": "menu_setup/button-dial_setting/#fn_setting"
+            },
+            {
+              "name": "POWER ZOOM LENS FUNCTION (Fn) SETTING",
+              "ref": "menu_setup/button-dial_setting/#power_zoom_lens_fn_setting",
+              "changed_in": [
+                "2.50"
+              ]
+            },
+            {
+              "name": "SHUTTER AF",
+              "sub": [
+                {
+                  "name": "AF-S",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "AF-C",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                }
+              ],
+              "ref": "menu_setup/button-dial_setting/#shutter_af"
+            },
+            {
+              "name": "SHUTTER AE",
+              "ref": "menu_setup/button-dial_setting/#shutter_ae"
+            },
+            {
+              "name": "SHOOT WITHOUT LENS",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/button-dial_setting/#shoot_without_lens"
+            }
+          ]
+        },
+        {
+          "page": 2,
+          "items": [
+            {
+              "name": "SHOOT WITHOUT CARD",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/button-dial_setting/#shoot_without_card"
+            },
+            {
+              "name": "LENS ZOOM/FOCUS SETTING",
+              "sub": [
+                {
+                  "name": "FOCUS RING ROTATE",
+                  "options": [
+                    "CW (clockwise)",
+                    "CCW (counterclockwise)"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "FOCUS RING OPERATION",
+                  "options": [
+                    "NONLINEAR",
+                    "LINEAR"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "CONSTANT SPEED FOCUS (Fn)",
+                  "options": [
+                    "1(SLOW)",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                    "6",
+                    "7",
+                    "8(FAST)"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "CONSTANT SPEED ZOOM (Fn)",
+                  "options": [
+                    "1(SLOW)",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                    "6",
+                    "7",
+                    "8(FAST)"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "CONSTANT SPEED ZOOM/FOCUS (Fn) OPERATION",
+                  "options": [
+                    "START/STOP SWITCH",
+                    "ACTIVE WHILE PRESSING"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "ZOOM RING ROTATE",
+                  "options": [
+                    "CW (clockwise)",
+                    "CCW (counterclockwise)"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "ZOOM/FOCUS CONTROL RING",
+                  "options": [
+                    "ZOOM",
+                    "FOCUS"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                }
+              ],
+              "ref": "menu_setup/button-dial_setting/#lens zoom_focus_setting",
+              "changed_in": [
+                "2.50"
+              ]
+            },
+            {
+              "name": "AE/AF-LOCK MODE",
+              "options": [
+                "AE&AF ON WHEN PRESSING",
+                "AE&AF ON/OFF SWITCH"
+              ],
+              "ref": "menu_setup/button-dial_setting/#ae-af-lock_mode"
+            },
+            {
+              "name": "AWB-LOCK MODE",
+              "options": [
+                "AWB ON WHEN PRESSING",
+                "AWB ON/OFF SWITCH"
+              ],
+              "ref": "menu_setup/button-dial_setting/#awb-lock_setting"
+            },
+            {
+              "name": "ISO BUTTON SETTING",
+              "options": [
+                "SMARTPHONE TRANSFER ORDER",
+                "SELECT & SMARTPHONE TRANSFER ORDER",
+                "WIRELESS COMMUNICATION"
+              ],
+              "ref": "menu_setup/button-dial_setting/#iso_button_setting",
+              "changed_in": [
+                "3.00"
+              ]
+            },
+            {
+              "name": "TOUCH SCREEN SETTING",
+              "sub": [
+                {
+                  "name": "TOUCH SCREEN SETTING",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/",
+                  "changed_in": [
+                    "2.50"
+                  ]
+                },
+                {
+                  "name": "DOUBLE TAP SETTING",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "TOUCH FUNCTION",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "TOUCH ZOOM",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                },
+                {
+                  "name": "TOUCH SCREEN SETTING",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/",
+                  "changed_in": [
+                    "2.50"
+                  ]
+                },
+                {
+                  "name": "EVF TOUCH SCREEN AREA SETTINGS",
+                  "options": [
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/button-dial_setting/"
+                }
+              ],
+              "ref": "menu_setup/button-dial_setting/#touch_screen_setting",
+              "changed_in": [
+                "2.50"
+              ]
+            },
+            {
+              "name": "LOCK",
+              "options": [
+                "LOCK SETTING",
+                "FUNCTION SELECTION"
+              ],
+              "ref": "menu_setup/button-dial_setting/#lock",
+              "changed_in": [
+                "2.00"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "setup",
+      "mode": null,
+      "name": "POWER MANAGEMENT",
+      "pages": [
+        {
+          "page": null,
+          "items": [
+            {
+              "name": "AUTO POWER OFF",
+              "options": [
+                "5 MIN",
+                "2 MIN",
+                "1 MIN",
+                "30 SEC",
+                "15 SEC",
+                "OFF"
+              ],
+              "ref": "menu_setup/power_management/#auto_power_off"
+            },
+            {
+              "name": "PERFORMANCE",
+              "options": [
+                "BOOST",
+                "NORMAL"
+              ],
+              "ref": "menu_setup/power_management/#power_management"
+            },
+            {
+              "name": "BOOST SETTING",
+              "options": [
+                "LOW LIGHT PRIORITY",
+                "RESOLUTION PRIORITY",
+                "FRAME RATE PRIORITY"
+              ],
+              "ref": "menu_setup/power_management/#evf_lcd_boost"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "setup",
+      "mode": null,
+      "name": "SAVE DATA SETTING",
+      "pages": [
+        {
+          "page": null,
+          "items": [
+            {
+              "name": "FRAME NO.",
+              "options": [
+                "CONTINUOUS",
+                "RENEW"
+              ],
+              "ref": "menu_setup/save_data_set-up/#frame_no"
+            },
+            {
+              "name": "SAVE ORG IMAGE",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/save_data_set-up/#save_org_image"
+            },
+            {
+              "name": "EDIT FILE NAME",
+              "options": [
+                "sRGB",
+                "Adobe RGB"
+              ],
+              "ref": "menu_setup/save_data_set-up/#edit_file_name"
+            },
+            {
+              "name": "SELECT FOLDER",
+              "options": [
+                "SELECT FOLDER",
+                "CREATE FOLDER"
+              ],
+              "ref": "menu_setup/save_data_set-up/#select_folder"
+            },
+            {
+              "name": "COPYRIGHT INFO",
+              "options": [
+                "DISP COPYRIGHT INFO",
+                "ENTER AUTHOR'S INFO",
+                "ENTER COPYRIGHT INFO",
+                "DELETE COPYRIGHT INFO"
+              ],
+              "ref": "menu_setup/save_data_set-up/#copyright_info"
+            },
+            {
+              "name": "GEOTAGGING",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/save_data_set-up/#geotagging",
+              "changed_in": [
+                "3.00"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "menu": "setup",
+      "mode": null,
+      "name": "CONNECTION SETTING",
+      "pages": [
+        {
+          "page": null,
+          "items": [
+            {
+              "name": "Bluetooth/SMARTPHONE SETTING",
+              "sub": [
+                {
+                  "name": "PAIRING REGISTRATION",
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "SELECT PAIRING DESTINATION",
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "DELETE PAIRING REG.",
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "Bluetooth ON/OFF",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "AUTO IMAGE TRANSFER ORDER",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "SMARTPHONE LOCATION SYNC.",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "NAME",
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "IMAGE TRANSFER WHILE POWER OFF",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "RESIZE IMAGE FOR SMARTPHONE",
+                  "options": [
+                    "ON",
+                    "OFF"
+                  ],
+                  "ref": "menu_setup/connection_setting/#resize_image"
+                }
+              ],
+              "ref": "menu_setup/connection_setting/#bluetooth-smartphone_setting",
+              "changed_in": [
+                "3.00"
+              ]
+            },
+            {
+              "name": "NETWORK SETTING",
+              "sub": [
+                {
+                  "name": "WIRELESS ACCESS POINT SETTING",
+                  "options": [
+                    "SIMPLE SETUP",
+                    "MANUAL SETUP"
+                  ],
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "WIRELESS IP ADDRESS SETTING",
+                  "options": [
+                    "AUTO",
+                    "MANUAL"
+                  ],
+                  "ref": "menu_setup/connection_setting/"
+                }
+              ],
+              "ref": "menu_setup/connection_setting/#network_settings",
+              "changed_in": [
+                "2.00"
+              ]
+            },
+            {
+              "name": "PC AUTO SAVE",
+              "sub": [
+                {
+                  "name": "PC AUTO SAVE SETTING",
+                  "options": [
+                    "SIMPLE SETUP",
+                    "MANUAL SETUP"
+                  ],
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "DELETE REGISTERED DESTINATION PC",
+                  "ref": "menu_setup/connection_setting/"
+                },
+                {
+                  "name": "DETAILS OF PREVIOUS CONNECTION",
+                  "ref": "menu_setup/connection_setting/"
+                }
+              ],
+              "ref": "menu_setup/connection_setting/#pc_outo_save"
+            },
+            {
+              "name": "instax PRINTER CONNECTION SETTING",
+              "ref": "menu_setup/connection_setting/#instax_printer_connection_setting"
+            },
+            {
+              "name": "CONNECTION MODE",
+              "options": [
+                "USB CARD READER",
+                "USB TETHER SHOOTING AUTO",
+                "USB TETHER SHOOTING FIXED",
+                "WIRELESS TETHER SHOOTING FIXED",
+                "USB RAW CONV./BACKUP RESTORE"
+              ],
+              "ref": "menu_setup/connection_setting/#connection_mode",
+              "changed_in": [
+                "2.00"
+              ]
+            },
+            {
+              "name": "USB POWER SUPPLY SETTING",
+              "options": [
+                "ON",
+                "OFF"
+              ],
+              "ref": "menu_setup/connection_setting/#usb"
+            },
+            {
+              "name": "INFORMATION",
+              "ref": "menu_setup/connection_setting/#information",
+              "changed_in": [
+                "2.00"
+              ]
+            },
+            {
+              "name": "RESET WIRELESS SETTING",
+              "ref": "menu_setup/connection_setting/#reset_wireless_setting"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "firmware_changes": [
+    {
+      "version": "2.50",
+      "heading": "Shooting Touch Controls"
+    },
+    {
+      "version": "2.30",
+      "heading": "Recording Movies"
+    },
+    {
+      "version": "2.30",
+      "heading": "XLR MIC ADAPTER SETTING"
+    },
+    {
+      "version": "2.30",
+      "heading": "4ch AUDIO PLAYBACK"
+    },
+    {
+      "version": "2.10",
+      "heading": "instax PRINTER PRINT"
+    },
+    {
+      "version": "2.10",
+      "heading": "instax PRINTER SETTING"
+    },
+    {
+      "version": "3.00",
+      "heading": "AREA SETTING"
+    },
+    {
+      "version": "3.00",
+      "heading": "TIME DIFFERENCE"
+    },
+    {
+      "version": "3.00",
+      "heading": "RESET"
+    },
+    {
+      "version": "3.00",
+      "heading": "LOCATION INFO"
+    },
+    {
+      "version": "3.00",
+      "heading": "ISO BUTTON SETTING"
+    },
+    {
+      "version": "3.00",
+      "heading": "GEOTAGGING"
+    },
+    {
+      "version": "2.50",
+      "heading": "POWER ZOOM LENS FUNCTION (Fn) SETTING"
+    },
+    {
+      "version": "2.50",
+      "heading": "LENS ZOOM/FOCUS SETTING"
+    },
+    {
+      "version": "2.50",
+      "heading": "TOUCH SCREEN SETTING"
+    },
+    {
+      "version": "2.00",
+      "heading": "LOCK"
+    },
+    {
+      "version": "3.00",
+      "heading": "Bluetooth/SMARTPHONE SETTING"
+    },
+    {
+      "version": "2.00",
+      "heading": "NETWORK SETTING"
+    },
+    {
+      "version": "2.00",
+      "heading": "INFORMATION"
+    },
+    {
+      "version": "2.00",
+      "heading": "CONNECTION MODE"
+    },
+    {
+      "version": "2.50",
+      "heading": "The Function Buttons"
+    },
+    {
+      "version": "2.50",
+      "heading": "Touch-Function Gestures"
+    },
+    {
+      "version": "2.50",
+      "heading": "Lens Function Buttons"
+    },
+    {
+      "version": "2.50",
+      "heading": "Power Zoom Lenses"
+    },
+    {
+      "version": "3.00",
+      "heading": "Connecting to Smartphones"
+    },
+    {
+      "version": "2.60",
+      "heading": "Accessories from Fujifilm"
+    }
+  ]
+}
