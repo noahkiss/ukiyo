@@ -33,7 +33,15 @@
     "resources": { "../catalog/": "catalog/" },
     "macOS": {
       "minimumSystemVersion": "13.0",
-      "files": { "Resources/Assets.car": "icons/Assets.car" }
+      "files": { "Resources/Assets.car": "icons/Assets.car" },
+      "signingIdentity": "-"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "UKIYO_UPDATER_PUBKEY_PLACEHOLDER",
+      "endpoints": ["https://github.com/noahkiss/ukiyo/releases/latest/download/latest.json"],
+      "requireSignedVersion": true
     }
   }
 }

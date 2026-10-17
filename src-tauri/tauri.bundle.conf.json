@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": "cd app && pnpm build && cd .. && tools/release/cli_sidecar.sh"
+  },
+  "bundle": {
+    "externalBin": ["binaries/ukiyo-cli"]
+  }
+}

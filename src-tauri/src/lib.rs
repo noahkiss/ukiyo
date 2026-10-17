@@ -1,4 +1,5 @@
 mod events;
+mod updater;
 
 use events::{CatalogChanged, LabChanges, LabProps, LabStatus};
 use std::sync::Arc;
@@ -6,11 +7,9 @@ use tauri::{AppHandle, Manager};
 use tauri_specta::Event as _;
 use ukiyo_core::api::{Event, Request, Response};
 use ukiyo_core::camera::owner::Status;
-use ukiyo_core::catalog::{Catalog, LabelPatch};
 use ukiyo_core::lab::{FakeAction, Snapshot};
-use ukiyo_core::library::prefs::{Prefs, PrefsPatch};
-use ukiyo_core::library::{self, Hits, SaveInput, SaveKind, Saved, SearchInput, Trashed};
-use ukiyo_core::plan::{Applied, Plan};
+use ukiyo_core::library::prefs::Prefs;
+use ukiyo_core::library::{self, SaveInput, SaveKind, Saved};
 use ukiyo_core::serve::client::{self, Client, SpawnFn};
 use ukiyo_core::{paths, recipes, serve};
 
@@ -39,6 +38,60 @@ fn log_failure(method: &str, r: Result<Response, String>) {
     }
 }
 
+/// The app's side of the method table (`ukiyo_core::ukiyo_api_table!`): one Tauri command per
+/// `result` and `quiet` row, with the row's name, params and docs, forwarded to `serve`.
+/// `own` rows are written below by hand. `api_commands` collects the generated commands and
+/// the hand-written ones named in `[...]`.
+macro_rules! tauri_commands {
+    (
+        [$($($own:ident)::+),* $(,)?]
+        result {
+            $(
+                $(#[$m:meta])*
+                $name:ident : $v:ident
+                $( { $( $(#[$fm:meta])* $f:ident : $fty:ty ),* $(,)? } )?
+                $( ( $nt:ident : $ntty:ty ) )?
+                -> $ret:ty
+                = |$lab:ident, $actor:ident| $body:expr;
+            )*
+        }
+        quiet {
+            $(
+                $(#[$qm:meta])*
+                $qname:ident : $qv:ident
+                $( { $( $(#[$qfm:meta])* $qf:ident : $qfty:ty ),* $(,)? } )?
+                = |$qlab:ident, $qactor:ident| $qbody:expr;
+            )*
+        }
+        own { $($rest:tt)* }
+    ) => {
+        $(
+            $(#[$m])*
+            #[tauri::command]
+            #[specta::specta]
+            async fn $name(app: AppHandle $( $(, $f: $fty)* )? $(, $nt: $ntty)?) -> Result<$ret, String> {
+                match forward(&app, Request::$v $( { $($f),* } )? $( ($nt) )?).await? {
+                    Response::$v(out) => Ok(out),
+                    r => Err(unexpected(r)),
+                }
+            }
+        )*
+        $(
+            $(#[$qm])*
+            #[tauri::command]
+            #[specta::specta]
+            async fn $qname(app: AppHandle $( $(, $qf: $qfty)* )?) {
+                log_failure(stringify!($qname), forward(&app, Request::$qv $( { $($qf),* } )?).await)
+            }
+        )*
+        fn api_commands() -> tauri_specta::Commands<tauri::Wry> {
+            tauri_specta::collect_commands![$($($own)::+,)* $($name,)* $($qname,)*]
+        }
+    };
+}
+
+ukiyo_core::ukiyo_api_table!(tauri_commands [lab_snapshot, lab_fake, recipe_parse, library_save, recipe_save, prefs_get, updater::update_status, updater::update_check, updater::update_install]);
+
 // Without `serve`, the window gets an empty snapshot whose status says why.
 #[tauri::command]
 #[specta::specta]
@@ -58,83 +111,6 @@ async fn lab_snapshot(app: AppHandle) -> Snapshot {
     }
 }
 
-/// Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing.
-#[tauri::command]
-#[specta::specta]
-/// `from` plans a library item instead: `preset:<slug>`, `snapshot:<slug>` (a restore), or a
-/// recipe (`recipe:<slug>`, `cat:<id>`) into `slot` (`C1` to `C7`, USB RAW CONV. mode).
-async fn plan_create(app: AppHandle, set: indexmap::IndexMap<String, String>, allow_unconfirmed: bool, from: Option<String>, slot: Option<String>) -> Result<Plan, String> {
-    match forward(&app, Request::PlanCreate { set, allow_unconfirmed, from, slot }).await? {
-        Response::PlanCreate(p) => Ok(*p),
-        r => Err(unexpected(r)),
-    }
-}
-
-/// Applies a plan: re-checks it, writes each step, reads each back.
-#[tauri::command]
-#[specta::specta]
-async fn plan_apply(app: AppHandle, plan_id: String) -> Result<Applied, String> {
-    match forward(&app, Request::PlanApply { plan_id }).await? {
-        Response::PlanApply(a) => Ok(*a),
-        r => Err(unexpected(r)),
-    }
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn plan_discard(app: AppHandle, plan_id: String) {
-    log_failure("plan_discard", forward(&app, Request::PlanDiscard { plan_id }).await)
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn lab_pin(app: AppHandle, codes: Vec<u16>) {
-    log_failure("lab_pin", forward(&app, Request::LabPin { codes }).await)
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn lab_keep_awake(app: AppHandle, on: bool) {
-    log_failure("lab_keep_awake", forward(&app, Request::LabKeepAwake { on }).await)
-}
-
-/// Input in the window: Ukiyo is in use, so keep-awake runs.
-#[tauri::command]
-#[specta::specta]
-async fn activity(app: AppHandle) {
-    log_failure("activity", forward(&app, Request::Activity).await)
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn lab_connect(app: AppHandle, on: bool) {
-    log_failure("lab_connect", forward(&app, Request::LabConnect { on }).await)
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn lab_export(app: AppHandle) -> Result<String, String> {
-    match forward(&app, Request::LabExport).await? {
-        Response::LabExport(path) => Ok(path),
-        r => Err(unexpected(r)),
-    }
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn lab_label(app: AppHandle, patch: LabelPatch) -> Result<Catalog, String> {
-    match forward(&app, Request::LabLabel { patch }).await? {
-        Response::LabLabel(c) => Ok(*c),
-        r => Err(unexpected(r)),
-    }
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn lab_note(app: AppHandle, group: Option<u32>, text: String) {
-    log_failure("lab_note", forward(&app, Request::LabNote { group, text }).await)
-}
-
 #[tauri::command]
 #[specta::specta]
 async fn lab_fake(app: AppHandle, action: FakeAction) -> Result<(), String> {
@@ -143,27 +119,6 @@ async fn lab_fake(app: AppHandle, action: FakeAction) -> Result<(), String> {
 
 // The library: presets, snapshots, favourites, camera history, the trash. `serve` answers
 // these from the data folder, and logs saves and deletes with the actor `app`.
-
-#[tauri::command]
-#[specta::specta]
-async fn library_search(app: AppHandle, input: SearchInput) -> Result<Hits, String> {
-    match forward(&app, Request::LibrarySearch(input)).await? {
-        Response::LibrarySearch(h) => Ok(h),
-        r => Err(unexpected(r)),
-    }
-}
-
-/// One item in full (`recipe:<slug>`, `cat:<id>`, `preset:<slug>`, `snapshot:<slug>`,
-/// `favourites`, `prefs`, `history`), the camera's slots (`slot:C1`, `slots`; RAW CONV. mode),
-/// or the diff of two items.
-#[tauri::command]
-#[specta::specta]
-async fn library_read(app: AppHandle, id: String, compare_to: Option<String>) -> Result<library::Read, String> {
-    match forward(&app, Request::LibraryRead { id, compare_to }).await? {
-        Response::LibraryRead(r) => Ok(*r),
-        r => Err(unexpected(r)),
-    }
-}
 
 /// A preset's settings, as `library_save` takes them from the window: `set` outright, or the
 /// camera's current values of `settings`.
@@ -218,15 +173,6 @@ async fn recipe_save(app: AppHandle, name: Option<String>, item: Option<RecipeIt
     }
 }
 
-#[tauri::command]
-#[specta::specta]
-async fn library_delete(app: AppHandle, id: String) -> Result<Trashed, String> {
-    match forward(&app, Request::LibraryDelete { id }).await? {
-        Response::LibraryDelete(t) => Ok(t),
-        r => Err(unexpected(r)),
-    }
-}
-
 // Read in this process, not through `serve`: the window needs its theme before `serve` may
 // have started.
 /// The preferences in `settings.json`.
@@ -234,16 +180,6 @@ async fn library_delete(app: AppHandle, id: String) -> Result<Trashed, String> {
 #[specta::specta]
 fn prefs_get() -> Prefs {
     ukiyo_core::api::call::prefs_get(&paths::data_dir())
-}
-
-/// Changes some preferences; `keep_awake` reaches the owner at once.
-#[tauri::command]
-#[specta::specta]
-async fn prefs_set(app: AppHandle, patch: PrefsPatch) -> Result<Prefs, String> {
-    match forward(&app, Request::PrefsSet { patch }).await? {
-        Response::PrefsSet(p) => Ok(*p),
-        r => Err(unexpected(r)),
-    }
 }
 
 // No shared state, so it runs in the app and works without `serve`; a URL is fetched on a
@@ -261,28 +197,7 @@ async fn recipe_parse(text: Option<String>, url: Option<String>) -> Result<recip
 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
-        .commands(tauri_specta::collect_commands![
-            lab_snapshot,
-            lab_pin,
-            lab_keep_awake,
-            lab_connect,
-            lab_export,
-            lab_label,
-            lab_note,
-            lab_fake,
-            recipe_parse,
-            plan_create,
-            plan_apply,
-            plan_discard,
-            activity,
-            library_search,
-            library_read,
-            library_save,
-            recipe_save,
-            library_delete,
-            prefs_get,
-            prefs_set,
-        ])
+        .commands(api_commands())
         // The bundled recipe catalogue's shape; the window imports the JSON itself.
         .typ::<recipes::catalogue::RecipeCatalog>()
         .events(tauri_specta::collect_events![LabStatus, LabProps, LabChanges, CatalogChanged])
@@ -314,9 +229,11 @@ pub fn run() {
     let typed = specta.invoke_handler();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(typed)
         .setup(move |app| {
             specta.mount_events(app);
+            updater::install(app.handle());
             // The same folder Tauri names `app_data_dir`; `serve` resolves it the same way.
             let data_dir = paths::data_dir();
             paths::prepare_data_dir(&data_dir)?;

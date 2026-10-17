@@ -9,36 +9,12 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 /** Commands */
 export const commands = {
 	labSnapshot: () => __TAURI_INVOKE<Snapshot_Serialize>("lab_snapshot"),
-	labPin: (codes: number[]) => __TAURI_INVOKE<void>("lab_pin", { codes }),
-	labKeepAwake: (on: boolean) => __TAURI_INVOKE<void>("lab_keep_awake", { on }),
-	labConnect: (on: boolean) => __TAURI_INVOKE<void>("lab_connect", { on }),
-	labExport: () => typedError<string, string>(__TAURI_INVOKE("lab_export")),
-	labLabel: (patch: LabelPatch) => typedError<Catalog_Serialize, string>(__TAURI_INVOKE("lab_label", { patch })),
-	labNote: (group: number | null, text: string) => __TAURI_INVOKE<void>("lab_note", { group, text }),
 	labFake: (action: FakeAction) => typedError<null, string>(__TAURI_INVOKE("lab_fake", { action })),
 	/**
 	 *  Parses pasted recipe text, or the recipe post at a URL, into slot settings, notes and
 	 *  per-field warnings.
 	 */
 	recipeParse: (text: string | null, url: string | null) => typedError<Parsed_Serialize, string>(__TAURI_INVOKE("recipe_parse", { text, url })),
-	/**
-	 *  Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing.
-	 *  `from` plans a library item instead: `preset:<slug>`, `snapshot:<slug>` (a restore), or a
-	 *  recipe (`recipe:<slug>`, `cat:<id>`) into `slot` (`C1` to `C7`, USB RAW CONV. mode).
-	 */
-	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null, slot: string | null) => typedError<Plan_Serialize, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from, slot })),
-	/**  Applies a plan: re-checks it, writes each step, reads each back. */
-	planApply: (planId: string) => typedError<Applied_Serialize, string>(__TAURI_INVOKE("plan_apply", { planId })),
-	planDiscard: (planId: string) => __TAURI_INVOKE<void>("plan_discard", { planId }),
-	/**  Input in the window: Ukiyo is in use, so keep-awake runs. */
-	activity: () => __TAURI_INVOKE<void>("activity"),
-	librarySearch: (input: SearchInput) => typedError<Hits_Serialize, string>(__TAURI_INVOKE("library_search", { input })),
-	/**
-	 *  One item in full (`recipe:<slug>`, `cat:<id>`, `preset:<slug>`, `snapshot:<slug>`,
-	 *  `favourites`, `prefs`, `history`), the camera's slots (`slot:C1`, `slots`; RAW CONV. mode),
-	 *  or the diff of two items.
-	 */
-	libraryRead: (id: string, compareTo: string | null) => typedError<Read_Serialize, string>(__TAURI_INVOKE("library_read", { id, compareTo })),
 	/**
 	 *  Creates or replaces a preset, snapshot or favourite, or restores one from the trash.
 	 *  Never writes to the camera.
@@ -58,11 +34,51 @@ export const commands = {
 	source: RecipeSource_Deserialize | null,
 	comment: string | null,
 } | null, from: string | null) => typedError<Saved, string>(__TAURI_INVOKE("recipe_save", { name, item, from })),
-	libraryDelete: (id: string) => typedError<Trashed, string>(__TAURI_INVOKE("library_delete", { id })),
 	/**  The preferences in `settings.json`. */
 	prefsGet: () => __TAURI_INVOKE<Prefs>("prefs_get"),
-	/**  Changes some preferences; `keep_awake` reaches the owner at once. */
+	/**  The last check's answer (no network). */
+	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
+	/**  Checks the feed now. */
+	updateCheck: () => __TAURI_INVOKE<UpdateStatus>("update_check"),
+	/**  Downloads the newest update, checks its signature, installs it and restarts the app. */
+	updateInstall: () => typedError<null, string>(__TAURI_INVOKE("update_install")),
+	/**  Writes a full property dump to `dumps/` and returns its path. */
+	labExport: () => typedError<string, string>(__TAURI_INVOKE("lab_export")),
+	/**  Labels one property in the model's catalog and saves the catalog. */
+	labLabel: (patch: LabelPatch) => typedError<Catalog_Serialize, string>(__TAURI_INVOKE("lab_label", { patch })),
+	/**
+	 *  Builds a plan against the live camera: names or codes to labels or raw values.
+	 *  Writes nothing.
+	 */
+	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null, slot: string | null) => typedError<Plan_Serialize, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from, slot })),
+	/**  Re-checks a plan, writes its steps in order, reads each back, and logs them. */
+	planApply: (planId: string) => typedError<Applied_Serialize, string>(__TAURI_INVOKE("plan_apply", { planId })),
+	/**  Searches the library on this Mac: presets, snapshots, favourites, the trash. */
+	librarySearch: (input: SearchInput) => typedError<Hits_Serialize, string>(__TAURI_INVOKE("library_search", { input })),
+	/**
+	 *  One library item in full, or the diff of two items. `slot:C1` .. `slot:C7` and
+	 *  `slots` read the camera (RAW CONV. mode).
+	 */
+	libraryRead: (id: string, compareTo: string | null) => typedError<Read_Serialize, string>(__TAURI_INVOKE("library_read", { id, compareTo })),
+	/**  Moves a preset or snapshot to the trash, or removes a favourite. */
+	libraryDelete: (id: string) => typedError<Trashed, string>(__TAURI_INVOKE("library_delete", { id })),
+	/**  Changes some preferences. `keep_awake` reaches the owner at once. */
 	prefsSet: (patch: PrefsPatch) => typedError<Prefs, string>(__TAURI_INVOKE("prefs_set", { patch })),
+	/**  Codes read on every poll, besides the ones the owner always reads. */
+	labPin: (codes: number[]) => __TAURI_INVOKE<void>("lab_pin", { codes }),
+	/**
+	 *  The keep-awake setting: while Ukiyo is in use, the owner resets the camera's auto
+	 *  power off timer. Remembered in `settings.json`.
+	 */
+	labKeepAwake: (on: boolean) => __TAURI_INVOKE<void>("lab_keep_awake", { on }),
+	/**  The Lab's connect switch: off stops the owner from connecting. */
+	labConnect: (on: boolean) => __TAURI_INVOKE<void>("lab_connect", { on }),
+	/**  A note in the session log, tied to a change group. */
+	labNote: (group: number | null, text: string) => __TAURI_INVOKE<void>("lab_note", { group, text }),
+	/**  Drops a plan without writing it. */
+	planDiscard: (planId: string) => __TAURI_INVOKE<void>("plan_discard", { planId }),
+	/**  Input in the window: Ukiyo is in use (keep-awake). Every other request counts too. */
+	activity: () => __TAURI_INVOKE<void>("activity"),
 };
 
 /** Events */
@@ -1291,6 +1307,24 @@ export type Trashed = {
 	trashed_at: number | null,
 	/**  `trash:<name>`, for `library_save {from}` to restore it. */
 	trash_id: string | null,
+};
+
+/**  What the window shows about updates. */
+export type UpdateStatus = {
+	/**  The running version. */
+	current: string,
+	/**  Whether this build checks for updates. */
+	enabled: boolean,
+	/**  Why it does not, when `enabled` is false. */
+	reason: string | null,
+	/**  A newer version on the feed, when a check found one. */
+	available: string | null,
+	/**  Its release notes. */
+	notes: string | null,
+	/**  The last check's error. */
+	error: string | null,
+	/**  Whether a check has run since launch. */
+	checked: boolean,
 };
 
 export type Usb = {

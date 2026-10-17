@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { commands, type Diff, type Hit as LibHit, type Plan, type PropRow, type Value } from "../bindings";
+import { commands, type Diff, type Hit as LibHit, type Plan, type PropRow, type UpdateStatus, type Value } from "../bindings";
 import { inTauri, useCamera } from "../lib/camera";
 import { display, entry, hex, type Catalog } from "../lib/decode";
 import { useLive, rawOf } from "../lib/live";
@@ -254,7 +254,7 @@ export function Settings({ sub }: { sub: string | null }) {
       <PageHead
         title="Settings"
         sub={
-          section === APPEARANCE ? "How Ukiyo looks on this Mac." : section === CONNECTION ? "How Ukiyo treats the connected camera." : "The camera's menus. A change writes to the camera at once."
+          section === APPEARANCE ? "How Ukiyo looks on this Mac." : section === CONNECTION ? "How Ukiyo treats the connected camera, and Ukiyo's own updates." : "The camera's menus. A change writes to the camera at once."
         }
       >
         <CameraChip />
@@ -315,7 +315,10 @@ export function Settings({ sub }: { sub: string | null }) {
         {section === APPEARANCE ? (
           <Appearance />
         ) : section === CONNECTION ? (
-          <Connection />
+          <>
+            <Connection />
+            <Updates />
+          </>
         ) : (
           <section className="card settings-list" aria-labelledby="menu-title">
             <div className="settings-list-head">
@@ -586,6 +589,62 @@ function Connection() {
           data-action="keep-awake"
           onClick={() => void commands.labKeepAwake(!on)}
         />
+      </div>
+    </section>
+  );
+}
+
+function Updates() {
+  const [s, setS] = useState<UpdateStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (inTauri) void commands.updateStatus().then(setS);
+  }, []);
+  const check = async () => {
+    setBusy(true);
+    setError(null);
+    setS(await commands.updateCheck());
+    setBusy(false);
+  };
+  const install = async () => {
+    setBusy(true);
+    setError(null);
+    const r = await commands.updateInstall();
+    if (r.status === "error") setError(r.error);
+    setBusy(false);
+  };
+  const line = !s
+    ? "Updates work in the app only."
+    : !s.enabled
+      ? s.reason
+      : s.error
+        ? s.error
+        : s.available
+          ? `Version ${s.available} is ready to install.`
+          : s.checked
+            ? "Ukiyo is up to date."
+            : "Not checked yet.";
+  return (
+    <section className="card settings-list" aria-labelledby="updates-title" data-component="updates">
+      <div className="settings-list-head">
+        <h2 id="updates-title">Updates</h2>
+        <span className="mono tiny muted">{s ? `Version ${s.current}` : ""}</span>
+      </div>
+      <div className="setting">
+        <div className="setting-name">
+          <span>{line}</span>
+          {error && <span className="tiny muted">{error}</span>}
+        </div>
+        {s?.available ? (
+          <button type="button" className="btn small raised" disabled={busy} data-action="update-install" onClick={() => void install()}>
+            Install and restart
+          </button>
+        ) : (
+          <button type="button" className="btn small" disabled={!s?.enabled || busy} data-action="update-check" onClick={() => void check()}>
+            Check for updates
+          </button>
+        )}
       </div>
     </section>
   );

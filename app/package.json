@@ -11,7 +11,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "tauri": "cd ../src-tauri && tauri"
+    "tauri": "cd ../src-tauri && tauri",
+    "bundle": "cd ../src-tauri && tauri build --bundles app --config tauri.bundle.conf.json"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.1",
