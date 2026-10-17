@@ -16,7 +16,10 @@ Never mirror one to fix that: it swaps the dials and the grip. Re-render it inst
 
 Framing matches the first X-T5 asset: an 800x628 canvas, the body fitted into the box
 x 0-796, y 21-623, centred. Light keeps the drawing's grey and alpha. Dark negates it and
-levels it to 24-225, the same alpha. Writes app/src/assets/camera/<id>-light.webp and
+levels it to 24-225, the same alpha. The drawings come back with uneven stipple: some bodies
+much darker than others. So each light image gets a gamma on its grey, solved so the mean ink
+(alpha x darkness, over the body) hits INK_TARGET. Gamma keeps black lines and white paper
+where they are and moves the mid-grey stipple. Dark derives from light, so it follows. Writes app/src/assets/camera/<id>-light.webp and
 <id>-dark.webp.
 """
 import argparse
@@ -49,6 +52,7 @@ W, H = 800, 628
 BOX = (0, 21, 797, 624)  # x0, y0, x1, y1 (exclusive) of the X-T5 body in the first asset
 ALPHA_FLOOR = 12  # alpha below this is generator speckle, cleared
 DARK_LO, DARK_HI = 24, 225
+INK_TARGET = 0.26  # mean ink over the body, 0 white to 1 black; about the bodies' average
 QUALITY = 62  # webp; keeps each file near 100 KB
 
 
@@ -106,6 +110,26 @@ def build(src: pathlib.Path, pick: str) -> Image.Image:
     return Image.fromarray(canvas, "LA")
 
 
+def ink(l: np.ndarray, a: np.ndarray) -> float:
+    body = a > 0
+    return float((a * (255 - l))[body].sum() / a[body].sum() / 255)
+
+
+def even_tone(img: Image.Image) -> Image.Image:
+    """Gamma on the grey so the body's mean ink is INK_TARGET; bisection on log gamma."""
+    la = np.array(img).astype(np.float32)
+    l, a = la[..., 0] / 255, la[..., 1]
+    lo, hi = np.log(0.25), np.log(4.0)
+    for _ in range(40):
+        g = (lo + hi) / 2
+        if ink(255 * l ** np.exp(g), a) < INK_TARGET:
+            lo = g
+        else:
+            hi = g
+    la[..., 0] = 255 * l ** np.exp((lo + hi) / 2)
+    return Image.fromarray(la.round().astype(np.uint8), "LA")
+
+
 def dark(img: Image.Image) -> Image.Image:
     la = np.array(img).astype(np.float32)
     la[..., 0] = DARK_LO + (255 - la[..., 0]) * (DARK_HI - DARK_LO) / 255
@@ -126,7 +150,7 @@ def main() -> None:
     for cid, (rel, pick) in SOURCES.items():
         if args.only and cid not in args.only:
             continue
-        light = build(args.src_root / rel, pick)
+        light = even_tone(build(args.src_root / rel, pick))
         save(light, OUT / f"{cid}-light.webp")
         save(dark(light), OUT / f"{cid}-dark.webp")
 
