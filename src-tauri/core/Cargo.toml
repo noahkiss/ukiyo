@@ -14,6 +14,7 @@ name = "ukiyo_core"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 anyhow = "1"
+libc = "0.2"
 chrono = "0.4"
 specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "indexmap"] }
 nusb = "0.2.7"

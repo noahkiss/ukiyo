@@ -1,0 +1,21 @@
+[package]
+name = "ukiyo-cli"
+version = "0.1.0"
+description = "The ukiyo command line tool: today only `serve`, the shared camera owner"
+edition = "2021"
+license = "MIT"
+rust-version = "1.89"
+publish = false
+
+# On PATH it is `ukiyo` (docs/agent-interface.md, "Where the binary lives"). The cargo bin
+# is `ukiyo-cli` because the app's own binary is already `ukiyo` in the same target folder.
+[[bin]]
+name = "ukiyo-cli"
+path = "src/main.rs"
+
+[dependencies]
+ukiyo-core = { path = "../core" }
+
+[dev-dependencies]
+tempfile = "3"
+libc = "0.2"

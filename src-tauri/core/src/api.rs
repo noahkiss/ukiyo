@@ -6,8 +6,8 @@
 //! - `Response`: one variant per method, in the same order, carrying that method's result:
 //!   `{"method": "lab_write", "result": {...}}`.
 //! - `Error`: a code and a message. The typed codes of section 5 come with plans (stage 4).
-//! - `Event`: what the Lab reports while it runs. The window gets them as Tauri events; the
-//!   shared owner (stage 2) will send them to every subscribed client.
+//! - `Event`: what the Lab reports while it runs. `ukiyo serve` sends them to every
+//!   subscribed client (`serve::wire`); the app turns them into Tauri events.
 //! - `call`: one typed function per method. `dispatch` and the Tauri commands both call these,
 //!   so a method behaves the same on every surface.
 //!
@@ -105,6 +105,10 @@ pub enum ErrorCode {
     Failed,
     /// A fake-camera method in a session with the real camera.
     NoFakeCamera,
+    /// A socket line that is not a known request (`serve::wire`).
+    BadRequest,
+    /// No `ukiyo serve` to answer: it did not start, or the connection dropped mid-request.
+    Unavailable,
 }
 
 /// Why a request failed.
@@ -274,7 +278,8 @@ mod tests {
         std::env::set_var("UKIYO_FAKE_CAMERA", "1");
         let data = tempfile::tempdir().unwrap();
         let cats = tempfile::tempdir().unwrap();
-        let lab = Lab::start(data.path().into(), cats.path().into(), |_| {});
+        let lock = crate::serve::OwnerLock::try_acquire(&data.path().join("owner.lock")).unwrap();
+        let lab = Lab::start(lock, data.path().into(), cats.path().into(), |_| {});
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let Response::LabSnapshot(s) = dispatch(&lab, Request::LabSnapshot).unwrap() else { panic!() };

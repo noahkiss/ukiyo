@@ -6,11 +6,13 @@ edition = "2021"
 license = "MIT"
 rust-version = "1.90"
 publish = false
+# The workspace has a second binary (ukiyo-cli); `cargo run` and `tauri dev` mean the app.
+default-run = "ukiyo"
 
 [workspace]
-members = ["core"]
-# Plain `cargo test` and `cargo clippy` in src-tauri cover the core crate too.
-default-members = [".", "core"]
+members = ["core", "cli"]
+# Plain `cargo test` and `cargo clippy` in src-tauri cover the core and cli crates too.
+default-members = [".", "core", "cli"]
 
 [lib]
 name = "ukiyo_lib"

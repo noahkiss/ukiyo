@@ -1,7 +1,7 @@
 # Agent interface: CLI and MCP
 
 A design for the `ukiyo` command line tool and its MCP server. Stage 1 (the core crate and
-`api`) is built; the rest is not (section 8). The
+`api`) and stage 2 (the shared owner, `ukiyo serve`) are built; the rest is not (section 8). The
 bm task is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool
 surface, search then read, and plan then apply for every camera write.
 
@@ -35,27 +35,36 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
   `src-tauri/Cargo.toml` (QuadCam keeps its sim crate the same way). `cargo test` and
   `cargo clippy` in `src-tauri/` cover both crates. The core has no Tauri dependency; it keeps
   `specta` so its types still export to `app/src/bindings.ts`.
-- The core holds `camera/`, `catalog.rs`, `recipes/` (with `examples/recipes_refresh.rs`) and
-  `lab.rs`. Three modules are planned or built:
+- The core holds `camera/`, `catalog.rs`, `recipes/` (with `examples/recipes_refresh.rs`),
+  `lab.rs`, `paths.rs` (the data folder, its move from `app.ukiyo`, `owner.lock`, `ukiyo.sock`)
+  and `serve/` (the shared owner, its socket protocol and the client; "One USB owner" below).
+  Three more modules are planned or built:
   - `library` (stage 6): presets, favourites, snapshots, user recipes, camera history, and
     preferences.
   - `plan` (stage 4): builds, checks and applies multi-property changes.
   - `api` (built): every front end speaks only this.
     - `Request`, one variant per method: `{"method": "lab_write", "params": {...}}`.
     - `Response`, the variant of the same name: `{"method": "lab_write", "result": {...}}`.
-    - `Error`, a `code` and a `message`. Today the codes are `failed` and `no_fake_camera`;
-      section 5's codes come with stage 4.
+    - `Error`, a `code` and a `message`. Today the codes are `failed`, `no_fake_camera`,
+      `bad_request` (a socket line that is not a request) and `unavailable` (no `serve` to
+      answer); section 5's codes come with stage 4.
     - `Event`: `status`, `props`, `changes`, `catalog`, as `{"event": ..., "data": ...}`.
-      Stage 2's `subscribe` sends these.
+      `serve` sends these to every client that called `subscribe`.
     - `call::<method>`, one typed function per method, and `dispatch(&Lab, Request)`. The
-      Tauri commands call `call`; the socket (stage 2) and MCP (stage 5) will call `dispatch`.
+      socket calls `dispatch`; MCP (stage 5) will send requests over the socket too.
     - Method names are the window's command names (`lab_snapshot`, `lab_write`, `lab_pin`,
       `lab_keep_awake`, `lab_connect`, `lab_export`, `lab_label`, `lab_note`, `lab_fake`,
       `recipe_parse`). New methods for the CLI and MCP join the same enums.
 - `src-tauri/src/` keeps the window glue: Tauri commands, the four Tauri events
-  (`events.rs`), specta bindings, and the data folder move. Each command is a one-line call
-  into `api::call`.
-- The CLI and the MCP server are one binary, `ukiyo`. `ukiyo mcp` starts the MCP server.
+  (`events.rs`) and specta bindings. Each command sends its `api::Request` to `serve` over the
+  socket, and the client turns `serve`'s events into the Tauri events. `recipe_parse` is the
+  one exception: pure parsing with no shared state, so it runs in the app and works without
+  `serve`. A command that waits on `serve` runs off the main thread. When `serve` is
+  unreachable, `lab_snapshot` returns an empty snapshot whose status `reason` says why, and
+  `lab_write` an outcome with `ok: false`, so the window's command types did not change.
+- The CLI and the MCP server are one binary, `ukiyo` on PATH. Its cargo crate is
+  `src-tauri/cli/` (`ukiyo-cli`), and the binary is `ukiyo-cli`, because the app's own binary is
+  already `ukiyo` in the same target folder. `ukiyo mcp` starts the MCP server.
 
 ### One USB owner
 
@@ -66,6 +75,10 @@ and a socket.
 |---|---|
 | `owner.lock` | An exclusive `flock`. The process that holds it is the owner. |
 | `ukiyo.sock` | The owner's Unix socket, mode 0600. Newline-delimited JSON-RPC carrying `api` requests. |
+| `serve.log` | The stderr of a `serve` that a client spawned. |
+
+The folder is mode 0700. `UKIYO_DATA_DIR` overrides it (tests, a second dev setup); a spawned
+`serve` gets the spawner's folder through that variable, so both always agree.
 
 Only one kind of process ever owns the camera: `ukiyo serve`, the shared layer. The app, the
 CLI and the MCP server are all clients of its socket, and none of them claims USB itself. So
@@ -85,21 +98,64 @@ Rules:
    applied, log lines). Every client gets every event, so the app's window shows a change an
    agent made, live, and the reverse.
 3. A client of any kind (app, CLI, MCP) finds no owner when the connect fails and `owner.lock`
-   is free. It then removes any stale socket and spawns `ukiyo serve` detached (`setsid`, so
-   it outlives the client that started it). It waits up to 5 s for the socket, and never
-   spawns a second time in one command. The app bundles the same `ukiyo` binary and spawns it
-   the same way.
+   is free. It then spawns `ukiyo serve` detached (`setsid`, so it outlives the client that
+   started it, and no terminal signal reaches it). It waits up to 10 s for the socket, and
+   never spawns a second time in one connect. While the lock is held but the socket does not
+   answer (an owner starting, or shutting down), it only waits. `serve`, not the client,
+   removes a stale socket, after it holds the lock: a client that removed it could delete
+   the socket of an owner that had just bound it.
+   - The probe takes and drops the lock at once. A `serve` that starts at that instant
+     retries the lock for 1 s instead of giving up.
+   - Spawns are spaced out per client: after one, the next is allowed after 1 s, then 2, 4
+     ... up to 60 s. The spacing resets after a connection that lasted 60 s. A `serve` that
+     dies at start therefore never becomes a loop of USB claims.
+   - The app spawns its own executable with the `serve` argument (`main.rs` branches before
+     any Tauri code), in development and in the bundle. The owner is then always the app's own
+     build, with no second binary to keep in step. The CLI spawns itself the same way.
 4. `serve` runs the owner thread (`owner.rs`): polling, the 3 s presence check, the 30 s
    reopen delay, one USB reset per connect attempt. All requests from all clients go through
    its one queue, writes first, so two clients can never interleave on the wire.
 5. Lifetime: `serve` stays up while any client is connected. The app counts as a client for as
-   long as it is open. `serve` exits 120 s after the last client leaves, with a clean
-   disconnect (AUTO POWER OFF restored, session closed). Plans live in `serve`, so a plan made
-   in the CLI can be applied from the app's window, and the reverse.
-6. Each request carries an `actor` (`app`, `cli`, `mcp:<client name>`), which goes into the
-   session log and into the events, so the window can show "changed by an agent".
+   long as it is open: it holds one connection, subscribed, and reconnects after a drop (1 s
+   later, then backing off to 30 s, spawning under rule 3). `serve` exits 120 s after the last
+   client leaves (`--idle-exit S` or `UKIYO_IDLE_EXIT` change it). SIGINT, SIGTERM and SIGHUP
+   stop it the same way. At exit it removes the socket first, closes its clients, then
+   disconnects cleanly (AUTO POWER OFF restored, session closed). It releases the lock only
+   after the owner thread has ended. Plans live in `serve`, so a plan made in the CLI can be
+   applied from the app's window, and the reverse.
+6. Each connection names its `actor` (`app`, `cli`, `mcp:<client name>`) in `hello`. Stage 4
+   writes it into the session log and the events, so the window can show "changed by an
+   agent".
 7. Nothing else touches USB. `tools/ptp/` scripts check `owner.lock` and refuse to run while
    it is held.
+
+In code, `Lab::start` takes the held `OwnerLock`, so no path opens USB without the lock.
+
+### The socket protocol
+
+One JSON-RPC 2.0 message per line (`core/src/serve/wire.rs`):
+
+```text
+-> {"jsonrpc":"2.0","id":1,"method":"hello","params":{"actor":"app","protocol":1}}
+<- {"jsonrpc":"2.0","id":1,"result":{"protocol":1,"version":"0.1.0","pid":4242,"fake":true}}
+-> {"jsonrpc":"2.0","id":2,"method":"subscribe"}
+<- {"jsonrpc":"2.0","id":2,"result":null}
+<- {"jsonrpc":"2.0","method":"event","params":{"event":"status","data":{...}}}
+-> {"jsonrpc":"2.0","id":3,"method":"lab_write","params":{"code":53283,"value":{"kind":"int","v":2}}}
+<- {"jsonrpc":"2.0","id":3,"result":{"code":53283,"ok":true,...}}
+<- {"jsonrpc":"2.0","id":4,"error":{"code":"bad_request","message":"..."}}
+```
+
+- `method` and `params` are an `api::Request`. `result` is the matching `api::Response`'s
+  `result` (`null` for a method with none). `error` is an `api::Error`.
+- `hello` and `subscribe` are the only methods outside `api`. `hello` with another `protocol`
+  number is refused. After `subscribe`, the connection gets every `api::Event`.
+- Replies can come out of order: `lab_write` and `lab_export` wait on the camera on their own
+  thread. Match replies by `id`.
+- A client that falls 4096 lines behind is disconnected rather than allowed to stall the
+  owner thread. It reconnects and reads a fresh snapshot.
+- A request is sent once. If the connection drops before the reply, it fails with
+  `unavailable` and is not retried, since it may have reached the camera.
 
 Why `serve` and not "the CLI opens the camera itself" (the bm proposal): ten CLI calls in a
 script would mean ten USB claims and ten session opens. That is close to the reconnect loop
@@ -109,7 +165,9 @@ session for all of them.
 ### Where the binary lives
 
 - The app bundle ships the binary as a Tauri `externalBin`:
-  `Ukiyo.app/Contents/MacOS/ukiyo-cli`. It is signed and notarized with the app.
+  `Ukiyo.app/Contents/MacOS/ukiyo-cli` (stage 8). It is signed and notarized with the app.
+  Until then, `cargo build -p ukiyo-cli` builds it, and the app needs it for nothing: the app
+  spawns its own executable as `serve` (rule 3 above).
 - Settings > Command line has one button, "Install command line tool". It symlinks
   `~/.local/bin/ukiyo` to the bundled binary, and shows the path if that directory is not on
   `PATH`. `ukiyo install --prefix DIR` does the same from a shell.
@@ -552,7 +610,8 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    2026-10-17: `src-tauri/core/`, section 2.
 2. **Shared owner.** `ukiyo serve` with `owner.lock`, `ukiyo.sock`, events, spawn on demand
    and idle exit. The app becomes a client: its Tauri commands forward to the socket, and its
-   events come from `subscribe`. No behaviour change in the window.
+   events come from `subscribe`. No behaviour change in the window. Done 2026-10-17:
+   `core/src/serve/`, `src-tauri/cli/`, section 2. The `tools/ptp/` lock check stays in stage 3.
 3. **Read-only CLI.** `status`, `settings` (read), `camera watch`, `catalog show`, `log show`,
    `help modes`, `--json` and exit codes, working with the app open or closed. `tools/ptp/`
    scripts check the lock.
@@ -568,9 +627,10 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
 7. **Recipes.** The user recipe library, catalogue search, `recipe_parse` with URLs, slot reads,
    and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`.
 8. **Packaging,** on QuadCam's pattern (`~/develop/quadcam`, its cask in the owner's tap):
-   - `ukiyo` is an `externalBin` in `Contents/MacOS/`, beside the app's own binary.
+   - `ukiyo-cli` is an `externalBin` in `Contents/MacOS/`, beside the app's own binary
+     (`ukiyo`). The app may then spawn it as `serve` instead of itself; either works.
    - The cask in the tap installs the whole thing: `app "Ukiyo.app"`, `binary
-     "#{appdir}/Ukiyo.app/Contents/MacOS/ukiyo"`, `depends_on arch: :arm64`, and a `zap`
+     "#{appdir}/Ukiyo.app/Contents/MacOS/ukiyo-cli", target: "ukiyo"`, `depends_on arch: :arm64`, and a `zap`
      covering `~/Library/Application Support/com.nkmkdigital.ukiyo` and the app's caches.
    - Self-updates through tauri-plugin-updater, so the cask sets `auto_updates true`.
    - GitHub releases ship an arm64 zip, and livecheck follows them.

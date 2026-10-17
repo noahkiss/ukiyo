@@ -2,86 +2,124 @@ mod events;
 
 use events::{CatalogChanged, LabChanges, LabProps, LabStatus};
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager};
 use tauri_specta::Event as _;
-use ukiyo_core::api::{self, call, Event};
-use ukiyo_core::camera::owner::WriteOutcome;
+use ukiyo_core::api::{Event, Request, Response};
+use ukiyo_core::camera::owner::{Status, WriteOutcome};
 use ukiyo_core::camera::ptp::Value;
 use ukiyo_core::catalog::{Catalog, LabelPatch};
-use ukiyo_core::lab::{self, FakeAction, Lab, Snapshot};
-use ukiyo_core::recipes;
+use ukiyo_core::lab::{FakeAction, Snapshot};
+use ukiyo_core::serve::client::{self, Client, SpawnFn};
+use ukiyo_core::{paths, recipes, serve};
 
-// Each command is one call into `ukiyo_core::api::call`; the window's names and types are the
-// api's. Errors reach the window as their message.
+// The app is a client of `ukiyo serve`, the one camera owner (docs/agent-interface.md, "One
+// USB owner"). Each command sends its `api::Request` over the socket. The window's names and
+// types are the api's and did not change when the Lab moved into `serve`, so neither did
+// bindings.ts. Errors reach the window as their message. Every forwarded command runs off the
+// main thread, since a call may wait for `serve` to start; they take the `AppHandle` rather
+// than a borrowed `State` so they keep their plain return types.
 
-type LabState<'a> = State<'a, Arc<Lab>>;
+/// Sends one request to `serve` and waits for the reply, on a blocking thread.
+async fn forward(app: &AppHandle, req: Request) -> Result<Response, String> {
+    let c = app.state::<Arc<Client>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || c.call(req)).await.map_err(|e| e.to_string())?.map_err(|e| e.message)
+}
+
+fn unexpected(r: Response) -> String {
+    format!("unexpected reply from ukiyo serve: {r:?}")
+}
+
+/// Logs the failure of a command that returns nothing to the window.
+fn log_failure(method: &str, r: Result<Response, String>) {
+    if let Err(e) = r {
+        eprintln!("ukiyo: {method}: {e}");
+    }
+}
+
+// Without `serve`, the window gets an empty snapshot whose status says why.
+#[tauri::command]
+#[specta::specta]
+async fn lab_snapshot(app: AppHandle) -> Snapshot {
+    match forward(&app, Request::LabSnapshot).await {
+        Ok(Response::LabSnapshot(s)) => *s,
+        other => Snapshot {
+            status: Status { reason: Some(other.map_or_else(|e| e, unexpected)), ..Status::default() },
+            rows: vec![],
+            groups: vec![],
+            catalog: None,
+            catalog_path: None,
+            session_path: None,
+            fake: false,
+            noisy: vec![],
+        },
+    }
+}
+
+/// Writes one property and returns the read-back.
+#[tauri::command]
+#[specta::specta]
+async fn lab_write(app: AppHandle, code: u16, value: Value) -> Result<WriteOutcome, String> {
+    match forward(&app, Request::LabWrite { code, value }).await {
+        Ok(Response::LabWrite(out)) => Ok(out),
+        Ok(r) => Err(unexpected(r)),
+        Err(e) => Ok(WriteOutcome { code, ok: false, result: e, before: None, readback: None }),
+    }
+}
 
 #[tauri::command]
 #[specta::specta]
-fn lab_snapshot(lab: LabState<'_>) -> Snapshot {
-    call::lab_snapshot(&lab)
-}
-
-/// Writes one property and returns the read-back. Runs off the main thread.
-#[tauri::command]
-#[specta::specta]
-async fn lab_write(lab: LabState<'_>, code: u16, value: Value) -> Result<WriteOutcome, String> {
-    let lab = lab.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || call::lab_write(&lab, code, value)).await.map_err(|e| e.to_string())
+async fn lab_pin(app: AppHandle, codes: Vec<u16>) {
+    log_failure("lab_pin", forward(&app, Request::LabPin { codes }).await)
 }
 
 #[tauri::command]
 #[specta::specta]
-fn lab_pin(lab: LabState<'_>, codes: Vec<u16>) {
-    call::lab_pin(&lab, codes)
+async fn lab_keep_awake(app: AppHandle, on: bool) {
+    log_failure("lab_keep_awake", forward(&app, Request::LabKeepAwake { on }).await)
 }
 
 #[tauri::command]
 #[specta::specta]
-fn lab_keep_awake(lab: LabState<'_>, on: bool) {
-    call::lab_keep_awake(&lab, on)
+async fn lab_connect(app: AppHandle, on: bool) {
+    log_failure("lab_connect", forward(&app, Request::LabConnect { on }).await)
 }
 
 #[tauri::command]
 #[specta::specta]
-fn lab_connect(lab: LabState<'_>, on: bool) {
-    call::lab_connect(&lab, on)
+async fn lab_export(app: AppHandle) -> Result<String, String> {
+    match forward(&app, Request::LabExport).await? {
+        Response::LabExport(path) => Ok(path),
+        r => Err(unexpected(r)),
+    }
 }
 
 #[tauri::command]
 #[specta::specta]
-async fn lab_export(lab: LabState<'_>) -> Result<String, String> {
-    let lab = lab.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || call::lab_export(&lab)).await.map_err(|e| e.to_string())?.map_err(message)
+async fn lab_label(app: AppHandle, patch: LabelPatch) -> Result<Catalog, String> {
+    match forward(&app, Request::LabLabel { patch }).await? {
+        Response::LabLabel(c) => Ok(*c),
+        r => Err(unexpected(r)),
+    }
 }
 
 #[tauri::command]
 #[specta::specta]
-fn lab_label(lab: LabState<'_>, patch: LabelPatch) -> Result<Catalog, String> {
-    call::lab_label(&lab, patch).map_err(message)
+async fn lab_note(app: AppHandle, group: Option<u32>, text: String) {
+    log_failure("lab_note", forward(&app, Request::LabNote { group, text }).await)
 }
 
 #[tauri::command]
 #[specta::specta]
-fn lab_note(lab: LabState<'_>, group: Option<u32>, text: String) {
-    call::lab_note(&lab, group, text)
+async fn lab_fake(app: AppHandle, action: FakeAction) -> Result<(), String> {
+    forward(&app, Request::LabFake { action }).await.map(|_| ())
 }
 
-#[tauri::command]
-#[specta::specta]
-fn lab_fake(lab: LabState<'_>, action: FakeAction) -> Result<(), String> {
-    call::lab_fake(&lab, action).map_err(message)
-}
-
+// Pure parsing with no shared state, so it runs in the app and works without `serve`.
 /// Parses pasted recipe text into slot settings, notes and per-field warnings.
 #[tauri::command]
 #[specta::specta]
 fn recipe_parse(text: String) -> recipes::Parsed {
-    call::recipe_parse(&text)
-}
-
-fn message(e: api::Error) -> String {
-    e.message
+    ukiyo_core::api::call::recipe_parse(&text)
 }
 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
@@ -110,19 +148,10 @@ pub fn bindings_language() -> specta_typescript::Typescript {
         .header("// Generated by tauri-specta from src-tauri/src/lib.rs (ukiyo_lib::specta_builder).\n// Do not edit. Regenerate: UKIYO_UPDATE_BINDINGS=1 cargo test bindings\n")
 }
 
-/// The data folder name before the bundle ID became `com.nkmkdigital.ukiyo`.
-const OLD_DATA_DIR: &str = "app.ukiyo";
-
-/// Moves the old data folder (a sibling of `data_dir` named [`OLD_DATA_DIR`]) to `data_dir`,
-/// once: only when the old one exists and the new one does not. Returns the old path if it moved.
-fn migrate_data_dir(data_dir: &std::path::Path) -> std::io::Result<Option<std::path::PathBuf>> {
-    let Some(parent) = data_dir.parent() else { return Ok(None) };
-    let old = parent.join(OLD_DATA_DIR);
-    if old == data_dir || !old.is_dir() || data_dir.exists() {
-        return Ok(None);
-    }
-    std::fs::rename(&old, data_dir)?;
-    Ok(Some(old))
+/// `serve` is this same executable with the `serve` argument (`main.rs`), so the owner is
+/// always the app's own build, in development and in the bundle.
+fn spawn_fn(data_dir: std::path::PathBuf) -> SpawnFn {
+    Arc::new(move || serve::spawn_detached(&std::env::current_exe()?, &data_dir))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -141,16 +170,11 @@ pub fn run() {
         .invoke_handler(typed)
         .setup(move |app| {
             specta.mount_events(app);
-            let data_dir = app.path().app_data_dir()?;
-            match migrate_data_dir(&data_dir) {
-                Ok(Some(old)) => eprintln!("ukiyo: moved {} to {}", old.display(), data_dir.display()),
-                Ok(None) => {}
-                Err(e) => eprintln!("ukiyo: old data folder not moved: {e}"),
-            }
-            std::fs::create_dir_all(&data_dir)?;
-            let catalog_dir = lab::catalog_dir(&data_dir, app.path().resource_dir().ok());
+            // The same folder Tauri names `app_data_dir`; `serve` resolves it the same way.
+            let data_dir = paths::data_dir();
+            paths::prepare_data_dir(&data_dir)?;
             let handle = app.handle().clone();
-            let lab = Lab::start(data_dir, catalog_dir, move |e| {
+            let on_event: client::EventFn = Arc::new(move |e| {
                 let _ = match e {
                     Event::Status(x) => LabStatus(x).emit(&handle),
                     Event::Props(x) => LabProps(x).emit(&handle),
@@ -158,15 +182,20 @@ pub fn run() {
                     Event::Catalog(x) => CatalogChanged(x).emit(&handle),
                 };
             });
-            app.manage(lab);
+            let opts = client::Options::new(data_dir.clone(), "app", Some(spawn_fn(data_dir)));
+            let client = Client::new(opts, Some(on_event));
+            // The app is a client of `serve` for as long as it is open.
+            client.keep_connected();
+            app.manage(client);
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("ukiyo starts");
     app.run(|handle, event| {
         if let tauri::RunEvent::ExitRequested { .. } = event {
-            if let Some(lab) = handle.try_state::<Arc<Lab>>() {
-                lab.shutdown();
+            // `serve` keeps the camera for its idle time, then disconnects cleanly.
+            if let Some(c) = handle.try_state::<Arc<Client>>() {
+                c.close();
             }
         }
     });
@@ -187,28 +216,6 @@ mod tests {
         }
         let on_disk = std::fs::read_to_string(&committed).unwrap_or_default();
         assert!(on_disk == fresh, "app/src/bindings.ts is out of date: UKIYO_UPDATE_BINDINGS=1 cargo test bindings");
-    }
-
-    #[test]
-    fn migrate_data_dir_moves_old_folder_once() {
-        let root = tempfile::tempdir().unwrap();
-        let old = root.path().join(super::OLD_DATA_DIR);
-        let new = root.path().join("com.nkmkdigital.ukiyo");
-
-        // Nothing to move.
-        assert_eq!(super::migrate_data_dir(&new).unwrap(), None);
-
-        std::fs::create_dir_all(old.join("sessions")).unwrap();
-        std::fs::write(old.join("settings.json"), "{}").unwrap();
-        assert_eq!(super::migrate_data_dir(&new).unwrap(), Some(old.clone()));
-        assert!(!old.exists());
-        assert_eq!(std::fs::read_to_string(new.join("settings.json")).unwrap(), "{}");
-        assert!(new.join("sessions").is_dir());
-
-        // The new folder wins: an old one that reappears stays where it is.
-        std::fs::create_dir_all(&old).unwrap();
-        assert_eq!(super::migrate_data_dir(&new).unwrap(), None);
-        assert!(old.exists());
     }
 
     /// The hosts of every https `url` and `homepage` in the bundled recipe catalogue.

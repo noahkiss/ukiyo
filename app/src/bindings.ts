@@ -9,7 +9,7 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 /** Commands */
 export const commands = {
 	labSnapshot: () => __TAURI_INVOKE<Snapshot_Serialize>("lab_snapshot"),
-	/**  Writes one property and returns the read-back. Runs off the main thread. */
+	/**  Writes one property and returns the read-back. */
 	labWrite: (code: number, value: Value) => typedError<WriteOutcome, string>(__TAURI_INVOKE("lab_write", { code, value })),
 	labPin: (codes: number[]) => __TAURI_INVOKE<void>("lab_pin", { codes }),
 	labKeepAwake: (on: boolean) => __TAURI_INVOKE<void>("lab_keep_awake", { on }),

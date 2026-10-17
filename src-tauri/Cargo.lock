@@ -4242,12 +4242,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ukiyo-cli"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+ "ukiyo-core",
+]
+
+[[package]]
 name = "ukiyo-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
  "indexmap 2.14.2",
+ "libc",
  "nusb",
  "regex",
  "roxmltree",

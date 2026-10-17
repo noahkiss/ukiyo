@@ -14,6 +14,7 @@ use crate::camera::ptp::{self, Value};
 use crate::camera::transport::Connector;
 use crate::camera::usb::UsbConnector;
 use crate::catalog::{Catalog, LabelPatch};
+use crate::serve::OwnerLock;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::{BTreeMap, VecDeque};
@@ -86,6 +87,8 @@ pub struct Lab {
     data_dir: PathBuf,
     catalog_dir: PathBuf,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// Held from before the USB open until the owner thread has closed the session.
+    lock: Mutex<Option<OwnerLock>>,
 }
 
 fn wall_ms() -> i64 {
@@ -124,8 +127,11 @@ pub fn catalog_dir(data_dir: &Path, resources: Option<PathBuf>) -> PathBuf {
 }
 
 impl Lab {
-    /// Starts the camera thread. `emit` sends an event to the window.
-    pub fn start(data_dir: PathBuf, catalog_dir: PathBuf, emit: impl Fn(api::Event) + Send + Sync + 'static) -> Arc<Lab> {
+    /// Starts the camera thread. `emit` sends an event to the front ends.
+    ///
+    /// `lock` is the held `owner.lock`: no process opens USB without it. The Lab keeps it until
+    /// [`Lab::shutdown`] has closed the session.
+    pub fn start(lock: OwnerLock, data_dir: PathBuf, catalog_dir: PathBuf, emit: impl Fn(api::Event) + Send + Sync + 'static) -> Arc<Lab> {
         let _ = std::fs::create_dir_all(data_dir.join("sessions"));
         let session_path = data_dir.join("sessions").join(format!("{}.jsonl", stamp()));
         let file = std::fs::OpenOptions::new().create(true).append(true).open(&session_path).ok();
@@ -183,6 +189,7 @@ impl Lab {
             data_dir,
             catalog_dir,
             thread: Mutex::new(Some(thread)),
+            lock: Mutex::new(Some(lock)),
         });
         lab.log_line(serde_json::json!({ "kind": "start", "fake": lab.fake.is_some() }));
         lab
@@ -302,15 +309,23 @@ impl Lab {
     }
 
     /// A clean disconnect (AUTO POWER OFF restored, session closed), then the thread ends.
+    ///
+    /// Releases `owner.lock` only when the thread has ended. A thread that did not end in 5 s
+    /// may still hold USB, so the lock stays until the process exits.
     pub fn shutdown(&self) {
         self.send(Request::Shutdown);
+        let mut finished = true;
         if let Some(t) = self.thread.lock().unwrap().take() {
             let deadline = std::time::Instant::now() + Duration::from_secs(5);
             while !t.is_finished() && std::time::Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(20));
             }
+            finished = t.is_finished();
         }
-        self.log_line(serde_json::json!({ "kind": "stop" }));
+        self.log_line(serde_json::json!({ "kind": "stop", "clean": finished }));
+        if finished {
+            self.lock.lock().unwrap().take();
+        }
     }
 }
 
@@ -382,7 +397,8 @@ mod tests {
         std::env::set_var("UKIYO_FAKE_CAMERA", "1");
         let data = tempfile::tempdir().unwrap();
         let cats = tempfile::tempdir().unwrap();
-        let lab = Lab::start(data.path().into(), cats.path().into(), |_| {});
+        let lock = OwnerLock::try_acquire(&data.path().join("owner.lock")).unwrap();
+        let lab = Lab::start(lock, data.path().into(), cats.path().into(), |_| {});
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while lab.snapshot().status.link != Link::Connected || lab.snapshot().rows.is_empty() {
             assert!(std::time::Instant::now() < deadline, "fake camera never connected");
@@ -412,6 +428,7 @@ mod tests {
         assert_eq!(dump["model"], "X-T5");
 
         lab.shutdown();
+        assert!(crate::serve::lock::is_free(&data.path().join("owner.lock")), "shutdown releases the lock");
         let log = std::fs::read_to_string(snap.session_path.unwrap()).unwrap();
         for kind in ["\"start\"", "\"status\"", "\"label\"", "\"write\"", "\"export\"", "\"stop\""] {
             assert!(log.contains(kind), "session log lacks {kind}");
