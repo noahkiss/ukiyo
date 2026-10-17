@@ -91,10 +91,10 @@ class Net:
         return routes, (m.group(1) if m else None)
 
     def internet(self, device=None):
-        cmd = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code} %{time_total}", "--max-time", "6"]
+        cmd = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code} %{time_total}", "--max-time", "15"]
         if device:
             cmd += ["--interface", device]
-        rc, out, _ = sh(cmd + ["http://captive.apple.com/hotspot-detect.html"], timeout=10)
+        rc, out, _ = sh(cmd + ["http://captive.apple.com/hotspot-detect.html"], timeout=20)
         parts = out.split()
         ok = rc == 0 and parts and parts[0] == "200"
         return {"ok": bool(ok), "http": parts[0] if parts else None,
