@@ -18,13 +18,36 @@ export const commands = {
 	labFake: (action: FakeAction) => typedError<null, string>(__TAURI_INVOKE("lab_fake", { action })),
 	/**  Parses pasted recipe text into slot settings, notes and per-field warnings. */
 	recipeParse: (text: string) => __TAURI_INVOKE<Parsed_Serialize>("recipe_parse", { text }),
-	/**  Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing. */
-	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean) => typedError<Plan, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed })),
+	/**
+	 *  Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing.
+	 *  `from` plans a library item instead: `preset:<slug>` or `snapshot:<slug>` (a restore).
+	 */
+	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null) => typedError<Plan, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from })),
 	/**  Applies a plan: re-checks it, writes each step, reads each back. */
 	planApply: (planId: string) => typedError<Applied, string>(__TAURI_INVOKE("plan_apply", { planId })),
 	planDiscard: (planId: string) => __TAURI_INVOKE<void>("plan_discard", { planId }),
 	/**  Input in the window: Ukiyo is in use, so keep-awake runs. */
 	activity: () => __TAURI_INVOKE<void>("activity"),
+	librarySearch: (input: SearchInput) => typedError<Hits, string>(__TAURI_INVOKE("library_search", { input })),
+	/**
+	 *  One item in full (`preset:<slug>`, `snapshot:<slug>`, `favourites`, `prefs`, `history`), or
+	 *  the diff of two snapshots.
+	 */
+	libraryRead: (id: string, compareTo: string | null) => typedError<Read, string>(__TAURI_INVOKE("library_read", { id, compareTo })),
+	/**
+	 *  Creates or replaces a preset, snapshot or favourite, or restores one from the trash.
+	 *  Never writes to the camera.
+	 */
+	librarySave: (kind: SaveKind, name: string | null, item: {
+	set: { [key in string]: string } | null,
+	settings: string[] | null,
+	notes: string | null,
+} | null, from: string | null) => typedError<Saved, string>(__TAURI_INVOKE("library_save", { kind, name, item, from })),
+	libraryDelete: (id: string) => typedError<Trashed, string>(__TAURI_INVOKE("library_delete", { id })),
+	/**  The preferences in `settings.json`. */
+	prefsGet: () => __TAURI_INVOKE<Prefs>("prefs_get"),
+	/**  Changes some preferences; `keep_awake` reaches the owner at once. */
+	prefsSet: (patch: PrefsPatch) => typedError<Prefs, string>(__TAURI_INVOKE("prefs_set", { patch })),
 };
 
 /** Events */
@@ -185,7 +208,42 @@ export type ChangeView = {
 	new_label: string | null,
 };
 
+/**  One setting that differs between two snapshots. */
+export type Changed = {
+	code: string,
+	name: string | null,
+	a: RawValue,
+	b: RawValue,
+	a_label: string | null,
+	b_label: string | null,
+};
+
 export type Confidence = "confirmed" | "likely" | "guess";
+
+export type ConnectView = {
+	at: number | null,
+	firmware: string | null,
+	mode: string | null,
+	/**  The counter's value at that connect. */
+	shots: number | null,
+};
+
+export type DayShots = {
+	date: string,
+	shots: number,
+};
+
+export type Diff = {
+	a: string,
+	b: string,
+	/**  In `b` only. */
+	added: SavedValue[],
+	/**  In `a` only. */
+	removed: SavedValue[],
+	changed: Changed[],
+	/**  Settings the two hold alike. */
+	same: number,
+};
 
 export type Entry = Entry_Serialize | Entry_Deserialize;
 
@@ -285,8 +343,57 @@ export type Family_Serialize = {
 	popularity: Popularity_Serialize,
 };
 
+/**  One favourite setting. */
+export type Favourite = {
+	code: string,
+	/**  The catalog name when it was added. */
+	name: string | null,
+};
+
+export type Favourites = {
+	schema?: number,
+	items?: Favourite[],
+};
+
 /**  The value's allowed set, as the descriptor's form says. */
 export type Form = { form: "none" } | { form: "range"; min: Value; max: Value; step: Value } | { form: "enum"; values: Value[] };
+
+/**  One camera's history as the Hub and `status --history` show it. */
+export type HistoryView = {
+	camera: string,
+	model: string | null,
+	first_connected: number | null,
+	last_connected: number | null,
+	/**  The counter the shot numbers come from (`TotalShotCount`), when any was read. */
+	counter: string | null,
+	/**  Its latest value. */
+	shots: number | null,
+	/**
+	 *  Shots taken since the reading before: on the day of each later reading. The first
+	 *  reading has no baseline, so it adds no day.
+	 */
+	per_day: DayShots[],
+	per_month: MonthShots[],
+	/**  Newest first. */
+	connects: ConnectView[],
+	lenses: LensSeen[],
+};
+
+/**  A search hit. */
+export type Hit = {
+	id: string,
+	kind: string,
+	name: string,
+	summary: string,
+	/**  Wall-clock ms of the last save, or of the trashing for a trashed item. */
+	at: number | null,
+};
+
+export type Hits = {
+	items: Hit[],
+	total: number,
+	has_more: boolean,
+};
 
 export type KeepAwake = {
 	/**  The setting: keep the camera awake while Ukiyo is in use. */
@@ -328,6 +435,12 @@ export type Left = {
 	message: string,
 };
 
+export type LensSeen = {
+	name: string,
+	first_seen: number | null,
+	last_seen: number | null,
+};
+
 /**  Where the connection stands. */
 export type Link = 
 /**  No camera on the bus; looking every 3 s. */
@@ -340,6 +453,11 @@ export type Link =
 "asleep" | 
 /**  Disconnected on request; reconnects only on a Connect request. */
 "stopped";
+
+export type MonthShots = {
+	month: string,
+	shots: number,
+};
 
 /**  A setting the text gives that a slot cannot hold: ISO, exposure compensation. */
 export type Note = {
@@ -421,6 +539,49 @@ export type Popularity_Serialize = {
 	score: number | null,
 };
 
+/**  Everything in `settings.json`. */
+export type Prefs = {
+	schema?: number,
+	theme?: Theme,
+	brand_mark?: string,
+	app_icon?: string,
+	/**  Keep the camera awake while Ukiyo is in use (the owner's D381 toggle). */
+	keep_awake?: boolean,
+	/**  Minutes after the last client request or window input that still count as in use. */
+	in_use_minutes?: number,
+	/**
+	 *  A write the camera refuses with a menu open over the shooting screen gets one
+	 *  half-press, which closes the menu, and one retry.
+	 */
+	close_menu_to_write?: boolean,
+};
+
+/**  A change to some preferences. `None` leaves a field alone. */
+export type PrefsPatch = {
+	theme?: Theme | null,
+	brand_mark?: string | null,
+	app_icon?: string | null,
+	keep_awake?: boolean | null,
+	in_use_minutes?: number | null,
+	close_menu_to_write?: boolean | null,
+};
+
+/**
+ *  A preset: settings by name or code, to value labels or raw values. Applying it is a plan
+ *  with exactly this `set` (`plan_create`).
+ */
+export type Preset = {
+	schema: number,
+	id: string,
+	name: string,
+	created_at: number | null,
+	updated_at: number | null,
+	/**  The model it was saved from, when known. */
+	model?: string | null,
+	set: { [key in string]: string },
+	notes?: string | null,
+};
+
 /**  One property as the UI shows it. */
 export type PropRow = {
 	code: number,
@@ -475,6 +636,9 @@ export type Publication_Serialize = {
  */
 export type RawValue = number | string | number[];
 
+/**  One item as `library_read` returns it. */
+export type Read = { kind: "preset"; item: Preset } | { kind: "snapshot"; item: SettingsSnapshot } | { kind: "favourites"; item: Favourites } | { kind: "prefs"; item: Prefs } | { kind: "history"; item: HistoryView[] } | { kind: "diff"; item: Diff };
+
 /**  `catalog/recipes/catalog.json`. */
 export type RecipeCatalog = RecipeCatalog_Serialize | RecipeCatalog_Deserialize;
 
@@ -514,13 +678,84 @@ export type Requires = {
 	capture: Capture | null,
 };
 
+/**
+ *  A preset's settings, as `library_save` takes them from the window: `set` outright, or the
+ *  camera's current values of `settings`.
+ */
+export type SaveItem = SaveItem_Serialize | SaveItem_Deserialize;
+
+/**
+ *  A preset's settings, as `library_save` takes them from the window: `set` outright, or the
+ *  camera's current values of `settings`.
+ */
+export type SaveItem_Deserialize = {
+	set: { [key in string]: string } | null,
+	settings: string[] | null,
+	notes: string | null,
+};
+
+/**
+ *  A preset's settings, as `library_save` takes them from the window: `set` outright, or the
+ *  camera's current values of `settings`.
+ */
+export type SaveItem_Serialize = {
+	set?: { [key in string]: string } | null,
+	settings?: string[] | null,
+	notes?: string | null,
+};
+
+/**  What `library_save` stores. */
+export type SaveKind = "preset" | "snapshot" | "favourite" | "prefs";
+
+export type Saved = {
+	id: string,
+	kind: string,
+	/**  An item of that id existed; its previous version is in the trash. */
+	replaced: boolean,
+	warnings: string[],
+};
+
+/**  One setting in a snapshot. */
+export type SavedValue = {
+	code: string,
+	name: string | null,
+	value: RawValue,
+	/**  The value's label when it was saved. */
+	label: string | null,
+};
+
 export type Screen = "shooting" | "playback" | "menu" | "unknown";
+
+export type SearchInput = {
+	kind: SearchKind,
+	query?: string | null,
+	limit?: number | null,
+};
+
+/**  What `library_search` looks through. */
+export type SearchKind = "preset" | "snapshot" | "favourite" | "trash";
 
 /**
  *  The settings a custom slot holds. Field names follow FilmKit. `None`: the text does not
  *  give the setting (older posts lack Color Chrome, FX Blue and Clarity, for example).
  */
 export type Settings = Settings_Serialize | Settings_Deserialize;
+
+export type SettingsSnapshot = {
+	schema: number,
+	id: string,
+	name: string,
+	created_at: number | null,
+	model: string | null,
+	firmware: string | null,
+	/**
+	 *  The USB mode and STILL/MOVIE switch it was taken in: it covers the settings that
+	 *  read in that state only.
+	 */
+	mode: string | null,
+	capture: Capture | null,
+	values: SavedValue[],
+};
 
 /**
  *  The settings a custom slot holds. Field names follow FilmKit. `None`: the text does not
@@ -654,6 +889,11 @@ export type Status = {
 	hot: number,
 	readable: number,
 	keepAwake: KeepAwake,
+	/**
+	 *  This camera's id in the library's history: its serial's digest, salted per Mac
+	 *  (`library::history`). The Lab sets it; the owner leaves it `None`.
+	 */
+	cameraId: string | null,
 };
 
 /**  One write the plan will make. */
@@ -672,6 +912,17 @@ export type Step = {
 	 *  undo plan.
 	 */
 	gate: string,
+};
+
+/**  The window's theme. */
+export type Theme = "system" | "light" | "dark";
+
+export type Trashed = {
+	id: string,
+	/**  Wall-clock ms; `None` for a favourite, which is removed from the list, not trashed. */
+	trashed_at: number | null,
+	/**  `trash:<name>`, for `library_save {from}` to restore it. */
+	trash_id: string | null,
 };
 
 export type Usb = {

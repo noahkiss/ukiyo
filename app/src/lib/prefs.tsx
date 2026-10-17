@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { commands, type Prefs as FilePrefs, type PrefsPatch } from "../bindings";
+import { inTauri } from "./camera";
 
 import markStillWaterLight from "../assets/brand/mark-still-water-light.webp";
 import markStillWaterDark from "../assets/brand/mark-still-water-dark.webp";
@@ -27,7 +29,8 @@ export type Theme = "light" | "dark";
 /** One pickable image, with a version for each theme. */
 export type ArtChoice = { id: string; name: string; light: string; dark: string };
 
-// The first entry of each list is the default. Add a choice by adding its two images and a line here.
+// The first entry of each list is the default. Add a choice by adding its two images and a line
+// here, and its id to `BRAND_MARKS` or `APP_ICONS` in `src-tauri/core/src/library/prefs.rs`.
 export const BRAND_MARKS: ArtChoice[] = [
   { id: "still-water", name: "Still water", light: markStillWaterLight, dark: markStillWaterDark },
   { id: "sun-and-seal", name: "Sun and seal", light: markSunAndSealLight, dark: markSunAndSealDark },
@@ -48,16 +51,48 @@ export type Prefs = { theme: ThemePref; brandMark: string; appIcon: string };
 
 const DEFAULTS: Prefs = { theme: "system", brandMark: BRAND_MARKS[0].id, appIcon: APP_ICONS[0].id };
 
-// No settings command covers app preferences yet (settings.json holds only the camera connection settings), so
-// they live in local storage.
+// In the app, the preferences live in `settings.json` (`prefs_get`, `prefs_set`), shared with
+// the CLI and agents. Builds before that kept them in local storage under this key: the app
+// imports them once, then removes the key. The browser preview still keeps them here.
 const KEY = "ukiyo.appearance";
 
-function loadPrefs(): Prefs {
+function loadLocal(): Partial<Prefs> | null {
   try {
     const v = localStorage.getItem(KEY);
-    return v ? { ...DEFAULTS, ...(JSON.parse(v) as Partial<Prefs>) } : DEFAULTS;
+    return v ? (JSON.parse(v) as Partial<Prefs>) : null;
   } catch {
-    return DEFAULTS;
+    return null;
+  }
+}
+
+function fromFile(p: FilePrefs): Prefs {
+  return { theme: p.theme ?? DEFAULTS.theme, brandMark: p.brand_mark ?? DEFAULTS.brandMark, appIcon: p.app_icon ?? DEFAULTS.appIcon };
+}
+
+function toPatch(p: Partial<Prefs>): PrefsPatch {
+  const known = (list: ArtChoice[], id: string | undefined) => (id && list.some((c) => c.id === id) ? id : undefined);
+  const theme = p.theme && ["system", "light", "dark"].includes(p.theme) ? p.theme : undefined;
+  return { theme, brand_mark: known(BRAND_MARKS, p.brandMark), app_icon: known(APP_ICONS, p.appIcon) };
+}
+
+/** Reads `settings.json`, importing old local-storage values first if there are any. */
+async function loadFile(): Promise<Prefs | null> {
+  const old = loadLocal();
+  if (old) {
+    const r = await commands.prefsSet(toPatch(old));
+    if (r.status === "ok") {
+      try {
+        localStorage.removeItem(KEY);
+      } catch {
+        /* storage unavailable */
+      }
+      return fromFile(r.data);
+    }
+  }
+  try {
+    return fromFile(await commands.prefsGet());
+  } catch {
+    return null;
   }
 }
 
@@ -72,7 +107,8 @@ const PrefsContext = createContext<Ctx | null>(null);
 const darkQuery = () => window.matchMedia("(prefers-color-scheme: dark)");
 
 export function PrefsProvider({ children }: { children: ReactNode }) {
-  const [prefs, setState] = useState<Prefs>(loadPrefs);
+  // Old local-storage values paint the first frame until the file answers.
+  const [prefs, setState] = useState<Prefs>(() => ({ ...DEFAULTS, ...loadLocal() }));
   const [systemDark, setSystemDark] = useState(() => darkQuery().matches);
 
   useEffect(() => {
@@ -80,6 +116,19 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     const on = (e: MediaQueryListEvent) => setSystemDark(e.matches);
     q.addEventListener("change", on);
     return () => q.removeEventListener("change", on);
+  }, []);
+
+  // The CLI or an agent may change the file: read it again when the window gets focus.
+  useEffect(() => {
+    if (!inTauri) return;
+    let cancelled = false;
+    const read = () => void loadFile().then((p) => !cancelled && p && setState(p));
+    read();
+    window.addEventListener("focus", read);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", read);
+    };
   }, []);
 
   useEffect(() => {
@@ -91,13 +140,21 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   const setPrefs = useCallback((p: Partial<Prefs>) => {
     setState((prev) => {
       const next = { ...prev, ...p };
-      try {
-        localStorage.setItem(KEY, JSON.stringify(next));
-      } catch {
-        /* storage unavailable */
+      if (!inTauri) {
+        try {
+          localStorage.setItem(KEY, JSON.stringify(next));
+        } catch {
+          /* storage unavailable */
+        }
       }
       return next;
     });
+    if (inTauri) {
+      void commands.prefsSet(toPatch(p)).then((r) => {
+        if (r.status === "ok") setState(fromFile(r.data));
+        else console.error("ukiyo: prefs_set:", r.error);
+      });
+    }
   }, []);
 
   const theme: Theme = prefs.theme === "system" ? (systemDark ? "dark" : "light") : prefs.theme;

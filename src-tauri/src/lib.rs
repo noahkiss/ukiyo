@@ -8,6 +8,8 @@ use ukiyo_core::api::{Event, Request, Response};
 use ukiyo_core::camera::owner::Status;
 use ukiyo_core::catalog::{Catalog, LabelPatch};
 use ukiyo_core::lab::{FakeAction, Snapshot};
+use ukiyo_core::library::prefs::{Prefs, PrefsPatch};
+use ukiyo_core::library::{self, Hits, SaveInput, SaveKind, Saved, SearchInput, Trashed};
 use ukiyo_core::plan::{Applied, Plan};
 use ukiyo_core::serve::client::{self, Client, SpawnFn};
 use ukiyo_core::{paths, recipes, serve};
@@ -59,8 +61,9 @@ async fn lab_snapshot(app: AppHandle) -> Snapshot {
 /// Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing.
 #[tauri::command]
 #[specta::specta]
-async fn plan_create(app: AppHandle, set: indexmap::IndexMap<String, String>, allow_unconfirmed: bool) -> Result<Plan, String> {
-    match forward(&app, Request::PlanCreate { set, allow_unconfirmed }).await? {
+/// `from` plans a library item instead: `preset:<slug>` or `snapshot:<slug>` (a restore).
+async fn plan_create(app: AppHandle, set: indexmap::IndexMap<String, String>, allow_unconfirmed: bool, from: Option<String>) -> Result<Plan, String> {
+    match forward(&app, Request::PlanCreate { set, allow_unconfirmed, from }).await? {
         Response::PlanCreate(p) => Ok(*p),
         r => Err(unexpected(r)),
     }
@@ -137,6 +140,81 @@ async fn lab_fake(app: AppHandle, action: FakeAction) -> Result<(), String> {
     forward(&app, Request::LabFake { action }).await.map(|_| ())
 }
 
+// The library: presets, snapshots, favourites, camera history, the trash. `serve` answers
+// these from the data folder, and logs saves and deletes with the actor `app`.
+
+#[tauri::command]
+#[specta::specta]
+async fn library_search(app: AppHandle, input: SearchInput) -> Result<Hits, String> {
+    match forward(&app, Request::LibrarySearch(input)).await? {
+        Response::LibrarySearch(h) => Ok(h),
+        r => Err(unexpected(r)),
+    }
+}
+
+/// One item in full (`preset:<slug>`, `snapshot:<slug>`, `favourites`, `prefs`, `history`), or
+/// the diff of two snapshots.
+#[tauri::command]
+#[specta::specta]
+async fn library_read(app: AppHandle, id: String, compare_to: Option<String>) -> Result<library::Read, String> {
+    match forward(&app, Request::LibraryRead { id, compare_to }).await? {
+        Response::LibraryRead(r) => Ok(*r),
+        r => Err(unexpected(r)),
+    }
+}
+
+/// A preset's settings, as `library_save` takes them from the window: `set` outright, or the
+/// camera's current values of `settings`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct SaveItem {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub set: Option<indexmap::IndexMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+/// Creates or replaces a preset, snapshot or favourite, or restores one from the trash.
+/// Never writes to the camera.
+#[tauri::command]
+#[specta::specta]
+async fn library_save(app: AppHandle, kind: SaveKind, name: Option<String>, item: Option<SaveItem>, from: Option<String>) -> Result<Saved, String> {
+    let item = item.map(|i| serde_json::to_value(i).map_err(|e| e.to_string())).transpose()?;
+    match forward(&app, Request::LibrarySave(SaveInput { kind, name, item, from })).await? {
+        Response::LibrarySave(s) => Ok(s),
+        r => Err(unexpected(r)),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn library_delete(app: AppHandle, id: String) -> Result<Trashed, String> {
+    match forward(&app, Request::LibraryDelete { id }).await? {
+        Response::LibraryDelete(t) => Ok(t),
+        r => Err(unexpected(r)),
+    }
+}
+
+// Read in this process, not through `serve`: the window needs its theme before `serve` may
+// have started.
+/// The preferences in `settings.json`.
+#[tauri::command]
+#[specta::specta]
+fn prefs_get() -> Prefs {
+    ukiyo_core::api::call::prefs_get(&paths::data_dir())
+}
+
+/// Changes some preferences; `keep_awake` reaches the owner at once.
+#[tauri::command]
+#[specta::specta]
+async fn prefs_set(app: AppHandle, patch: PrefsPatch) -> Result<Prefs, String> {
+    match forward(&app, Request::PrefsSet { patch }).await? {
+        Response::PrefsSet(p) => Ok(*p),
+        r => Err(unexpected(r)),
+    }
+}
+
 // Pure parsing with no shared state, so it runs in the app and works without `serve`.
 /// Parses pasted recipe text into slot settings, notes and per-field warnings.
 #[tauri::command]
@@ -161,6 +239,12 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             plan_apply,
             plan_discard,
             activity,
+            library_search,
+            library_read,
+            library_save,
+            library_delete,
+            prefs_get,
+            prefs_set,
         ])
         // The bundled recipe catalogue's shape; the window imports the JSON itself.
         .typ::<recipes::catalogue::RecipeCatalog>()

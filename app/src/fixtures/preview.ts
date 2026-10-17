@@ -19,6 +19,7 @@ const BASE: Status = {
   hot: 24,
   readable: 264,
   keepAwake: { enabled: true, active: true, periodS: 90 },
+  cameraId: null,
 };
 
 export function previewStatus(): Status | null {

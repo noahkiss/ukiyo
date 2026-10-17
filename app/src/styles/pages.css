@@ -1355,3 +1355,9 @@ a.btn {
   padding: 14px 0 0 10px;
   border-top: 1px solid var(--line);
 }
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
