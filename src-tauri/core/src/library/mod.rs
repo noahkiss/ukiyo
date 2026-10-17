@@ -15,9 +15,9 @@
 //!
 //! Every file carries `schema`. Every write holds `library/.lock` and goes to a temp file
 //! that is renamed into place, so a reader never sees half a file and two processes never
-//! lose each other's change. Any process may use the library: the window, the CLI and the
-//! MCP server call it in their own process. Only capturing a snapshot and applying an item
-//! need the camera, so only those go through `serve`.
+//! lose each other's change. Any process may use the library: the CLI and the MCP server
+//! call it in their own process, and go through `serve` only to capture a snapshot or apply
+//! an item. The window sends every library call to `serve`, except `prefs_get`.
 //!
 //! Ids: `preset:<slug>`, `snapshot:<slug>`, `favourite:<code>`, `favourites`, `prefs`,
 //! `history`, `history:<camera id>`, `trash:<name>`.

@@ -614,11 +614,8 @@ the surface guard in `mcp_tools.rs` diffs the listing against
   -32602; bad arguments are `bad_request`.
 - `fake_camera` is listed when the server's own environment has `UKIYO_FAKE_CAMERA=1`.
 - **Left for later stages.** Each input below is not in the schema yet, so an agent cannot
-  call it and get `not_built`:
-  - `camera_status` `history` (stage 6)
-  - `settings_read` `filter: "favourites"` (stage 6)
-  - `camera_plan` sources `preset` and `snapshot` (stage 6), and `recipe` with `slot` (stage 7).
-    Only `set` exists.
+  call it and get `not_built`: `camera_plan` `recipe` with `slot`, and `library_*` kind
+  `recipe` and `catalogue` (stage 7).
 - **`camera_watch`:** without `since`, it returns only groups that arrive during the call.
   It returns at most 50 groups; `has_more` and `cursor` page through the rest. A cursor past
   the newest group means `serve` restarted: the result has `reset: true` and starts from
@@ -636,7 +633,48 @@ the surface guard in `mcp_tools.rs` diffs the listing against
 - `camera_apply` reports a partial failure as a normal result (`failed` > 0), not
   `isError`: the steps say what was written.
 
-### Deviations from the bm proposal
+### The library as built (stage 6)
+
+`core/src/library/` (`mod` the store, `prefs`, `snapshot`, `history`), `cli/src/library.rs`,
+the `library_*` handlers in `cli/src/mcp.rs`, and the window's Hub and Settings pages.
+
+- **Storage**, in the data folder only (never in the repo):
+
+  | Path | Holds |
+  |---|---|
+  | `settings.json` | preferences: theme, brand mark, app icon, keep-awake, in-use minutes, menu close |
+  | `library/presets/<slug>.json` | a preset: settings by name or code, to labels or raw values |
+  | `library/snapshots/<slug>.json` | a snapshot: model, firmware, mode, every readable value |
+  | `library/favourites.json` | favourite settings, by code |
+  | `library/.trash/` | deleted and replaced presets and snapshots, 30 days |
+  | `library/log.jsonl` | every save, delete and restore, with its actor |
+  | `history/<camera id>.json`, `history/.salt` | per-camera connects, shot counters, lenses |
+
+  Every file has a `schema`. Writes hold `library/.lock` and rename a temp file into place.
+  `settings.json` is read-modify-write and keeps keys it does not know.
+- **Camera id:** the SHA-256 of the serial's digest with a per-Mac random salt, cut to 16
+  hex digits. The serial is never stored or sent; `Status.camera_id` carries the id.
+- **History:** shot counts come from `TotalShotCount` (catalog `likely`), read in tether
+  stills mode only. `lenses` stays empty until the lens name is split from its serial (D36D).
+- **CLI:** `presets ls|show|save|apply|rm`, `snapshots ls|show|save|diff|restore|rm`,
+  `settings fav add|rm`, `settings --favourites`, `prefs get|set`, `trash ls|restore`,
+  `status --history`. `presets save NAME SETTING...` takes the settings' values now;
+  `--set NAME=VALUE` and `--from-snapshot ID` are the other sources. `apply` and `restore`
+  are plans, with the usual `--dry-run`, `--yes` and `--allow-unconfirmed`.
+- **MCP:** `library_search` (kinds `preset`, `snapshot`, `favourite`, `trash`),
+  `library_read`, `library_save` (kinds `preset`, `snapshot`, `favourite`, `prefs`, `note`,
+  `dump`; `from: trash:<name>` restores), `library_delete`; `camera_status {history}`,
+  `settings_read {filter: favourites}`, `camera_plan {preset}` and `{snapshot}`.
+- **The window:** Tauri commands `library_search`, `library_read`, `library_save`,
+  `library_delete`, `prefs_set` forward to `serve`; `prefs_get` reads `settings.json` in the
+  app, so the theme is ready before `serve`. The Hub reads the camera's properties and
+  `history`; Settings builds its menu tree from the catalog's menu paths, writes one setting
+  as a plan of confirmed codes, and shows a preset or snapshot plan before it writes. The
+  browser preview (`?camera=`) keeps the fixtures.
+- **Preferences migration:** at its first start, the app sends the old local-storage
+  `ukiyo.appearance` values to `prefs_set`, then removes the key.
+
+
 
 | bm proposal | This design | Reason (mcp-tool-design) |
 |---|---|---|
@@ -837,7 +875,9 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
 6. **Library.** Presets, favourites, snapshots, history and preferences in `ukiyo-core`, with
    the trash. Preferences move out of the window's local storage into `settings.json`. CLI:
    `presets`, `snapshots`, `settings fav`, `prefs`. MCP: `library_search`, `library_read`,
-   `library_save`, `library_delete`. The Settings and Hub pages switch from fixtures.
+   `library_save`, `library_delete`. The Settings and Hub pages switch from fixtures. Done
+   2026-10-17: section 4, "The library as built". Left for later: the lens name in history
+   and `status`, and recipes in the library (stage 7).
 7. **Recipes.** The user recipe library, catalogue search, `recipe_parse` with URLs, slot reads,
    and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`.
 8. **Packaging,** on the pattern of [QuadCam](https://github.com/noahkiss/quadcam) (its cask in the owner's tap):
