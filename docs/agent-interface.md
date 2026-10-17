@@ -1,8 +1,8 @@
 # Agent interface: CLI and MCP
 
 A design for the `ukiyo` command line tool and its MCP server. Stage 1 (the core crate and
-`api`), stage 2 (the shared owner, `ukiyo serve`) and stage 3 (the read-only CLI) are built;
-the rest is not (section 8). The
+`api`), stage 2 (the shared owner, `ukiyo serve`), stage 3 (the read-only CLI) and stage 4
+(plans and gated writes) are built; the rest is not (section 8). The
 bm task is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool
 surface, search then read, and plan then apply for every camera write.
 
@@ -45,27 +45,31 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
   shapes. Three more modules are planned or built:
   - `library` (stage 6): presets, favourites, snapshots, user recipes, camera history, and
     preferences.
-  - `plan` (stage 4): builds, checks and applies multi-property changes.
+  - `plan` (built, stage 4): builds and gates a plan, checks it for staleness, and shapes the
+    applied result. `lab.rs` stores plans and applies them through the owner.
   - `api` (built): every front end speaks only this.
-    - `Request`, one variant per method: `{"method": "lab_write", "params": {...}}`.
-    - `Response`, the variant of the same name: `{"method": "lab_write", "result": {...}}`.
-    - `Error`, a `code` and a `message`. Today the codes are `failed`, `no_fake_camera`,
-      `bad_request` (a socket line that is not a request) and `unavailable` (no `serve` to
-      answer); section 5's codes come with stage 4.
+    - `Request`, one variant per method: `{"method": "plan_create", "params": {...}}`.
+    - `Response`, the variant of the same name: `{"method": "plan_create", "result": {...}}`.
+    - `Error`: a `code`, a `message`, and `hint`, `walkthrough` and `mode` when they help.
+      The codes are section 5's, plus `failed`, `no_fake_camera`, `bad_request` (a socket
+      line that is not a request) and `unavailable` (no `serve` to answer).
     - `Event`: `status`, `props`, `changes`, `catalog`, as `{"event": ..., "data": ...}`.
       `serve` sends these to every client that called `subscribe`.
-    - `call::<method>`, one typed function per method, and `dispatch(&Lab, Request)`. The
-      socket calls `dispatch`; MCP (stage 5) will send requests over the socket too.
-    - Method names are the window's command names (`lab_snapshot`, `lab_write`, `lab_pin`,
+    - `call::<method>`, one typed function per method, and `dispatch(&Lab, actor, Request)`.
+      The socket calls `dispatch` with the connection's `hello` actor; MCP (stage 5) will send
+      requests over the socket too.
+    - Method names are the window's command names (`lab_snapshot`, `lab_pin`,
       `lab_keep_awake`, `lab_connect`, `lab_export`, `lab_label`, `lab_note`, `lab_fake`,
-      `recipe_parse`). New methods for the CLI and MCP join the same enums.
+      `recipe_parse`, `plan_create`, `plan_show`, `plan_apply`, `plan_discard`). New methods
+      for the CLI and MCP join the same enums. Stage 4 removed `lab_write`: a camera write
+      exists only as a plan.
 - `src-tauri/src/` keeps the window glue: Tauri commands, the four Tauri events
   (`events.rs`) and specta bindings. Each command sends its `api::Request` to `serve` over the
   socket, and the client turns `serve`'s events into the Tauri events. `recipe_parse` is the
   one exception: pure parsing with no shared state, so it runs in the app and works without
   `serve`. A command that waits on `serve` runs off the main thread. When `serve` is
   unreachable, `lab_snapshot` returns an empty snapshot whose status `reason` says why, and
-  `lab_write` an outcome with `ok: false`, so the window's command types did not change.
+  the other commands return the error's message.
 - The CLI and the MCP server are one binary, `ukiyo` on PATH. Its cargo crate is
   `src-tauri/cli/` (`ukiyo-cli`), and the binary is `ukiyo-cli`, because the app's own binary is
   already `ukiyo` in the same target folder. `ukiyo mcp` starts the MCP server.
@@ -127,9 +131,10 @@ Rules:
    disconnects cleanly (AUTO POWER OFF restored, session closed). It releases the lock only
    after the owner thread has ended. Plans live in `serve`, so a plan made in the CLI can be
    applied from the app's window, and the reverse.
-6. Each connection names its `actor` (`app`, `cli`, `mcp:<client name>`) in `hello`. Stage 4
-   writes it into the session log and the events, so the window can show "changed by an
-   agent".
+6. Each connection names its `actor` (`app`, `cli`, `mcp:<client name>`) in `hello`. The
+   session log carries it on every write, plan apply, label, note, export, connect switch and
+   keep-awake line, and a write's read-back change group carries it as `actor`, so the
+   window can show "changed by an agent". A connection without `hello` is `unknown`.
 7. Nothing else touches USB. `tools/ptp/` scripts take `owner.lock` (`tools/ptp/owner_lock.py`,
    called before any USB access) and refuse to run while it is held. A script keeps the lock
    until it exits, so `serve` cannot start meanwhile; a client then reports that the lock is
@@ -147,8 +152,8 @@ One JSON-RPC 2.0 message per line (`core/src/serve/wire.rs`):
 -> {"jsonrpc":"2.0","id":2,"method":"subscribe"}
 <- {"jsonrpc":"2.0","id":2,"result":null}
 <- {"jsonrpc":"2.0","method":"event","params":{"event":"status","data":{...}}}
--> {"jsonrpc":"2.0","id":3,"method":"lab_write","params":{"code":53283,"value":{"kind":"int","v":2}}}
-<- {"jsonrpc":"2.0","id":3,"result":{"code":53283,"ok":true,...}}
+-> {"jsonrpc":"2.0","id":3,"method":"plan_create","params":{"set":{"AutoPowerOff":"OFF"}}}
+<- {"jsonrpc":"2.0","id":3,"result":{"plan_id":"p-7f3a","steps":[...],...}}
 <- {"jsonrpc":"2.0","id":4,"error":{"code":"bad_request","message":"..."}}
 ```
 
@@ -156,7 +161,7 @@ One JSON-RPC 2.0 message per line (`core/src/serve/wire.rs`):
   `result` (`null` for a method with none). `error` is an `api::Error`.
 - `hello` and `subscribe` are the only methods outside `api`. `hello` with another `protocol`
   number is refused. After `subscribe`, the connection gets every `api::Event`.
-- Replies can come out of order: `lab_write` and `lab_export` wait on the camera on their own
+- Replies can come out of order: `plan_apply` and `lab_export` wait on the camera on their own
   thread. Match replies by `id`.
 - A client that falls 4096 lines behind is disconnected rather than allowed to stall the
   owner thread. It reconnects and reads a fresh snapshot.
@@ -217,15 +222,15 @@ ukiyo serve [--idle-exit S]                    the headless owner (spawned on de
 11 top-level commands for daily use, plus `mcp`, `serve`, `install` and `help`.
 `ukiyo dev fake ACTION` exists only in a fake-camera build.
 
-### Flags (every command)
+### Flags
 
 | Flag | Effect |
 |---|---|
-| `--json` | One JSON document on stdout, nothing else. Errors too. `camera watch` is the exception: one JSON object per line. |
-| `--dry-run` | Build and print the plan; apply nothing. Only on commands that write. |
-| `--yes` | Apply a plan without the y/N prompt. Without a TTY and without `--yes`, a write prints the plan and exits 6. |
-| `--allow-unconfirmed` | Lets a plan include properties whose catalog confidence is not `confirmed`. |
-| `--quiet` | No progress lines on stderr. |
+| `--json` | Every command. One JSON document on stdout, nothing else. Errors too. `camera watch` is the exception: one JSON object per line. |
+| `--quiet` | Every command. No progress lines on stderr. |
+| `--dry-run` | Commands that write (`settings set`, `owner set`, `plan apply`). Build and print the plan; apply nothing. |
+| `--yes`, `-y` | Commands that write. Apply a plan without the y/N prompt. Without a TTY and without `--yes`, a write prints the plan and exits 6. `--json` never prompts. |
+| `--allow-unconfirmed` | `settings set`, `owner set`. Lets a plan include properties whose catalog confidence is not `confirmed`. |
 
 Values: `NAME` is a catalog name (`AutoPowerOff`), a menu label (`"AUTO POWER OFF"`), or a code
 (`0xd381`). `VALUE` is a value label (`OFF`) or a raw number (`3`). The core resolves both and
@@ -265,16 +270,23 @@ Every command returns one envelope:
 
 // a plan (settings set, presets apply, snapshots restore, recipes write, owner set)
 { "plan_id": "p-7f3a", "expires_in_s": 300, "requires": { "mode": "tether", "capture": "stills" },
-  "steps": [ { "code": "0xd381", "name": "AutoPowerOff", "before": "5 MIN", "after": "OFF",
+  "steps": [ { "code": "0xd381", "name": "AutoPowerOff", "menu": "SET UP > POWER MANAGEMENT > AUTO POWER OFF",
+               "before": "5 MIN", "after": "OFF", "before_value": 1, "after_value": 3,
                "confidence": "confirmed", "gate": "ok" } ],
-  "skipped": [ { "code": "0x....", "name": "...", "reason": "needs_movie" } ],
-  "blocked": [ { "code": "0x....", "name": "...", "reason": "unconfirmed_property" } ] }
+  "skipped": [ { "code": "0x....", "name": "...", "value": "...", "reason": "needs_movie", "message": "..." } ],
+  "blocked": [ { "code": "0x....", "name": "...", "value": "...", "reason": "unconfirmed_property", "message": "..." } ],
+  "allow_unconfirmed": false }
 
 // an applied plan
 { "plan_id": "p-7f3a", "applied": 1, "failed": 0, "not_attempted": 0, "undo_plan_id": "p-91c0",
-  "steps": [ { "code": "0xd381", "wanted": "OFF", "readback": "OFF", "ok": true, "result": "OK" } ],
-  "side_effects": [ { "code": "0x....", "old": "...", "new": "..." } ] }
+  "steps": [ { "code": "0xd381", "name": "AutoPowerOff", "wanted": "OFF", "readback": "OFF",
+               "wanted_value": 3, "readback_value": 3, "ok": true, "result": "OK", "error": null,
+               "attempts": 1 } ],
+  "side_effects": [ { "code": "0x....", "name": "...", "old": 1, "new": 2, "old_label": "...", "new_label": "..." } ] }
 ```
+
+The CLI's write commands wrap these as `data: { "plan": {...}, "result": {...} }`, with
+`result: null` when nothing was applied (`--dry-run`, no `--yes`, nothing to change).
 
 ### Exit codes
 
@@ -289,8 +301,8 @@ exit 1) and `not_built` (a flag for a later stage, exit 1).
 | 3 | No camera: not connected, asleep, unplugged. |
 | 4 | Wrong camera state: `needs_*`, `menu_open`, `busy`. |
 | 5 | Refused by a gate: unconfirmed, read-only, out of range. |
-| 6 | Not applied: declined at the prompt, `--dry-run`, no TTY without `--yes`, plan stale or expired. |
-| 7 | Applied in part: at least one step failed. The output lists each step. |
+| 6 | Not applied: declined at the prompt, `--dry-run`, no TTY without `--yes`, plan stale or expired. A `--dry-run` with `--json` prints `ok: true` and the plan, and still exits 6. |
+| 7 | Applied in part: at least one step failed (`readback_mismatch`, `busy` ...). The output lists each step. |
 
 ### Example sessions
 
@@ -312,13 +324,20 @@ $ ukiyo camera watch
 15:53:36  camera #15  0xd171 FocusPosition  119 -> 126
 
 $ ukiyo settings set "AUTO POWER OFF=OFF" --dry-run
-Plan p-7f3a (expires in 5 min), needs tether + stills
-  AutoPowerOff   5 MIN -> OFF   confirmed
-Not applied (--dry-run).
+Plan p-7bfb (expires in 5 min), needs tether + stills
+  AutoPowerOff  5 MIN -> OFF  confirmed
+Not applied (--dry-run). Apply it: ukiyo plan apply p-7bfb --yes
 
-$ ukiyo plan apply p-7f3a --yes
-AutoPowerOff   OFF  read back OFF  OK
-Applied 1 of 1. Undo: ukiyo plan apply p-91c0
+$ ukiyo plan apply p-7bfb --yes
+Plan p-7bfb (expires in 5 min), needs tether + stills
+  AutoPowerOff  5 MIN -> OFF  confirmed
+AutoPowerOff  OFF  read back OFF  OK
+Applied 1 of 1. Undo: ukiyo plan apply p-cd29
+
+$ ukiyo settings set GrainEffect=2
+ukiyo: 0xd023 GrainEffect is not confirmed in the catalog (likely); its meaning may be wrong. Pass allow_unconfirmed (--allow-unconfirmed) to write it
+$ echo $?
+5
 
 $ ukiyo recipes write C3 cat:<recipe-id> --json
 {"ok":false,"error":{"code":"needs_rawconv", ...}}
@@ -361,6 +380,44 @@ $ ukiyo snapshots save before-trip && ukiyo snapshots diff before-trip
   `sessions/*.jsonl`: the newest session, or with `--since` (`10m`, `2h`, `2026-10-17`,
   `"2026-10-17 14:30"`, RFC 3339) every line since then; `--json` gives each line as written,
   plus `session`. `help modes` prints `modes.rs`.
+
+### The write commands as built (stage 4)
+
+`cli/src/writes.rs`. Tests: `cli/tests/cli.rs` (fake camera), `core/src/plan/tests.rs`.
+
+- **`settings set NAME=VALUE...`** makes a plan in `serve`, prints it, and applies it after the
+  y/N prompt or `--yes`. `NAME` is a catalog name, a menu path or its last part (`"AUTO
+  POWER OFF"`), a `0x` code, or four hex digits; any case. `VALUE` is a value label (any
+  case) or a raw number (`0x` hex too); a string property takes the text as given. An
+  unknown or ambiguous name or value fails the whole plan (exit 2) with the valid values in
+  the `hint`. `set` is the one word `settings QUERY` cannot search for.
+- **A plan with no step** fails with its first blocked or skipped reason (`unconfirmed_property`
+  exit 5, `needs_tether` exit 4 ...). When every value is already set, it prints "Nothing to
+  change." and exits 0.
+- **`plan show|apply|discard ID`** find plans in a running `serve` and never start one; with no
+  `serve` the answer is `plan_expired`. A plan applies once.
+- **`owner get`** reads the four owner strings in tether mode. **`owner set FIELD=VALUE`** is
+  `settings set` on their catalog names. None of the four is confirmed, so `owner set` needs
+  `--allow-unconfirmed`:
+
+  | Field | Catalog name | Code | Confidence |
+  |---|---|---|---|
+  | `copyright` | Copyright | 0xd215 | likely |
+  | `author` | CopyrightAuthor | 0xd237 | guess |
+  | `prefix` | FileNamePrefix1 | 0xd365 | likely |
+  | `device-name` | DeviceName | 0xd20b | likely |
+
+- **`camera disconnect`** sends the Lab's switch and waits (up to 5 s) until the owner reports
+  `stopped`; with no `serve` running it does nothing. **`camera connect`** spawns `serve` when
+  needed and turns the switch on; the owner then follows its 3 s and 30 s rules.
+  **`camera export`** writes the Lab dump and prints its path.
+- **`log note TEXT [--group N]`** writes into the running session's log. It never starts
+  `serve` (a note is no reason to claim the camera), so with none running it fails with
+  `unavailable`.
+- Plans live in `serve`, which exits 120 s after its last client. A plan not applied by then is
+  gone (`plan_expired`), even inside its 5 minutes.
+- The window's Lab write box makes a one-step plan with `allow_unconfirmed` (it is the mapping
+  tool), shows its step, and applies it on the second click. Its writes log as actor `app`.
 
 ## 4. MCP
 
@@ -549,6 +606,10 @@ The core enforces every rule here. The front ends only show them.
   - the value is in the descriptor's enum or range, and in the catalog's `values` if it has any
 - `allow_unconfirmed` (CLI `--allow-unconfirmed`) lifts only the `confirmed` rule. MCP takes
   the same per-plan argument, with no start flag.
+- The catalog's `values` gate applies to `confirmed` entries only. An unconfirmed entry's value
+  list is itself a guess, and the Lab must be able to write values nobody has labelled yet.
+- A step whose value is already set is `skipped` with reason `unchanged`. A code the camera
+  does not read now is `skipped` with the mode or switch position it needs.
 - The Lab's write box in the window is the one place that writes unconfirmed codes without a
   flag. That is the mapping tool; agents use the flag instead.
 - Recipe slot fields (D18E-D1A5) are not yet confirmed by a write. Until they are, slot writes
@@ -560,19 +621,31 @@ The core enforces every rule here. The front ends only show them.
   owner strings and recipe slot writes.
 - A plan holds each step's `before`. Apply re-reads them and refuses with `plan_stale` if any
   changed.
-- Plans live in the owner for 5 minutes and die with it.
+- Plans live in the owner for 5 minutes and die with it. A plan applies once. Apply on a camera
+  that cannot take writes now (`not_connected`, `menu_open` ...) keeps the plan for a retry;
+  a stale plan is dropped.
 - `--dry-run` stops after the plan. A TTY prompt or `--yes` is needed to apply.
 - Steps run in plan order. A slot write is: select the slot (D18C), write the fields and name
-  (D18D), restore D18C. Apply stops at the first failure and returns an undo plan.
+  (D18D), restore D18C. Apply stops at the first failure and returns an undo plan. The undo
+  plan restores every step the camera answered OK, a read-back mismatch included.
+- A write the camera answers 0x2019 (busy) is sent again on the same session after 100, 200,
+  400, 800 and 1600 ms (3.1 s in all), then fails with `busy`. After a half-press release the
+  X-T5 answers writes busy for about 0.2 s (docs/protocol.md). The owner never reconnects to
+  retry.
 
 ### Read-back and the session log
 
 - The owner reads back every write at once (owner.rs). Apply reports `wanted` and `readback`
   per step, and flags a step whose read-back differs (the camera enforces its own rules: ISO
   125 forces D-Range 100).
-- After the last step, apply reports `side_effects`: other codes that changed during the apply.
+- After the last step, apply reports `side_effects`: other codes that changed during the apply
+  that the poll had seen by the time the last step was read back. A camera rule that lands a
+  cycle later is not in it.
 - Every request that writes goes to `sessions/*.jsonl`, with `actor`: `app`, `cli` or
-  `mcp:<client name>`. That includes plans applied, library saves, labels and notes.
+  `mcp:<client name>`. That includes plans applied, library saves, labels and notes. Lines:
+  `write` (`actor`, `plan`, the owner's `outcome` with `rc` and `attempts`), `apply`
+  (`applied`, `failed`, `not_attempted`, `undo`; or `refused` with the code), `label`,
+  `note`, `export`, `connect`, `keep_awake`.
 
 ### Typed errors
 
@@ -593,6 +666,7 @@ the Connect page's guide in the window.
 | `unconfirmed_property` | Gate | Confirm the property in the Lab, or pass `allow_unconfirmed`. |
 | `read_only`, `value_out_of_range`, `not_found`, `ambiguous` | Gate or lookup | Lists the valid values or candidates. |
 | `plan_stale`, `plan_expired` | Apply | Make a new plan. |
+| `readback_mismatch` | Apply: the camera took the write but holds another value | Read the setting; a camera rule may tie it to another. Apply the undo plan to revert. |
 
 ### No power cycling, no reconnect loops
 
@@ -644,7 +718,7 @@ the Connect page's guide in the window.
 | Lab | Change feed | `camera watch` | `camera_watch` |
 | Lab | Pin codes | `camera watch --code` | `camera_watch {codes}` |
 | Lab | Label panel | `catalog label` | `catalog_label` |
-| Lab | Write box | `settings set --allow-unconfirmed` | `camera_plan {set, allow_unconfirmed}` |
+| Lab | Write box | `settings set --allow-unconfirmed` | `camera_plan {set, allow_unconfirmed}` + `camera_apply` |
 | Lab | Note on a change group | `log note --group` | `library_save {kind: note}` |
 | Lab | Export dump | `camera export` | `library_save {kind: dump}` |
 | Lab | Keep awake | `prefs set keep-awake=on` | `library_save {kind: prefs}` |
@@ -684,7 +758,10 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    --code` (stage 4), `lens` in `status`, and search keywords in the catalog.
 4. **Plans and gated writes.** The `plan` module, typed errors, the `actor` field in the
    session log. CLI: `settings set`, `owner`, `plan`, `camera connect|disconnect|export`,
-   `log note`. The window's Lab write box moves onto plans too.
+   `log note`. The window's Lab write box moves onto plans too. Done 2026-10-17: section 3,
+   "The write commands as built", and section 5. Left for later: per-client pins for `camera
+   watch --code`, a `plan applied` event to subscribers (the read-back change group carries
+   the actor instead), and an idle exit that waits for open plans.
 5. **MCP server.** `ukiyo mcp` with `camera_status`, `camera_watch`, `settings_read`,
    `camera_plan`, `camera_apply`, `catalog_label`, and `fake_camera` in fake builds.
 6. **Library.** Presets, favourites, snapshots, history and preferences in `ukiyo-core`, with

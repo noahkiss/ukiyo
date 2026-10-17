@@ -75,6 +75,9 @@ facts above turned into behaviour. Not yet run against a camera.
 
 - One thread owns the session. Writes go ahead of every other request, and each write is
   followed at once by GetDevicePropValue of the same code.
+- A write answered 0x2019 is sent again on the same session after 100, 200, 400, 800 and
+  1600 ms (3.1 s), then reported busy; the half-press busy window above is 1-2 answers.
+  Reads are not retried.
 - Each poll cycle reads the hot set (D22E, D307, anything changed in the last 10 s, pinned
   codes) plus the next 8 codes of a rotating sweep over every readable property. No sleeps.
 - A code answering 0x2002 when described is skipped by the sweep. A D307 change describes
