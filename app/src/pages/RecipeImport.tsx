@@ -23,10 +23,13 @@ const BODY = "X-T5";
 /** A recipe ready for review: the parse, where it came from, and its swatch. */
 type Candidate = { parsed: ParsedRecipe; source: { label: string; url: string | null }; tones: string[] };
 
+/** A catalogue entry as a recipe to review. */
+const fromEntry = (r: CatalogEntry): Candidate => ({ parsed: r.parsed, source: { label: publisher(r.credit), url: r.credit.url }, tones: r.tones });
+
 type Props = {
   onClose: () => void;
   onSave: (r: Recipe) => void;
-  onWrite: (slot: Slot) => void;
+  onWrite: (slot: Slot, r: Recipe) => void;
 };
 
 /** Import a recipe from Fuji X Weekly, a link or pasted text, then review it. */
@@ -45,7 +48,7 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
     if (!candidate) ref.current?.querySelector<HTMLElement>(".sheet-body input, .sheet-body textarea")?.focus();
   }, [tab, candidate]);
 
-  const fromResult = (r: CatalogEntry): Candidate => ({ parsed: r.parsed, source: { label: publisher(r.credit), url: r.credit.url }, tones: r.tones });
+  const fromResult = fromEntry;
 
   return (
     <dialog ref={ref} className="sheet" aria-labelledby="import-title" onClose={onClose} onCancel={onClose} data-component="recipe-import">
@@ -69,7 +72,7 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
             ))}
           </div>
           {tab === "search" && <SearchTab onPick={(r) => setCandidate(fromResult(r))} />}
-          {tab === "link" && <LinkTab onRead={(url) => setCandidate({ ...fromResult(fxwPasteResult), source: { label: "Fuji X Weekly", url } })} />}
+          {tab === "link" && <LinkTab onRead={setCandidate} />}
           {tab === "text" && <TextTab onRead={(parsed) => setCandidate({ parsed, source: { label: "Pasted text", url: null }, tones: simTones(parsed.sim) })} />}
         </>
       )}
@@ -178,15 +181,31 @@ export function CatalogFilters({ sensor, setSensor, sim, setSim, source, setSour
   );
 }
 
-function LinkTab({ onRead }: { onRead: (url: string) => void }) {
+function LinkTab({ onRead }: { onRead: (c: Candidate) => void }) {
   const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const ok = /^https?:\/\/\S+$/.test(url.trim());
+  const read = async (link: string) => {
+    // The browser preview has no backend: a sample result.
+    if (!inTauri) return onRead({ ...fromEntry(fxwPasteResult), source: { label: "Fuji X Weekly", url: link } });
+    setBusy(true);
+    const r = await commands.recipeParse(null, link);
+    setBusy(false);
+    if (r.status === "error") return setError(r.error);
+    const p = r.data;
+    if (!p.settings.filmSimulation) return setError("No recipe found on that page. Paste the recipe's text instead.");
+    const label = p.author ?? new URL(link).hostname.replace(/^www\./, "");
+    const parsed = { ...toParsed(p.name ?? "Imported recipe", p.settings, p.notes, p.warnings, { label, url: link }), settings: p.settings };
+    onRead({ parsed, source: { label, url: link }, tones: simTones(parsed.sim) });
+  };
   return (
     <form
       className="sheet-body"
       onSubmit={(e) => {
         e.preventDefault();
-        if (ok) onRead(url.trim());
+        setError(null);
+        if (ok) void read(url.trim());
       }}
     >
       <label className="field">
@@ -194,10 +213,15 @@ function LinkTab({ onRead }: { onRead: (url: string) => void }) {
         <input type="url" placeholder="https://fujixweekly.com/…" value={url} onChange={(e) => setUrl(e.target.value)} />
       </label>
       <div className="actions-line">
-        <button type="submit" className="btn primary" disabled={!ok}>
-          Read recipe
+        <button type="submit" className="btn primary" disabled={!ok || busy}>
+          {busy ? "Reading…" : "Read recipe"}
         </button>
       </div>
+      {error && (
+        <div className="banner warn" role="alert">
+          <span>{error}</span>
+        </div>
+      )}
     </form>
   );
 }
@@ -210,12 +234,17 @@ function TextTab({ onRead }: { onRead: (p: ParsedRecipe) => void }) {
       setError("Reading pasted text needs the Ukiyo app.");
       return;
     }
-    const p = await commands.recipeParse(text);
+    const r = await commands.recipeParse(text, null);
+    if (r.status === "error") {
+      setError(r.error);
+      return;
+    }
+    const p = r.data;
     if (Object.keys(p.settings).length === 0) {
       setError("No recipe settings found. Paste one setting per line, such as “Film Simulation: Classic Chrome”.");
       return;
     }
-    onRead(toParsed("Pasted recipe", p.settings, p.notes, p.warnings, { label: "Pasted text", url: null }));
+    onRead({ ...toParsed("Pasted recipe", p.settings, p.notes, p.warnings, { label: "Pasted text", url: null }), settings: p.settings });
   };
   return (
     <form
@@ -275,7 +304,7 @@ function fields(p: ParsedRecipe): Field[] {
   return list.map((f) => (p.missing?.includes(f.label) ? { ...f, absent: true } : f));
 }
 
-function Review({ c, onBack, onSave, onWrite }: { c: Candidate; onBack: () => void; onSave: (r: Recipe) => void; onWrite: (s: Slot) => void }) {
+function Review({ c, onBack, onSave, onWrite }: { c: Candidate; onBack: () => void; onSave: (r: Recipe) => void; onWrite: (s: Slot, r: Recipe) => void }) {
   const [name, setName] = useState(c.parsed.name);
   const [slot, setSlot] = useState<Slot | "">("");
   const list = fields(c.parsed);
@@ -368,7 +397,7 @@ function Review({ c, onBack, onSave, onWrite }: { c: Candidate; onBack: () => vo
             ))}
           </select>
         </label>
-        <button type="button" className="btn" disabled={!slot || problems > 0} onClick={() => slot && onWrite(slot)}>
+        <button type="button" className="btn" disabled={!slot || problems > 0} onClick={() => slot && onWrite(slot, recipe)}>
           Write
         </button>
         <button type="button" className="btn primary" disabled={!name.trim()} onClick={() => onSave(recipe)}>

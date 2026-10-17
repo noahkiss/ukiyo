@@ -1,4 +1,7 @@
-// FIXTURE: sample recipes and slot contents until RAW CONV. slot reads and a library file exist.
+import type { Settings_Serialize } from "../bindings";
+
+// FIXTURE: sample recipes and slot contents for the browser preview (no backend). The app
+// reads the library and the camera's slots (lib/recipes.ts).
 
 export type Slot = "C1" | "C2" | "C3" | "C4" | "C5" | "C6" | "C7";
 
@@ -28,6 +31,8 @@ export type Recipe = {
   source?: { label: string; url: string | null };
   /** Settings from the source that a slot cannot hold, such as ISO. */
   notes?: Array<[string, string]>;
+  /** The recipe's settings as the core holds them, with the fields the editor does not show. */
+  settings?: Settings_Serialize;
 };
 
 export type SlotState = { slot: Slot; recipeId: string | null; state: "Matches" | "Edited" | "New"; name?: string; sim?: string; tones?: string[] };

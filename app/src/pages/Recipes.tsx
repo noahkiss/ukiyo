@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { commands, type Plan } from "../bindings";
 import { FILM_SIMS, recipes as recipeFixture, slots as slotFixture, TONE_RANGES, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
-import { useCamera } from "../lib/camera";
+import { inTauri, useCamera } from "../lib/camera";
 import { entryRecipe, filterCards, fmtDate, pickVariant, publisher, sensorOf, sortCards, useCatalog, type CatalogCard as Card, type CatalogEntry, type CatalogSort } from "../lib/catalog";
-import { useNotBuilt } from "../lib/toast";
+import { loadLibrary, readSlots, saveRecipe, slotPlan, SLOTS, type SlotContent } from "../lib/recipes";
+import { useNotBuilt, useToast } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
 import { HowToSwitch, ModeNotice } from "../shell/ModeNotice";
 import { PageHead } from "../shell/PageHead";
 import { ChevronDown, LinkIcon, LockIcon, PhotoIcon, SearchIcon } from "../shell/icons";
+import { PlanCard } from "../views/PlanCard";
 import { CatalogFilters, RecipeImport } from "./RecipeImport";
 
 type Show = "all" | "colour" | "mono";
@@ -30,24 +33,41 @@ function summary(r: Recipe): string {
   return `WB ${wb} R${signed(r.wbShift.r)} B${signed(r.wbShift.b)} · ${r.dr}`;
 }
 
+/** Fields the editor changed. Where the recipe sits (its slot) and its swatch are not edits. */
 function diff(a: Recipe, b: Recipe): number {
-  return (Object.keys(a) as Array<keyof Recipe>).filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).length;
+  const skip: Array<keyof Recipe> = ["slot", "tones", "settings"];
+  return (Object.keys(a) as Array<keyof Recipe>).filter((k) => !skip.includes(k) && JSON.stringify(a[k]) !== JSON.stringify(b[k])).length;
 }
 
 const NEW_C7: Recipe = { ...recipeFixture[5], id: "new", name: "Unnamed recipe", slot: "C7", tones: slotFixture[6].tones ?? [] };
 
+/** The editor before any recipe is picked. */
+const BLANK: Recipe = { ...recipeFixture[5], id: "", name: "", slot: null, source: undefined, notes: [] };
+
+/** A plan waiting on the person: what it writes, and how to plan it again. */
+type Pending = { title: string; plan: Plan; recipeId: string; slot: Slot };
+
 export function Recipes() {
   const { status } = useCamera();
   const notBuilt = useNotBuilt();
-  const [library, setLibrary] = useState<Recipe[]>(recipeFixture);
-  const [selectedId, setSelectedId] = useState("r3");
+  const flash = useToast();
+  const [library, setLibrary] = useState<Recipe[]>(inTauri ? [] : recipeFixture);
+  /** The camera's slots as last read; `null` before a read. */
+  const [slots, setSlots] = useState<SlotContent[] | null>(null);
+  const [slotError, setSlotError] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [selectedId, setSelectedId] = useState(inTauri ? "" : "r3");
   const data = useCatalog();
   const catalogById = data?.byId ?? new Map<string, CatalogEntry>();
+  const slotById = new Map((slots ?? []).map((s) => [s.view.id, s]));
   const find = (id: string): Recipe => {
     if (id === "new") return NEW_C7;
+    const sl = slotById.get(id);
+    if (sl) return sl.recipe;
     const e = catalogById.get(id);
     if (e) return entryRecipe(e);
-    return library.find((r) => r.id === id) ?? library[0];
+    return library.find((r) => r.id === id) ?? library[0] ?? BLANK;
   };
   const saved = find(selectedId);
   const [draft, setDraft] = useState<Recipe>(saved);
@@ -65,6 +85,33 @@ export function Recipes() {
   const cameraSensor = sensorOf(status?.model);
   const changes = diff(saved, draft);
 
+  const reloadLibrary = useCallback(async () => {
+    if (!inTauri) return;
+    try {
+      setLibrary(await loadLibrary());
+    } catch (e) {
+      flash(String(e));
+    }
+  }, [flash]);
+  useEffect(() => void reloadLibrary(), [reloadLibrary]);
+
+  const rawConv = status?.link === "connected" && status?.mode === "rawConv";
+  const readAll = useCallback(async () => {
+    if (!inTauri) return notBuilt("Reading the slots");
+    setReading(true);
+    try {
+      setSlots(await readSlots());
+      setSlotError(null);
+    } catch (e) {
+      setSlotError(String(e instanceof Error ? e.message : e));
+    }
+    setReading(false);
+  }, [notBuilt]);
+  // Read the slots once each time the camera arrives in RAW CONV. mode.
+  useEffect(() => {
+    if (rawConv && inTauri) void readAll();
+  }, [rawConv, readAll]);
+
   const select = (id: string) => {
     setSelectedId(id);
     setDraft(find(id));
@@ -73,19 +120,70 @@ export function Recipes() {
   const catalogShown = useMemo(() => (data ? sortCards(filterCards(data.cards, { q: search, sensor, sim, source, show }), sort) : []), [data, search, sensor, sim, source, show, sort]);
   const shownVariant = (c: Card) => c.variants.find((v) => v.id === opened[c.id]) ?? pickVariant(c, cameraSensor);
 
+  /** The slot each library recipe is in, from the last slot read. */
+  const inSlot = useMemo(() => {
+    const m = new Map<string, Slot>();
+    for (const s of slots ?? []) for (const id of s.view.matches ?? []) m.set(id, s.slot);
+    return m;
+  }, [slots]);
+
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     return library.filter((r) => (show === "all" || (show === "mono") === r.mono) && (!q || `${r.name} ${r.sim} ${summary(r)}`.toLowerCase().includes(q)));
   }, [library, search, show]);
 
-  const saveToLibrary = () => {
-    if (draft.id === "new" || catalogById.has(draft.id)) {
-      const r = { ...draft, id: `r${library.length + 1}` };
-      setLibrary([...library, r]);
-      setSelectedId(r.id);
-      setDraft(r);
-    } else {
-      setLibrary(library.map((r) => (r.id === draft.id ? draft : r)));
+  /** Saves the recipe and returns its library id. */
+  const store = async (r: Recipe): Promise<string | null> => {
+    if (!r.name.trim()) {
+      flash("Give the recipe a name first.");
+      return null;
+    }
+    try {
+      const s = await saveRecipe(r);
+      s.warnings.forEach((w) => flash(w));
+      await reloadLibrary();
+      return s.id;
+    } catch (e) {
+      flash(String(e instanceof Error ? e.message : e));
+      return null;
+    }
+  };
+
+  const saveToLibrary = async () => {
+    if (!inTauri) {
+      if (draft.id === "new" || catalogById.has(draft.id)) {
+        const r = { ...draft, id: `r${library.length + 1}` };
+        setLibrary([...library, r]);
+        setSelectedId(r.id);
+        setDraft(r);
+      } else {
+        setLibrary(library.map((r) => (r.id === draft.id ? draft : r)));
+      }
+      return;
+    }
+    const id = await store(draft);
+    if (id) {
+      setSelectedId(id);
+      setDraft({ ...draft, id });
+      flash(`Saved ${draft.name.trim()}.`);
+    }
+  };
+
+  /** Plans a recipe into a slot. An unchanged catalogue or library recipe is planned by its
+   * id; anything else is saved to the library first. */
+  const planWrite = async (r: Recipe, slot: Slot, allowUnconfirmed = false, known?: string) => {
+    if (!inTauri) return notBuilt(`Writing to slot ${slot}`);
+    const unchanged = diff(find(r.id), r) === 0;
+    let id = known ?? (unchanged && (r.id.startsWith("cat:") || r.id.startsWith("recipe:")) ? r.id : null);
+    if (!id) id = await store(r);
+    if (!id) return;
+    if (pending) void commands.planDiscard(pending.plan.plan_id);
+    try {
+      const plan = await slotPlan(id, slot, allowUnconfirmed);
+      setPending({ title: `Write ${r.name || "the recipe"} to ${slot}`, plan, recipeId: id, slot });
+    } catch (e) {
+      setPending(null);
+      flash(String(e instanceof Error ? e.message : e));
     }
   };
 
@@ -93,8 +191,8 @@ export function Recipes() {
     <div className="page recipes" data-component="recipes">
       <PageHead title="Recipes" sub="Slots C1 to C7 on the camera, and your recipe library.">
         <CameraChip />
-        <button type="button" className="btn" onClick={() => notBuilt("Reading the slots")}>
-          Read all slots
+        <button type="button" className="btn" onClick={() => void readAll()} disabled={reading}>
+          {reading ? "Reading…" : "Read all slots"}
         </button>
         <button type="button" className="btn" onClick={() => notBuilt("Slot sets")}>
           Slot sets
@@ -110,25 +208,52 @@ export function Recipes() {
         </div>
       )}
       <ModeNotice needs="rawConv" what="Reading and writing slots" />
+      {slotError && (
+        <div className="banner warn" role="alert">
+          <span>{slotError}</span>
+        </div>
+      )}
 
       <section className="slots" aria-label="Camera slots">
-        {slotFixture.map((s) => {
-          const r = s.recipeId ? library.find((x) => x.id === s.recipeId) : undefined;
-          const id = s.recipeId ?? "new";
-          const on = selectedId === id;
-          const state = on && changes > 0 ? "Edited" : s.state;
-          return (
-            <button key={s.slot} type="button" className={s.state === "New" ? "slot new" : "slot"} aria-pressed={on} onClick={() => select(id)}>
-              <span className="slot-top">
-                <span className="slot-id">{s.slot}</span>
-                <span className={state === "Matches" ? "slot-state" : "slot-state red"}>{state}</span>
-              </span>
-              <span className="slot-name">{r?.name ?? s.name}</span>
-              <span className="slot-sim">{r?.sim ?? s.sim}</span>
-              <Tones tones={r?.tones ?? s.tones ?? []} />
-            </button>
-          );
-        })}
+        {inTauri
+          ? SLOTS.map((name) => {
+              const s = slots?.find((x) => x.slot === name);
+              const matched = s?.view.matches?.[0];
+              const id = matched ?? s?.view.id ?? "";
+              const on = !!s && selectedId === id;
+              const state = !s ? "Not read" : s.view.error ? "Unreadable" : on && changes > 0 ? "Edited" : matched ? "Matches" : "Not in library";
+              return (
+                <button key={name} type="button" className={matched ? "slot" : "slot new"} aria-pressed={on} disabled={!s || !!s.view.error} onClick={() => {
+                  setSelectedId(id);
+                  setDraft({ ...find(id), slot: name });
+                }}>
+                  <span className="slot-top">
+                    <span className="slot-id">{name}</span>
+                    <span className={state === "Matches" ? "slot-state" : "slot-state red"}>{state}</span>
+                  </span>
+                  <span className="slot-name">{s ? s.view.name || "No name" : "—"}</span>
+                  <span className="slot-sim">{s?.recipe.sim ?? ""}</span>
+                  <Tones tones={s?.recipe.tones ?? []} />
+                </button>
+              );
+            })
+          : slotFixture.map((s) => {
+              const r = s.recipeId ? library.find((x) => x.id === s.recipeId) : undefined;
+              const id = s.recipeId ?? "new";
+              const on = selectedId === id;
+              const state = on && changes > 0 ? "Edited" : s.state;
+              return (
+                <button key={s.slot} type="button" className={s.state === "New" ? "slot new" : "slot"} aria-pressed={on} onClick={() => select(id)}>
+                  <span className="slot-top">
+                    <span className="slot-id">{s.slot}</span>
+                    <span className={state === "Matches" ? "slot-state" : "slot-state red"}>{state}</span>
+                  </span>
+                  <span className="slot-name">{r?.name ?? s.name}</span>
+                  <span className="slot-sim">{r?.sim ?? s.sim}</span>
+                  <Tones tones={r?.tones ?? s.tones ?? []} />
+                </button>
+              );
+            })}
       </section>
 
       <div className="flex-row">
@@ -234,21 +359,24 @@ export function Recipes() {
             </div>
           ) : (
           <div className="library-grid">
-            {shown.map((r) => (
-              <button key={r.id} type="button" className="recipe-card" aria-pressed={r.id === selectedId} onClick={() => select(r.id)}>
-                <Tones tones={r.tones} tall />
-                <span className="recipe-body">
-                  <span className="recipe-top">
-                    <span className="recipe-name">{r.name}</span>
-                    {r.slot && <span className="badge ink">{r.slot}</span>}
+            {shown.map((r) => {
+              const slot = r.slot ?? inSlot.get(r.id);
+              return (
+                <button key={r.id} type="button" className="recipe-card" aria-pressed={r.id === selectedId} onClick={() => select(r.id)}>
+                  <Tones tones={r.tones} tall />
+                  <span className="recipe-body">
+                    <span className="recipe-top">
+                      <span className="recipe-name">{r.name}</span>
+                      {slot && <span className="badge ink">{slot}</span>}
+                    </span>
+                    <span className="small muted">{r.sim}</span>
+                    <span className="mono tiny muted">{summary(r)}</span>
+                    {r.source && <span className="tiny muted">From {r.source.label}</span>}
                   </span>
-                  <span className="small muted">{r.sim}</span>
-                  <span className="mono tiny muted">{summary(r)}</span>
-                  {r.source && <span className="tiny muted">From {r.source.label}</span>}
-                </span>
-              </button>
-            ))}
-            {shown.length === 0 && <p className="muted">No recipes match.</p>}
+                </button>
+              );
+            })}
+            {shown.length === 0 && <p className="muted">{inTauri && library.length === 0 ? "No recipes yet. Import one, or save one from the catalogue." : "No recipes match."}</p>}
           </div>
           )}
         </section>
@@ -257,16 +385,42 @@ export function Recipes() {
           <RecipeImport
             onClose={() => setImporting(false)}
             onSave={(r) => {
-              const saved = { ...r, id: `r${library.length + 1}` };
-              setLibrary([...library, saved]);
-              setSelectedId(saved.id);
-              setDraft(saved);
-              setImporting(false);
+              if (!inTauri) {
+                const saved = { ...r, id: `r${library.length + 1}` };
+                setLibrary([...library, saved]);
+                setSelectedId(saved.id);
+                setDraft(saved);
+                setImporting(false);
+                return;
+              }
+              void store(r).then((id) => {
+                if (!id) return;
+                setSelectedId(id);
+                setDraft({ ...r, id });
+                setImporting(false);
+              });
             }}
-            onWrite={(slot) => notBuilt(`Writing to slot ${slot}`)}
+            onWrite={(slot, r) => {
+              setImporting(false);
+              setDraft(r);
+              void planWrite(r, slot);
+            }}
           />
         )}
-        <Editor draft={draft} saved={saved} changes={changes} setDraft={setDraft} onWrite={(slot) => notBuilt(slot ? `Writing to slot ${slot}` : "Writing to a slot")} onSave={saveToLibrary} onDiscard={() => setDraft(saved)} />
+        <div className="editor-col">
+          {pending && (
+            <PlanCard
+              title={pending.title}
+              plan={pending.plan}
+              onDone={(a) => {
+                setPending(null);
+                if (a) void readAll();
+              }}
+              onAllowUnconfirmed={() => void planWrite(draft, pending.slot, true, pending.recipeId)}
+            />
+          )}
+          <Editor draft={draft} saved={saved} changes={changes} setDraft={setDraft} onWrite={(slot) => void planWrite(draft, slot)} onSave={() => void saveToLibrary()} onDiscard={() => setDraft(saved)} />
+        </div>
       </div>
     </div>
   );
@@ -350,12 +504,16 @@ type EditorProps = {
   saved: Recipe;
   changes: number;
   setDraft: (r: Recipe) => void;
-  onWrite: (slot: Slot | null) => void;
+  onWrite: (slot: Slot) => void;
   onSave: () => void;
   onDiscard: () => void;
 };
 
 function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }: EditorProps) {
+  const [target, setTarget] = useState<Slot>(draft.slot ?? "C1");
+  useEffect(() => {
+    if (draft.slot) setTarget(draft.slot);
+  }, [draft.slot]);
   const set = <K extends keyof Recipe>(k: K, v: Recipe[K]) => setDraft({ ...draft, [k]: v });
   const where = draft.slot ? `In slot ${draft.slot}` : draft.id.startsWith("cat:") ? "From the catalogue" : "In library";
   return (
@@ -442,9 +600,21 @@ function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }:
         })}
       </div>
       <div className="editor-actions">
-        <button type="button" className="btn primary tall" onClick={() => onWrite(draft.slot)}>
-          {draft.slot ? `Write to slot ${draft.slot}` : "Write to a slot"}
-        </button>
+        <div className="actions-pair">
+          <label className="slot-pick">
+            <span className="visually-hidden">Slot</span>
+            <select className="select narrow" value={target} onChange={(e) => setTarget(e.target.value as Slot)}>
+              {SLOTS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="btn primary tall" disabled={!draft.name && !draft.id} onClick={() => onWrite(target)}>
+            Write to slot {target}
+          </button>
+        </div>
         <div className="actions-pair">
           <button type="button" className="btn" onClick={onSave} disabled={changes === 0 && draft.id !== "new" && !draft.id.startsWith("cat:")}>
             Save to library

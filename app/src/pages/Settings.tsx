@@ -3,7 +3,8 @@ import { commands, type Diff, type Hit as LibHit, type Plan, type PropRow, type 
 import { inTauri, useCamera } from "../lib/camera";
 import { display, entry, hex, type Catalog } from "../lib/decode";
 import { useLive, rawOf } from "../lib/live";
-import { appliedText, applyPlan, makePlan, writeNow } from "../lib/plans";
+import { makePlan, writeNow } from "../lib/plans";
+import { PlanCard } from "../views/PlanCard";
 import { menus as menuFixture, presets as presetFixture, searchWords, snapshots as snapshotFixture, type Menu, type SettingRow } from "../fixtures/settings";
 import { APP_ICONS, BRAND_MARKS, usePrefs, type ArtChoice, type ThemePref } from "../lib/prefs";
 import { href } from "../lib/router";
@@ -363,59 +364,6 @@ export function Settings({ sub }: { sub: string | null }) {
 }
 
 /** A plan from a preset or a snapshot, shown before anything is written. */
-function PlanCard({ title, plan, onDone }: { title: string; plan: Plan; onDone: () => void }) {
-  const flash = useToast();
-  const [busy, setBusy] = useState(false);
-  const apply = async () => {
-    setBusy(true);
-    const a = await applyPlan(plan.plan_id);
-    setBusy(false);
-    flash(typeof a === "string" ? a : appliedText(a));
-    onDone();
-  };
-  const cancel = () => {
-    void commands.planDiscard(plan.plan_id);
-    onDone();
-  };
-  const unchanged = plan.skipped.filter((s) => s.reason === "unchanged").length;
-  const other = plan.skipped.length - unchanged;
-  return (
-    <section className="card pad-s" aria-labelledby="plan-title" data-component="plan-card">
-      <h2 id="plan-title" className="card-title small-title">
-        {title}
-      </h2>
-      <div className="rows">
-        {plan.steps.map((s) => (
-          <div key={s.code} className="row-line small">
-            <span>{s.name ?? s.code}</span>
-            <span className="muted">
-              {s.before} → {s.after}
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="tiny muted">
-        {[
-          plan.steps.length === 1 ? "1 change" : `${plan.steps.length} changes`,
-          unchanged ? `${unchanged} already set` : "",
-          plan.blocked.length ? `${plan.blocked.length} not written: unconfirmed or read-only` : "",
-          other ? `${other} need another mode` : "",
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-      <div className="actions-line">
-        <button type="button" className="btn small primary" disabled={busy || plan.steps.length === 0} onClick={() => void apply()}>
-          Write to camera
-        </button>
-        <button type="button" className="btn text small" onClick={cancel}>
-          Cancel
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function Presets({ presets, favs, onApply, onChanged }: { presets: Item[]; favs: Line[]; onApply: (p: Item) => void; onChanged: () => void }) {
   const flash = useToast();
   const notBuilt = useNotBuilt();

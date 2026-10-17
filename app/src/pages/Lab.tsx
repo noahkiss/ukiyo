@@ -170,7 +170,7 @@ export function Lab({ active }: { active: boolean }) {
       plan: async (code: number, value: Value) => {
         const raw = value.kind === "int" ? String(value.v) : value.kind === "str" ? value.v : null;
         if (raw === null) return "This value type cannot be written.";
-        const r = await commands.planCreate({ [`0x${code.toString(16).padStart(4, "0")}`]: raw }, true, null);
+        const r = await commands.planCreate({ [`0x${code.toString(16).padStart(4, "0")}`]: raw }, true, null, null);
         return r.status === "ok" ? r.data : r.error;
       },
       apply: async (planId: string) => {

@@ -612,6 +612,15 @@
   height: var(--control-h);
 }
 
+/* The editor, with a slot plan above it while one waits. */
+.editor-col {
+  flex: 1 1 360px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .editor {
   flex: 1 1 360px;
   min-width: 0;
