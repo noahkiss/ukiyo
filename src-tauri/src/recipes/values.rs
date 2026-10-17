@@ -18,7 +18,7 @@ static MONO_BEFORE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)([+-]?\s
 
 /// Dashes and minus signs as ASCII hyphens, so `−1` reads as -1.
 fn ascii_minus(s: &str) -> String {
-    s.replace(['\u{2212}', '\u{2013}', '\u{2014}'], "-")
+    s.replace(['\u{2212}', '\u{2013}', '\u{2014}', '\u{2011}', '\u{2010}'], "-")
 }
 
 /// Removes "(Medium-Hard)", "(typically)" and the like.
@@ -301,6 +301,9 @@ pub(crate) fn film_sim(phrase: &str) -> Option<String> {
     if let Some(rest) = n.strip_prefix("monochrome") {
         return mono("Monochrome", rest);
     }
+    if let Some(rest) = n.strip_prefix("mono ").or_else(|| (n == "mono").then_some("")) {
+        return mono("Monochrome", rest);
+    }
     Some(
         match n.as_str() {
             "provia" | "provia std" | "std" => "Provia",
@@ -359,6 +362,13 @@ pub(crate) fn apply(s: &mut Settings, field: Field, value: &str) -> Result<(), S
         Field::HighIsoNr => set_tone(&mut s.high_iso_nr, value),
         Field::Clarity => set_tone(&mut s.clarity, value),
         Field::MonochromaticColor => mono_color(s, value),
+        Field::MonoWc => set_tone(&mut s.monochromatic_color_wc, value),
+        Field::MonoMg => set_tone(&mut s.monochromatic_color_mg, value),
+        Field::SmoothSkin => {
+            let (v, extra) = strength(value)?;
+            s.smooth_skin = v;
+            extra.map_or(Ok(()), Err)
+        }
         Field::Note => Ok(()),
     }
 }

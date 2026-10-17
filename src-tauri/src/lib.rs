@@ -91,8 +91,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             lab_fake,
             recipe_parse,
         ])
-        // The bundled catalogue's shape; the window imports the JSON itself.
-        .typ::<recipes::catalogue::Catalogue>()
+        // The bundled recipe catalogue's shape; the window imports the JSON itself.
+        .typ::<recipes::catalogue::RecipeCatalog>()
         .events(tauri_specta::collect_events![lab::LabStatus, lab::LabProps, lab::LabChanges, lab::CatalogChanged])
         // Wall-clock ms and codes fit a JS number.
         .dangerously_cast_bigints_to_number()

@@ -123,6 +123,11 @@ pub fn sensor(title: &str, tags: &[String]) -> Option<String> {
     }
 }
 
+/// The first sensor generation, else camera model, a post's text mentions.
+pub fn sensor_in_text(text: &str) -> Option<String> {
+    generation_in(text).or_else(|| model_in(text).filter(|s| s != "GFX"))
+}
+
 /// The recipe's name in a post title. "Fujifilm X-Trans V Film Simulation Recipe: Kodak Gold"
 /// -> "Kodak Gold"; "CineStill 800T v2 — A Fujifilm Recipe for X-Trans V Cameras" ->
 /// "CineStill 800T v2"; "My Fujifilm X-T30 Kodachrome 64 Film Simulation Recipe" ->

@@ -8,6 +8,10 @@ use std::sync::LazyLock;
 static ELEMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<(p|li|h[1-6])\b[^>]*>(.*?)</(?:p|li|h[1-6])>").unwrap());
 static BR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<br\s*/?>").unwrap());
 static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
+static TABLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<table\b[^>]*>(.*?)</table>").unwrap());
+static ROW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<tr\b[^>]*>(.*?)</tr>").unwrap());
+static CELL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<t[dh]\b[^>]*>(.*?)</t[dh]>").unwrap());
+static HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<h[1-6]\b[^>]*>(.*?)</h[1-6]>").unwrap());
 static ENTITY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);").unwrap());
 
 /// Decodes the entities WordPress emits: numeric ones and the common named ones.
@@ -101,22 +105,53 @@ fn is_recipe(s: &LineStats) -> bool {
     (s.film_sim_label && s.has_dr_grain_wb) || s.slot >= 3
 }
 
-/// The recipe blocks in a post, in order. Consecutive settings-like paragraphs with nothing
-/// between them form one block.
-pub fn blocks(html: &str) -> Vec<Block> {
+/// Settings tables (film.recipes): two-cell rows, label then value, as `Label: value` lines.
+/// The heading is the last heading before the table.
+fn table_blocks(html: &str) -> Vec<(usize, Block)> {
     let mut out = Vec::new();
+    for t in TABLE.captures_iter(html) {
+        let start = t.get(0).unwrap().start();
+        let lines: Vec<String> = ROW
+            .captures_iter(&t[1])
+            .filter_map(|r| {
+                let cells: Vec<String> = CELL.captures_iter(&r[1]).map(|c| to_text(&c[1]).trim().to_string()).collect();
+                (cells.len() == 2 && !cells[0].is_empty()).then(|| format!("{}: {}", cells[0].trim_end_matches(':'), cells[1]))
+            })
+            .collect();
+        let text = lines.join("\n");
+        if is_recipe(&stats(&text)) {
+            let heading = HEADING.captures_iter(&html[..start]).last().map(|h| to_text(&h[1]).trim().to_string());
+            out.push((start, Block { text, heading }));
+        }
+    }
+    out
+}
+
+/// The recipe blocks in a post, in order: paragraph blocks and settings tables.
+pub fn blocks(html: &str) -> Vec<Block> {
+    let mut all: Vec<(usize, Block)> = paragraph_blocks(html);
+    all.extend(table_blocks(html));
+    all.sort_by_key(|(at, _)| *at);
+    all.into_iter().map(|(_, b)| b).collect()
+}
+
+/// The paragraph recipe blocks in a post, in order. Consecutive settings-like paragraphs with nothing
+/// between them form one block.
+fn paragraph_blocks(html: &str) -> Vec<(usize, Block)> {
+    let mut out = Vec::new();
+    let mut group_start = 0usize;
     let mut heading: Option<String> = None;
     let mut group: Vec<String> = Vec::new();
     let mut group_heading: Option<String> = None;
     let mut last_end = 0usize;
 
-    let flush = |group: &mut Vec<String>, gh: &mut Option<String>, out: &mut Vec<Block>| {
+    let flush = |group: &mut Vec<String>, gh: &mut Option<String>, out: &mut Vec<(usize, Block)>, at: usize| {
         if group.is_empty() {
             return;
         }
         let text = group.join("\n");
         if is_recipe(&stats(&text)) {
-            out.push(Block { text, heading: gh.take() });
+            out.push((at, Block { text, heading: gh.take() }));
         }
         group.clear();
         *gh = None;
@@ -132,27 +167,28 @@ pub fn blocks(html: &str) -> Vec<Block> {
         let adjacent = TAG.replace_all(between, "").trim().is_empty();
         last_end = whole.end();
         if !adjacent {
-            flush(&mut group, &mut group_heading, &mut out);
+            flush(&mut group, &mut group_heading, &mut out, group_start);
         }
         if text.is_empty() {
             continue;
         }
         let st = stats(&text);
         if tag.starts_with('h') || (!settings_like(&st) && is_bold_only(inner) && text.len() <= 80) {
-            flush(&mut group, &mut group_heading, &mut out);
+            flush(&mut group, &mut group_heading, &mut out, group_start);
             heading = Some(text);
             continue;
         }
         if settings_like(&st) {
             if group.is_empty() {
                 group_heading = heading.clone();
+                group_start = whole.start();
             }
             group.push(text);
         } else {
-            flush(&mut group, &mut group_heading, &mut out);
+            flush(&mut group, &mut group_heading, &mut out, group_start);
         }
     }
-    flush(&mut group, &mut group_heading, &mut out);
+    flush(&mut group, &mut group_heading, &mut out, group_start);
     out
 }
 

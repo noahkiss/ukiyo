@@ -7,6 +7,7 @@
 pub mod catalogue;
 pub mod html;
 pub mod post;
+pub mod sources;
 mod values;
 
 #[cfg(test)]
@@ -61,6 +62,9 @@ pub struct Settings {
     pub high_iso_nr: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clarity: Option<f64>,
+    /// "Off", "Weak" or "Strong".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smooth_skin: Option<String>,
     /// Monochromatic Color, warm (+) to cool (-).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monochromatic_color_wc: Option<f64>,
@@ -125,6 +129,9 @@ pub(crate) enum Field {
     HighIsoNr,
     Clarity,
     MonochromaticColor,
+    MonoWc,
+    MonoMg,
+    SmoothSkin,
     /// A shooting note: kept, but not a slot setting.
     Note,
 }
@@ -142,21 +149,24 @@ pub(crate) fn field_for(label: &str) -> Option<Field> {
     Some(match l {
         "film simulation" | "film sim" | "simulation" | "film simulation mode" => Field::FilmSimulation,
         "dynamic range" | "dr" | "d range" => Field::DynamicRange,
-        "d range priority" | "dynamic range priority" | "dr priority" | "dr p" => Field::DRangePriority,
+        "d range priority" | "dynamic range priority" | "dr priority" | "dr p" | "wide dynamic range" | "wide d range" => Field::DRangePriority,
         "grain effect" | "grain" | "grain effect roughness" | "grain roughness" => Field::Grain,
         "grain size" | "grain effect size" => Field::GrainSize,
-        "color chrome effect" | "color chrome" | "colour chrome effect" | "colour chrome" | "color chrome effect strength" => Field::ColorChrome,
-        "color chrome fx blue" | "color chrome effect blue" | "color chrome blue" | "colour chrome fx blue" | "color chrome fx blue effect" | "cc fx blue" => Field::ColorChromeFxBlue,
-        "white balance" | "wb" | "white balance shift" => Field::WhiteBalance,
+        "color chrome effect" | "color chrome" | "colour chrome effect" | "colour chrome" | "color chrome effect strength" | "col chr effect" | "col chr" | "cc effect" => Field::ColorChrome,
+        "color chrome fx blue" | "color chrome effect blue" | "color chrome blue" | "colour chrome fx blue" | "colour chrome effect blue" | "color chrome fx blue effect" | "cc fx blue" | "col chr blue" | "col chr fx blue" => Field::ColorChromeFxBlue,
+        "white balance" | "wb" | "white balance shift" | "color temperature" | "colour temperature" | "color temp" | "colour temp" | "kelvin" => Field::WhiteBalance,
         "highlight" | "highlights" | "highlight tone" => Field::Highlight,
         "shadow" | "shadows" | "shadow tone" => Field::Shadow,
         "tone curve" => Field::ToneCurve,
         "color" | "colour" | "saturation" | "color saturation" => Field::Color,
         "sharpness" | "sharpening" | "sharpeness" => Field::Sharpness,
-        "high iso nr" | "noise reduction" | "nr" | "high iso noise reduction" | "iso nr" => Field::HighIsoNr,
+        "high iso nr" | "noise reduction" | "nr" | "high iso noise reduction" | "iso nr" | "iso n r" | "high iso n r" => Field::HighIsoNr,
         "clarity" => Field::Clarity,
-        "monochromatic color" | "monochromatic colour" | "monochrome color" | "toning" | "monochromatic color toning" | "b w toning" | "tone" => Field::MonochromaticColor,
-        "iso" | "exposure compensation" | "exposure comp" | "exposure" | "ev" | "exposure compensation typically" => Field::Note,
+        "monochromatic color" | "monochromatic colour" | "monochrome color" | "mono colour" | "mono color" | "toning" | "monochromatic color toning" | "b w toning" | "tone" => Field::MonochromaticColor,
+        "wc" | "mono wc" | "monochrome wc" | "warm cool" | "monochromatic color wc" | "mono warm cool" => Field::MonoWc,
+        "mg" | "mono mg" | "monochrome mg" | "magenta green" | "monochromatic color mg" | "mono magenta green" => Field::MonoMg,
+        "smooth skin effect" | "smooth skin" => Field::SmoothSkin,
+        "iso" | "exposure compensation" | "exposure comp" | "exposure" | "ev" | "ev comp" | "exposure compensation typically" => Field::Note,
         // Movie settings in video recipes.
         "interframe nr" | "interframe noise reduction" => Field::Note,
         // Shooting notes that are not slot settings.

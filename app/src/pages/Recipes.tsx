@@ -1,21 +1,21 @@
 import { useMemo, useState } from "react";
 import { FILM_SIMS, recipes as recipeFixture, slots as slotFixture, TONE_RANGES, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
 import { useCamera } from "../lib/camera";
-import { catalogue, entryRecipe, filterEntries, fmtDate, fxwEntries, type FxwEntry } from "../lib/fxw";
+import { catalogEntries, entryRecipe, filterEntries, fmtDate, sourceName, type CatalogEntry } from "../lib/catalog";
 import { href } from "../lib/router";
 import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
 import { PageHead } from "../shell/PageHead";
 import { ChevronDown, LinkIcon, LockIcon, PhotoIcon, SearchIcon } from "../shell/icons";
-import { FxwFilters, RecipeImport } from "./RecipeImport";
+import { CatalogFilters, RecipeImport } from "./RecipeImport";
 
 type Show = "all" | "colour" | "mono";
-type Collection = "mine" | "fxw";
+type Collection = "mine" | "catalog";
 
-/** Fuji X Weekly cards shown before "Show more". */
-const FXW_PAGE = 60;
+/** Catalogue cards shown before "Show more". */
+const CATALOG_PAGE = 60;
 
-const fxwById = new Map(fxwEntries.map((e) => [e.id, e]));
+const catalogById = new Map(catalogEntries.map((e) => [e.id, e]));
 
 const signed = (x: number) => (x > 0 ? "+" : "") + x;
 
@@ -39,7 +39,7 @@ export function Recipes() {
   const [selectedId, setSelectedId] = useState("r3");
   const find = (id: string): Recipe => {
     if (id === "new") return NEW_C7;
-    const e = fxwById.get(id);
+    const e = catalogById.get(id);
     if (e) return entryRecipe(e);
     return library.find((r) => r.id === id) ?? library[0];
   };
@@ -51,7 +51,8 @@ export function Recipes() {
   const [collection, setCollection] = useState<Collection>("mine");
   const [sensor, setSensor] = useState("");
   const [sim, setSim] = useState("");
-  const [fxwLimit, setFxwLimit] = useState(FXW_PAGE);
+  const [source, setSource] = useState("");
+  const [catalogLimit, setCatalogLimit] = useState(CATALOG_PAGE);
   const changes = diff(saved, draft);
 
   const select = (id: string) => {
@@ -59,7 +60,7 @@ export function Recipes() {
     setDraft(find(id));
   };
 
-  const fxwShown = useMemo(() => filterEntries(fxwEntries, { q: search, sensor, sim, show }), [search, sensor, sim, show]);
+  const catalogShown = useMemo(() => filterEntries(catalogEntries, { q: search, sensor, sim, source, show }), [search, sensor, sim, source, show]);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -67,7 +68,7 @@ export function Recipes() {
   }, [library, search, show]);
 
   const saveToLibrary = () => {
-    if (draft.id === "new" || fxwById.has(draft.id)) {
+    if (draft.id === "new" || catalogById.has(draft.id)) {
       const r = { ...draft, id: `r${library.length + 1}` };
       setLibrary([...library, r]);
       setSelectedId(r.id);
@@ -128,7 +129,7 @@ export function Recipes() {
               {(
                 [
                   ["mine", "My recipes"],
-                  ["fxw", "Fuji X Weekly"],
+                  ["catalog", "Catalogue"],
                 ] as Array<[Collection, string]>
               ).map(([k, label]) => (
                 <button key={k} type="button" aria-pressed={collection === k} onClick={() => setCollection(k)}>
@@ -163,34 +164,39 @@ export function Recipes() {
               From a photo
             </button>
           </div>
-          {collection === "fxw" && (
+          {collection === "catalog" && (
             <div className="library-tools">
-              <FxwFilters
+              <CatalogFilters
+                source={source}
+                setSource={(v) => {
+                  setSource(v);
+                  setCatalogLimit(CATALOG_PAGE);
+                }}
                 sensor={sensor}
                 setSensor={(v) => {
                   setSensor(v);
-                  setFxwLimit(FXW_PAGE);
+                  setCatalogLimit(CATALOG_PAGE);
                 }}
                 sim={sim}
                 setSim={(v) => {
                   setSim(v);
-                  setFxwLimit(FXW_PAGE);
+                  setCatalogLimit(CATALOG_PAGE);
                 }}
               />
               <span className="tiny muted grow">
-                {fxwShown.length} of {fxwEntries.length} recipes · {catalogue.source.credit}
+                {catalogShown.length} of {catalogEntries.length} recipes
               </span>
             </div>
           )}
-          {collection === "fxw" ? (
+          {collection === "catalog" ? (
             <div className="library-grid">
-              {fxwShown.slice(0, fxwLimit).map((e) => (
-                <FxwCard key={e.id} e={e} on={e.id === selectedId} onSelect={() => select(e.id)} />
+              {catalogShown.slice(0, catalogLimit).map((e) => (
+                <CatalogCard key={e.id} e={e} on={e.id === selectedId} onSelect={() => select(e.id)} />
               ))}
-              {fxwShown.length === 0 && <p className="muted">No recipes match.</p>}
-              {fxwShown.length > fxwLimit && (
-                <button type="button" className="btn more-btn" onClick={() => setFxwLimit(fxwLimit + FXW_PAGE)}>
-                  Show more ({fxwShown.length - fxwLimit})
+              {catalogShown.length === 0 && <p className="muted">No recipes match.</p>}
+              {catalogShown.length > catalogLimit && (
+                <button type="button" className="btn more-btn" onClick={() => setCatalogLimit(catalogLimit + CATALOG_PAGE)}>
+                  Show more ({catalogShown.length - catalogLimit})
                 </button>
               )}
             </div>
@@ -234,12 +240,12 @@ export function Recipes() {
   );
 }
 
-/** A catalogue card: the recipe, a credit line and a link to the post. */
-function FxwCard({ e, on, onSelect }: { e: FxwEntry; on: boolean; onSelect: () => void }) {
+/** A catalogue card: the recipe, its first publisher and a link to the post. */
+function CatalogCard({ e, on, onSelect }: { e: CatalogEntry; on: boolean; onSelect: () => void }) {
   const r = entryRecipe(e);
   return (
-    <div className="recipe-card fxw-card">
-      <button type="button" className="fxw-card-main" aria-pressed={on} onClick={onSelect}>
+    <div className="recipe-card catalog-card">
+      <button type="button" className="catalog-card-main" aria-pressed={on} onClick={onSelect}>
         <Tones tones={r.tones} tall />
         <span className="recipe-body">
           <span className="recipe-top">
@@ -255,9 +261,10 @@ function FxwCard({ e, on, onSelect }: { e: FxwEntry; on: boolean; onSelect: () =
       </button>
       <span className="recipe-credit tiny muted">
         <span>
-          {catalogue.source.name} · {fmtDate(e.date)}
+          From {sourceName(e.credit.source)} · {fmtDate(e.credit.date)}
+          {e.also.length > 0 && <span title={`Also published by ${e.also.map((p) => `${sourceName(p.source)} (${p.name}, ${fmtDate(p.date)})`).join("; ")}`}> · +{e.also.length}</span>}
         </span>
-        <a href={e.url} target="_blank" rel="noreferrer">
+        <a href={e.credit.url} target="_blank" rel="noreferrer">
           Post
         </a>
       </span>
@@ -304,7 +311,7 @@ type EditorProps = {
 
 function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }: EditorProps) {
   const set = <K extends keyof Recipe>(k: K, v: Recipe[K]) => setDraft({ ...draft, [k]: v });
-  const where = draft.slot ? `In slot ${draft.slot}` : draft.id.startsWith("fxw:") ? "From Fuji X Weekly" : "In library";
+  const where = draft.slot ? `In slot ${draft.slot}` : catalogById.has(draft.id) ? "From the catalogue" : "In library";
   return (
     <aside className="card editor" aria-labelledby="ed">
       <div className="editor-head">
@@ -393,7 +400,7 @@ function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }:
           {draft.slot ? `Write to slot ${draft.slot}` : "Write to a slot"}
         </button>
         <div className="actions-pair">
-          <button type="button" className="btn" onClick={onSave} disabled={changes === 0 && draft.id !== "new" && !draft.id.startsWith("fxw:")}>
+          <button type="button" className="btn" onClick={onSave} disabled={changes === 0 && draft.id !== "new" && !catalogById.has(draft.id)}>
             Save to library
           </button>
           <button type="button" className="btn text" onClick={onDiscard} disabled={changes === 0}>

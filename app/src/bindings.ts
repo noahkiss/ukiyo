@@ -41,6 +41,45 @@ export type CatalogChanged_Deserialize = Catalog_Deserialize | null;
 
 export type CatalogChanged_Serialize = Catalog_Serialize | null;
 
+/**  One distinct recipe: settings published once or more. */
+export type CatalogRecipe = CatalogRecipe_Serialize | CatalogRecipe_Deserialize;
+
+/**  One distinct recipe: settings published once or more. */
+export type CatalogRecipe_Deserialize = {
+	/**  `<source>:<source recipe id>` of the primary publication. */
+	id: string,
+	name: string,
+	sensor?: string | null,
+	video?: boolean,
+	settings: Settings_Deserialize,
+	notes?: Note[],
+	warnings?: Warning[],
+	/**  Hash of the normalised settings (`settings_key`), 16 hex digits. */
+	hash: string,
+	/**  The earliest publication: the credit. */
+	credit: Publication_Deserialize,
+	/**  Later publications of the same settings. */
+	alsoPublishedBy?: Publication_Deserialize[],
+};
+
+/**  One distinct recipe: settings published once or more. */
+export type CatalogRecipe_Serialize = {
+	/**  `<source>:<source recipe id>` of the primary publication. */
+	id: string,
+	name: string,
+	sensor?: string | null,
+	video?: boolean,
+	settings: Settings_Serialize,
+	notes?: Note[],
+	warnings?: Warning[],
+	/**  Hash of the normalised settings (`settings_key`), 16 hex digits. */
+	hash: string,
+	/**  The earliest publication: the credit. */
+	credit: Publication_Serialize,
+	/**  Later publications of the same settings. */
+	alsoPublishedBy?: Publication_Serialize[],
+};
+
 export type Catalog_Deserialize = {
 	schema: number,
 	model: string,
@@ -61,60 +100,6 @@ export type Catalog_Serialize = {
 	firmware: string[],
 	/**  Keyed by the code as `0x` and four lowercase hex digits. */
 	properties: { [key in string]: Entry_Serialize },
-};
-
-export type Catalogue = Catalogue_Serialize | Catalogue_Deserialize;
-
-export type CatalogueRecipe = CatalogueRecipe_Serialize | CatalogueRecipe_Deserialize;
-
-export type CatalogueRecipe_Deserialize = {
-	/**  The post's URL slug, with `-2`, `-3` for further recipes in the same post. */
-	id: string,
-	/**  The recipe name, from the post title (or the heading above the block). */
-	name: string,
-	title: string,
-	url: string,
-	/**  The post date, YYYY-MM-DD. */
-	date: string,
-	sensor?: string | null,
-	/**  A video recipe: settings for movie mode. */
-	video?: boolean,
-	settings: Settings_Deserialize,
-	notes?: Note[],
-	warnings?: Warning[],
-};
-
-export type CatalogueRecipe_Serialize = {
-	/**  The post's URL slug, with `-2`, `-3` for further recipes in the same post. */
-	id: string,
-	/**  The recipe name, from the post title (or the heading above the block). */
-	name: string,
-	title: string,
-	url: string,
-	/**  The post date, YYYY-MM-DD. */
-	date: string,
-	sensor?: string | null,
-	/**  A video recipe: settings for movie mode. */
-	video?: boolean,
-	settings: Settings_Serialize,
-	notes?: Note[],
-	warnings?: Warning[],
-};
-
-export type Catalogue_Deserialize = {
-	schema: number,
-	/**  The day the feed was read, YYYY-MM-DD. */
-	fetchedAt: string,
-	source: Source,
-	recipes: CatalogueRecipe_Deserialize[],
-};
-
-export type Catalogue_Serialize = {
-	schema: number,
-	/**  The day the feed was read, YYYY-MM-DD. */
-	fetchedAt: string,
-	source: Source,
-	recipes: CatalogueRecipe_Serialize[],
 };
 
 export type Change = {
@@ -254,6 +239,50 @@ export type PropRow = {
 	changedAt: number | null,
 };
 
+/**  One publication of a recipe: who, where, when. */
+export type Publication = Publication_Serialize | Publication_Deserialize;
+
+/**  One publication of a recipe: who, where, when. */
+export type Publication_Deserialize = {
+	/**  The `SourceInfo::id`. */
+	source: string,
+	name: string,
+	url: string,
+	date: string,
+	author?: string | null,
+};
+
+/**  One publication of a recipe: who, where, when. */
+export type Publication_Serialize = {
+	/**  The `SourceInfo::id`. */
+	source: string,
+	name: string,
+	url: string,
+	date: string,
+	author?: string | null,
+};
+
+/**  `catalog/recipes/catalog.json`. */
+export type RecipeCatalog = RecipeCatalog_Serialize | RecipeCatalog_Deserialize;
+
+/**  `catalog/recipes/catalog.json`. */
+export type RecipeCatalog_Deserialize = {
+	schema: number,
+	/**  The day the merge ran, YYYY-MM-DD. */
+	builtAt: string,
+	sources: SourceInfo[],
+	recipes: CatalogRecipe_Deserialize[],
+};
+
+/**  `catalog/recipes/catalog.json`. */
+export type RecipeCatalog_Serialize = {
+	schema: number,
+	/**  The day the merge ran, YYYY-MM-DD. */
+	builtAt: string,
+	sources: SourceInfo[],
+	recipes: CatalogRecipe_Serialize[],
+};
+
 export type Screen = "shooting" | "playback" | "menu" | "unknown";
 
 /**
@@ -291,6 +320,8 @@ export type Settings_Deserialize = {
 	/**  "High ISO NR"; older posts call it "Noise Reduction". */
 	highIsoNr?: number | null,
 	clarity?: number | null,
+	/**  "Off", "Weak" or "Strong". */
+	smoothSkin?: string | null,
 	/**  Monochromatic Color, warm (+) to cool (-). */
 	monochromaticColorWc?: number | null,
 	/**  Monochromatic Color, magenta (+) to green (-). */
@@ -326,6 +357,8 @@ export type Settings_Serialize = {
 	/**  "High ISO NR"; older posts call it "Noise Reduction". */
 	highIsoNr?: number | null,
 	clarity?: number | null,
+	/**  "Off", "Weak" or "Strong". */
+	smoothSkin?: string | null,
 	/**  Monochromatic Color, warm (+) to cool (-). */
 	monochromaticColorWc?: number | null,
 	/**  Monochromatic Color, magenta (+) to green (-). */
@@ -356,9 +389,12 @@ export type Snapshot_Serialize = {
 	noisy: number[],
 };
 
-export type Source = {
+/**  A site that publishes recipes. */
+export type SourceInfo = {
+	/**  Short stable id: "fujixweekly", "filmrecipes". */
+	id: string,
 	name: string,
-	url: string,
+	homepage: string,
 	credit: string,
 };
 

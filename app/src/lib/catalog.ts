@@ -1,8 +1,8 @@
-// The bundled Fuji X Weekly catalogue (catalog/recipes/fujixweekly.json, built by
-// src-tauri/examples/fxw_refresh.rs), and the step from parsed settings to a Recipe.
-// Settings and links only; the recipes are the author's, credited on every card.
-import raw from "../../../catalog/recipes/fujixweekly.json?raw";
-import type { Catalogue_Deserialize, CatalogueRecipe_Deserialize, Note, Settings_Deserialize, Warning } from "../bindings";
+// The bundled recipe catalogue (catalog/recipes/catalog.json, merged from the per-source
+// files by src-tauri/examples/recipes_refresh.rs), and the step from parsed settings to a
+// Recipe. Settings and links only; each recipe credits its first publisher.
+import raw from "../../../catalog/recipes/catalog.json?raw";
+import type { CatalogRecipe_Deserialize, Note, Publication, RecipeCatalog_Deserialize, Settings_Deserialize, Warning } from "../bindings";
 import type { Recipe } from "../fixtures/recipes";
 
 /** A recipe as parsed from a post or pasted text: the slot fields, plus what a slot cannot hold. */
@@ -15,19 +15,25 @@ export type ParsedRecipe = Omit<Recipe, "id" | "slot" | "mono" | "tones"> & {
   warnings?: Array<{ label: string; value: string; message: string }>;
 };
 
-export type FxwEntry = {
+export type CatalogEntry = {
   id: string;
   name: string;
-  title: string;
-  url: string;
-  date: string;
+  /** The first publication: the credit. */
+  credit: Publication;
+  /** Later publications of the same settings. */
+  also: Publication[];
   sensor: string | null;
   video: boolean;
   parsed: ParsedRecipe;
   tones: string[];
 };
 
-export const catalogue = JSON.parse(raw) as Catalogue_Deserialize;
+export const catalog = JSON.parse(raw) as RecipeCatalog_Deserialize;
+
+const sourceNames = new Map(catalog.sources.map((s) => [s.id, s.name]));
+
+/** A source's display name: "Fuji X Weekly", "film.recipes". */
+export const sourceName = (id: string) => sourceNames.get(id) ?? id;
 
 /** Swatch colours per film simulation family; the catalogue has no photos. */
 const PALETTES: Array<[RegExp, string[]]> = [
@@ -89,15 +95,15 @@ export function toParsed(name: string, s: Settings_Deserialize, notes: Note[] = 
   };
 }
 
-function entry(r: CatalogueRecipe_Deserialize): FxwEntry {
-  const parsed = toParsed(r.name, r.settings, r.notes ?? [], r.warnings ?? [], { label: catalogue.source.name, url: r.url });
-  return { id: `fxw:${r.id}`, name: r.name, title: r.title, url: r.url, date: r.date, sensor: r.sensor ?? null, video: r.video ?? false, parsed, tones: simTones(parsed.sim) };
+function entry(r: CatalogRecipe_Deserialize): CatalogEntry {
+  const parsed = toParsed(r.name, r.settings, r.notes ?? [], r.warnings ?? [], { label: sourceName(r.credit.source), url: r.credit.url });
+  return { id: `cat:${r.id}`, name: r.name, credit: r.credit, also: r.alsoPublishedBy ?? [], sensor: r.sensor ?? null, video: r.video ?? false, parsed, tones: simTones(parsed.sim) };
 }
 
-export const fxwEntries: FxwEntry[] = catalogue.recipes.map(entry);
+export const catalogEntries: CatalogEntry[] = catalog.recipes.map(entry);
 
 /** An entry as a library Recipe, for the editor. Not in the library until saved. */
-export function entryRecipe(e: FxwEntry): Recipe {
+export function entryRecipe(e: CatalogEntry): Recipe {
   const { notes, missing: _m, warnings: _w, ...rest } = e.parsed;
   return { ...rest, id: e.id, slot: null, mono: isMono(e.parsed.sim), tones: e.tones, notes };
 }
@@ -105,22 +111,27 @@ export function entryRecipe(e: FxwEntry): Recipe {
 const SENSOR_ORDER = ["X-Trans V", "X-Trans IV", "X-Trans III", "X-Trans II", "X-Trans I", "Bayer", "GFX"];
 
 /** Sensors in the catalogue, newest first. */
-export const fxwSensors = SENSOR_ORDER.filter((s) => fxwEntries.some((e) => e.sensor === s));
+export const catalogSensors = SENSOR_ORDER.filter((s) => catalogEntries.some((e) => e.sensor === s));
+
+/** Sources in the catalogue, as [id, name]. */
+export const catalogSources: Array<[string, string]> = catalog.sources.map((s) => [s.id, s.name]);
 
 /** Film simulations in the catalogue, most used first. */
-export const fxwSims = [...fxwEntries.reduce((m, e) => m.set(e.parsed.sim, (m.get(e.parsed.sim) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]).map(([s]) => s);
+export const catalogSims = [...catalogEntries.reduce((m, e) => m.set(e.parsed.sim, (m.get(e.parsed.sim) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]).map(([s]) => s);
 
-export type FxwFilter = { q: string; sensor: string; sim: string; show?: "all" | "colour" | "mono" };
+export type CatalogFilter = { q: string; sensor: string; sim: string; source: string; show?: "all" | "colour" | "mono" };
 
-/** Name search plus sensor and film simulation filters. "" means any. */
-export function filterEntries(entries: FxwEntry[], f: FxwFilter): FxwEntry[] {
+/** Name search plus sensor, film simulation and source filters. "" means any. A source
+ * matches the credit or any later publication. */
+export function filterEntries(entries: CatalogEntry[], f: CatalogFilter): CatalogEntry[] {
   const words = f.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   return entries.filter((e) => {
     if (f.sensor && e.sensor !== f.sensor) return false;
     if (f.sim && e.parsed.sim !== f.sim) return false;
+    if (f.source && e.credit.source !== f.source && !e.also.some((p) => p.source === f.source)) return false;
     if (f.show === "mono" && !isMono(e.parsed.sim)) return false;
     if (f.show === "colour" && isMono(e.parsed.sim)) return false;
-    const hay = `${e.name} ${e.parsed.sim} ${e.sensor ?? ""}`.toLowerCase();
+    const hay = `${e.name} ${e.also.map((p) => p.name).join(" ")} ${e.parsed.sim} ${e.sensor ?? ""}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
 }

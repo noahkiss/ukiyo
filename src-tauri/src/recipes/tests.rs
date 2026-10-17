@@ -202,3 +202,61 @@ fn a_block_with_two_recipes_splits() {
     assert_eq!(parts.len(), 2);
     assert_eq!(parse_text(&parts[1]).settings.film_simulation.as_deref(), Some("Velvia"));
 }
+
+#[test]
+fn film_recipes_settings_table() {
+    let html = r#"<h2 class="wp-block-heading">Kodak Gold II Film Recipe Settings</h2>
+<div class="recipe-settings-wrap"><table class="recipe-settings"><tbody>
+<tr><td>Film Simulation</td><td>Classic Chrome</td></tr>
+<tr><td>Grain Effect</td><td>Weak, Small</td></tr>
+<tr><td>Col. Chr. Effect</td><td>Weak</td></tr>
+<tr><td>Col. Chr. Blue</td><td>Off</td></tr>
+<tr><td>White Balance</td><td>Daylight, +4 Red, &#8209;5 Blue</td></tr>
+<tr><td>Dynamic Range</td><td>DR200</td></tr>
+<tr><td>Highlights</td><td>&#8209;1</td></tr>
+<tr><td>Shadows</td><td>1</td></tr>
+<tr><td>Colour</td><td>1</td></tr>
+<tr><td>Sharpness</td><td>&#8209;2</td></tr>
+<tr><td>ISO N.R.</td><td>&#8209;4</td></tr>
+<tr><td>Clarity</td><td>0</td></tr>
+<tr><td>Mono Colour</td><td>WC +1, MG -2</td></tr>
+<tr><td>EV Comp.</td><td>+1/3</td></tr>
+</tbody></table></div>"#;
+    let b = blocks(html);
+    assert_eq!(b.len(), 1);
+    assert_eq!(super::sources::filmrecipes::name("Kodak Gold II &#8211; Classic Kodak Film Recipe", html), "Kodak Gold II");
+    let p = parse_text(&b[0].text);
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+    let s = &p.settings;
+    assert_eq!((s.color_chrome.as_deref(), s.color_chrome_fx_blue.as_deref()), (Some("Weak"), Some("Off")));
+    assert_eq!((s.white_balance.as_deref(), s.wb_shift_r, s.wb_shift_b), (Some("Daylight"), Some(4), Some(-5)));
+    assert_eq!((s.highlight_tone, s.sharpness, s.high_iso_nr), (Some(-1.0), Some(-2.0), Some(-4.0)));
+    assert_eq!((s.monochromatic_color_wc, s.monochromatic_color_mg), (Some(1.0), Some(-2.0)));
+    assert_eq!(values::film_sim("Mono Red Filter").as_deref(), Some("Monochrome + R filter"));
+    assert_eq!(p.notes.len(), 1);
+}
+
+fn src(id: &str, recipes: Vec<catalogue::SourceRecipe>) -> catalogue::SourceFile {
+    catalogue::SourceFile { schema: 1, source: catalogue::SourceInfo { id: id.into(), name: id.into(), homepage: String::new(), credit: String::new() }, fetched_at: "2026-10-17".into(), recipes }
+}
+
+fn rec(id: &str, date: &str, text: &str) -> catalogue::SourceRecipe {
+    let p = parse_text(text);
+    catalogue::SourceRecipe { id: id.into(), name: id.into(), title: id.into(), url: format!("https://example.com/{id}"), date: date.into(), author: None, sensor: None, video: false, settings: p.settings, notes: p.notes, warnings: p.warnings }
+}
+
+#[test]
+fn merge_keeps_the_earliest_credit_and_flags_near_duplicates() {
+    // Same settings written two ways: absent Clarity equals "Clarity: 0", "Daylight" equals "Fine".
+    let a = rec("gold", "2022-01-10", "Film Simulation: Classic Chrome\nDynamic Range: DR200\nWhite Balance: Daylight, +2 Red & -4 Blue\nHighlight: -1");
+    let b = rec("gold-copy", "2020-05-01", "Classic Chrome\nDynamic Range: DR200\nWhite Balance: Fine, +2 Red, -4 Blue\nHighlight: -1\nClarity: 0\nGrain Effect: Off, Large");
+    let c = rec("gold-warm", "2023-01-01", "Film Simulation: Classic Chrome\nDynamic Range: DR200\nWhite Balance: Daylight, +3 Red & -4 Blue\nHighlight: -1");
+    let (cat, report) = catalogue::merge(&[src("one", vec![a, c]), src("two", vec![b])], "2026-10-17");
+    assert_eq!(cat.recipes.len(), 2);
+    let gold = cat.recipes.iter().find(|r| r.also_published_by.len() == 1).unwrap();
+    assert_eq!((gold.credit.source.as_str(), gold.credit.name.as_str()), ("two", "gold-copy"));
+    assert_eq!(gold.also_published_by[0].source, "one");
+    assert_eq!((report.merged, report.merged_across_sources), (1, 1));
+    assert_eq!(report.near_duplicates.len(), 1);
+    assert_eq!(report.near_duplicates[0].field, "WB shift red");
+}

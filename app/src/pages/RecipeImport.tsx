@@ -3,13 +3,13 @@ import { commands } from "../bindings";
 import { fxwPasteResult } from "../fixtures/fxw";
 import { FILM_SIMS, TONE_RANGES, WB_SHIFT_RANGE, wbOnBody, type Recipe, type Slot } from "../fixtures/recipes";
 import { inTauri } from "../lib/camera";
-import { catalogue, filterEntries, fmtDate, fxwEntries, fxwSensors, fxwSims, isMono, simTones, toParsed, type FxwEntry, type ParsedRecipe } from "../lib/fxw";
+import { catalogEntries, catalogSensors, catalogSims, catalogSources, filterEntries, fmtDate, isMono, simTones, sourceName, toParsed, type CatalogEntry, type ParsedRecipe } from "../lib/catalog";
 import { CloseIcon, SearchIcon } from "../shell/icons";
 
 type Tab = "search" | "link" | "text";
 
 const TABS: Array<[Tab, string]> = [
-  ["search", "Search Fuji X Weekly"],
+  ["search", "Search the catalogue"],
   ["link", "Paste a link"],
   ["text", "Paste text"],
 ];
@@ -44,7 +44,7 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
     if (!candidate) ref.current?.querySelector<HTMLElement>(".sheet-body input, .sheet-body textarea")?.focus();
   }, [tab, candidate]);
 
-  const fromResult = (r: FxwEntry): Candidate => ({ parsed: r.parsed, source: { label: "Fuji X Weekly", url: r.url }, tones: r.tones });
+  const fromResult = (r: CatalogEntry): Candidate => ({ parsed: r.parsed, source: { label: sourceName(r.credit.source), url: r.credit.url }, tones: r.tones });
 
   return (
     <dialog ref={ref} className="sheet" aria-labelledby="import-title" onClose={onClose} onCancel={onClose} data-component="recipe-import">
@@ -79,25 +79,26 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
 /** Results shown at once; the filters narrow the rest. */
 const RESULT_LIMIT = 100;
 
-function SearchTab({ onPick }: { onPick: (r: FxwEntry) => void }) {
+function SearchTab({ onPick }: { onPick: (r: CatalogEntry) => void }) {
   const [q, setQ] = useState("");
   const [sensor, setSensor] = useState("");
   const [sim, setSim] = useState("");
+  const [source, setSource] = useState("");
   // The bundled catalogue; nothing is fetched.
-  const all = useMemo(() => filterEntries(fxwEntries, { q, sensor, sim }), [q, sensor, sim]);
+  const all = useMemo(() => filterEntries(catalogEntries, { q, sensor, sim, source }), [q, sensor, sim, source]);
   const results = all.slice(0, RESULT_LIMIT);
   return (
     <div className="sheet-body">
       <div className="filter-line">
         <label className="search-box">
           <SearchIcon />
-          <span className="visually-hidden">Search Fuji X Weekly</span>
+          <span className="visually-hidden">Search the catalogue</span>
           <input type="search" placeholder="Recipe name, film simulation or sensor" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
-        <FxwFilters sensor={sensor} setSensor={setSensor} sim={sim} setSim={setSim} />
+        <CatalogFilters sensor={sensor} setSensor={setSensor} sim={sim} setSim={setSim} source={source} setSource={setSource} />
       </div>
       <p className="tiny muted">
-        {all.length > RESULT_LIMIT ? `${RESULT_LIMIT} of ${all.length} recipes` : `${all.length} ${all.length === 1 ? "recipe" : "recipes"}`} · {catalogue.source.credit}
+        {all.length > RESULT_LIMIT ? `${RESULT_LIMIT} of ${all.length} recipes` : `${all.length} ${all.length === 1 ? "recipe" : "recipes"}`}
       </p>
       <ul className="rows results">
         {results.map((r) => (
@@ -110,12 +111,12 @@ function SearchTab({ onPick }: { onPick: (r: FxwEntry) => void }) {
             <span className="stack result-text">
               <span className="strong">{r.name}</span>
               <span className="small muted">
-                {fmtDate(r.date)} · {r.parsed.sim}
+                From {sourceName(r.credit.source)} · {fmtDate(r.credit.date)} · {r.parsed.sim}
                 {r.video && " · Video"}
               </span>
             </span>
             {r.sensor && <span className={r.sensor === "X-Trans V" ? "badge ink" : "badge"}>{r.sensor}</span>}
-            <a className="small" href={r.url} target="_blank" rel="noreferrer">
+            <a className="small" href={r.credit.url} target="_blank" rel="noreferrer">
               Post
             </a>
             <button type="button" className="btn small raised" onClick={() => onPick(r)}>
@@ -129,15 +130,28 @@ function SearchTab({ onPick }: { onPick: (r: FxwEntry) => void }) {
   );
 }
 
-/** Sensor and film simulation filters over the bundled catalogue. "" is any. */
-export function FxwFilters({ sensor, setSensor, sim, setSim }: { sensor: string; setSensor: (s: string) => void; sim: string; setSim: (s: string) => void }) {
+type Filters = { sensor: string; setSensor: (s: string) => void; sim: string; setSim: (s: string) => void; source: string; setSource: (s: string) => void };
+
+/** Source, sensor and film simulation filters over the bundled catalogue. "" is any. */
+export function CatalogFilters({ sensor, setSensor, sim, setSim, source, setSource }: Filters) {
   return (
     <>
+      <label>
+        <span className="visually-hidden">Source</span>
+        <select className="select narrow" value={source} onChange={(e) => setSource(e.target.value)}>
+          <option value="">All sources</option>
+          {catalogSources.map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
       <label>
         <span className="visually-hidden">Sensor</span>
         <select className="select narrow" value={sensor} onChange={(e) => setSensor(e.target.value)}>
           <option value="">All sensors</option>
-          {fxwSensors.map((s) => (
+          {catalogSensors.map((s) => (
             <option key={s}>{s}</option>
           ))}
         </select>
@@ -146,7 +160,7 @@ export function FxwFilters({ sensor, setSensor, sim, setSim }: { sensor: string;
         <span className="visually-hidden">Film simulation</span>
         <select className="select narrow" value={sim} onChange={(e) => setSim(e.target.value)}>
           <option value="">All film simulations</option>
-          {fxwSims.map((s) => (
+          {catalogSims.map((s) => (
             <option key={s}>{s}</option>
           ))}
         </select>
