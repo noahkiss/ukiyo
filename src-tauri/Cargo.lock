@@ -3796,6 +3796,7 @@ dependencies = [
  "chrono",
  "indexmap 2.14.2",
  "nusb",
+ "regex",
  "serde",
  "serde_json",
  "specta",

@@ -18,6 +18,8 @@ export const commands = {
 	labLabel: (patch: LabelPatch) => typedError<Catalog_Serialize, string>(__TAURI_INVOKE("lab_label", { patch })),
 	labNote: (group: number | null, text: string) => __TAURI_INVOKE<void>("lab_note", { group, text }),
 	labFake: (action: FakeAction) => typedError<null, string>(__TAURI_INVOKE("lab_fake", { action })),
+	/**  Parses pasted recipe text into slot settings, notes and per-field warnings. */
+	recipeParse: (text: string) => __TAURI_INVOKE<Parsed_Serialize>("recipe_parse", { text }),
 };
 
 /** Events */
@@ -59,6 +61,60 @@ export type Catalog_Serialize = {
 	firmware: string[],
 	/**  Keyed by the code as `0x` and four lowercase hex digits. */
 	properties: { [key in string]: Entry_Serialize },
+};
+
+export type Catalogue = Catalogue_Serialize | Catalogue_Deserialize;
+
+export type CatalogueRecipe = CatalogueRecipe_Serialize | CatalogueRecipe_Deserialize;
+
+export type CatalogueRecipe_Deserialize = {
+	/**  The post's URL slug, with `-2`, `-3` for further recipes in the same post. */
+	id: string,
+	/**  The recipe name, from the post title (or the heading above the block). */
+	name: string,
+	title: string,
+	url: string,
+	/**  The post date, YYYY-MM-DD. */
+	date: string,
+	sensor?: string | null,
+	/**  A video recipe: settings for movie mode. */
+	video?: boolean,
+	settings: Settings_Deserialize,
+	notes?: Note[],
+	warnings?: Warning[],
+};
+
+export type CatalogueRecipe_Serialize = {
+	/**  The post's URL slug, with `-2`, `-3` for further recipes in the same post. */
+	id: string,
+	/**  The recipe name, from the post title (or the heading above the block). */
+	name: string,
+	title: string,
+	url: string,
+	/**  The post date, YYYY-MM-DD. */
+	date: string,
+	sensor?: string | null,
+	/**  A video recipe: settings for movie mode. */
+	video?: boolean,
+	settings: Settings_Serialize,
+	notes?: Note[],
+	warnings?: Warning[],
+};
+
+export type Catalogue_Deserialize = {
+	schema: number,
+	/**  The day the feed was read, YYYY-MM-DD. */
+	fetchedAt: string,
+	source: Source,
+	recipes: CatalogueRecipe_Deserialize[],
+};
+
+export type Catalogue_Serialize = {
+	schema: number,
+	/**  The day the feed was read, YYYY-MM-DD. */
+	fetchedAt: string,
+	source: Source,
+	recipes: CatalogueRecipe_Serialize[],
 };
 
 export type Change = {
@@ -163,6 +219,26 @@ export type Link =
 /**  Disconnected on request; reconnects only on a Connect request. */
 "stopped";
 
+/**  A setting the text gives that a slot cannot hold: ISO, exposure compensation. */
+export type Note = {
+	label: string,
+	value: string,
+};
+
+export type Parsed = Parsed_Serialize | Parsed_Deserialize;
+
+export type Parsed_Deserialize = {
+	settings: Settings_Deserialize,
+	notes: Note[],
+	warnings: Warning[],
+};
+
+export type Parsed_Serialize = {
+	settings: Settings_Serialize,
+	notes: Note[],
+	warnings: Warning[],
+};
+
 /**  One property as the UI shows it. */
 export type PropRow = {
 	code: number,
@@ -179,6 +255,82 @@ export type PropRow = {
 };
 
 export type Screen = "shooting" | "playback" | "menu" | "unknown";
+
+/**
+ *  The settings a custom slot holds. Field names follow FilmKit. `None`: the text does not
+ *  give the setting (older posts lack Color Chrome, FX Blue and Clarity, for example).
+ */
+export type Settings = Settings_Serialize | Settings_Deserialize;
+
+/**
+ *  The settings a custom slot holds. Field names follow FilmKit. `None`: the text does not
+ *  give the setting (older posts lack Color Chrome, FX Blue and Clarity, for example).
+ */
+export type Settings_Deserialize = {
+	/**  Canonical name: "Classic Chrome", "Pro Neg. Std", "Acros + R filter", ... */
+	filmSimulation?: string | null,
+	/**  "DR100", "DR200", "DR400" or "Auto". */
+	dynamicRange?: string | null,
+	/**  "Off", "Weak", "Strong" or "Auto". */
+	dRangePriority?: string | null,
+	/**  "Off", "Weak" or "Strong". */
+	grainEffect?: string | null,
+	/**  "Small" or "Large". */
+	grainSize?: string | null,
+	colorChrome?: string | null,
+	colorChromeFxBlue?: string | null,
+	/**  A preset ("Auto", "Daylight", "Fluorescent 3", ...) or "Kelvin" with `color_temp`. */
+	whiteBalance?: string | null,
+	colorTemp?: number | null,
+	wbShiftR?: number | null,
+	wbShiftB?: number | null,
+	highlightTone?: number | null,
+	shadowTone?: number | null,
+	color?: number | null,
+	sharpness?: number | null,
+	/**  "High ISO NR"; older posts call it "Noise Reduction". */
+	highIsoNr?: number | null,
+	clarity?: number | null,
+	/**  Monochromatic Color, warm (+) to cool (-). */
+	monochromaticColorWc?: number | null,
+	/**  Monochromatic Color, magenta (+) to green (-). */
+	monochromaticColorMg?: number | null,
+};
+
+/**
+ *  The settings a custom slot holds. Field names follow FilmKit. `None`: the text does not
+ *  give the setting (older posts lack Color Chrome, FX Blue and Clarity, for example).
+ */
+export type Settings_Serialize = {
+	/**  Canonical name: "Classic Chrome", "Pro Neg. Std", "Acros + R filter", ... */
+	filmSimulation?: string | null,
+	/**  "DR100", "DR200", "DR400" or "Auto". */
+	dynamicRange?: string | null,
+	/**  "Off", "Weak", "Strong" or "Auto". */
+	dRangePriority?: string | null,
+	/**  "Off", "Weak" or "Strong". */
+	grainEffect?: string | null,
+	/**  "Small" or "Large". */
+	grainSize?: string | null,
+	colorChrome?: string | null,
+	colorChromeFxBlue?: string | null,
+	/**  A preset ("Auto", "Daylight", "Fluorescent 3", ...) or "Kelvin" with `color_temp`. */
+	whiteBalance?: string | null,
+	colorTemp?: number | null,
+	wbShiftR?: number | null,
+	wbShiftB?: number | null,
+	highlightTone?: number | null,
+	shadowTone?: number | null,
+	color?: number | null,
+	sharpness?: number | null,
+	/**  "High ISO NR"; older posts call it "Noise Reduction". */
+	highIsoNr?: number | null,
+	clarity?: number | null,
+	/**  Monochromatic Color, warm (+) to cool (-). */
+	monochromaticColorWc?: number | null,
+	/**  Monochromatic Color, magenta (+) to green (-). */
+	monochromaticColorMg?: number | null,
+};
 
 export type Snapshot = Snapshot_Serialize | Snapshot_Deserialize;
 
@@ -202,6 +354,12 @@ export type Snapshot_Serialize = {
 	sessionPath: string | null,
 	fake: boolean,
 	noisy: number[],
+};
+
+export type Source = {
+	name: string,
+	url: string,
+	credit: string,
 };
 
 export type Status = {
@@ -241,6 +399,25 @@ export type Value = { kind: "int"; v: number } | { kind: "str"; v: string } | { 
  *  properties), as lowercase hex.
  */
 { kind: "raw"; v: string };
+
+/**  One line the parser could not use as it stands. Nothing is dropped without one. */
+export type Warning = {
+	kind: WarningKind,
+	/**  The label as written; empty for an unlabelled line. */
+	label: string,
+	value: string,
+	message: string,
+};
+
+export type WarningKind = 
+/**  A `Label: value` line whose label is not a known setting. */
+"unknownLabel" | 
+/**  A known label whose value could not be read, or was read only in part. */
+"badValue" | 
+/**  A line with no label that is not a film simulation name. */
+"unlabelled" | 
+/**  A setting given twice; the first value is kept. */
+"duplicate";
 
 export type WriteOutcome = {
 	code: number,

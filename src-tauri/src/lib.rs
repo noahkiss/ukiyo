@@ -1,6 +1,7 @@
 pub mod camera;
 pub mod catalog;
 pub mod lab;
+pub mod recipes;
 
 use camera::owner::WriteOutcome;
 use camera::ptp::Value;
@@ -69,6 +70,13 @@ fn lab_fake(lab: LabState<'_>, action: FakeAction) -> Result<(), String> {
     lab.fake(action)
 }
 
+/// Parses pasted recipe text into slot settings, notes and per-field warnings.
+#[tauri::command]
+#[specta::specta]
+fn recipe_parse(text: String) -> recipes::Parsed {
+    recipes::parse_text(&text)
+}
+
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
@@ -81,7 +89,10 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             lab_label,
             lab_note,
             lab_fake,
+            recipe_parse,
         ])
+        // The bundled catalogue's shape; the window imports the JSON itself.
+        .typ::<recipes::catalogue::Catalogue>()
         .events(tauri_specta::collect_events![lab::LabStatus, lab::LabProps, lab::LabChanges, lab::CatalogChanged])
         // Wall-clock ms and codes fit a JS number.
         .dangerously_cast_bigints_to_number()
