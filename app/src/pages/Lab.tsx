@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { commands, events, type ChangeGroup, type FakeAction, type LabelPatch, type PropRow, type Status, type Value } from "./bindings";
-import { entry, type Catalog } from "./lib/decode";
-import { StatusBar } from "./views/StatusBar";
-import { FakeBar } from "./views/FakeBar";
-import { PropTable, type Filter } from "./views/PropTable";
-import { ChangeFeed } from "./views/ChangeFeed";
-import { LabelPanel, type LabelTarget } from "./views/LabelPanel";
+import { commands, events, type ChangeGroup, type FakeAction, type LabelPatch, type PropRow, type Value } from "../bindings";
+import { entry, type Catalog } from "../lib/decode";
+import { inTauri, useCamera } from "../lib/camera";
+import { useToast } from "../lib/toast";
+import { PageHead } from "../shell/PageHead";
+import { StatusActions, StatusFacts } from "../views/StatusBar";
+import { FakeBar } from "../views/FakeBar";
+import { PropTable, type Filter } from "../views/PropTable";
+import { ChangeFeed } from "../views/ChangeFeed";
+import { LabelPanel, type LabelTarget } from "../views/LabelPanel";
 
 const PINNED_KEY = "ukiyo.pinned";
 const MENU_KEY = "ukiyo.lastMenu";
@@ -29,8 +32,10 @@ function save(key: string, v: unknown) {
 
 export type Selection = { kind: "row"; code: number } | { kind: "group"; id: number; code: number };
 
-export function App() {
-  const [status, setStatus] = useState<Status | null>(null);
+/** The live property mapper. It stays mounted while other pages show, so the session's feed
+ * and notes survive navigation; `active` gates its keyboard shortcuts. */
+export function Lab({ active }: { active: boolean }) {
+  const { status } = useCamera();
   const [rows, setRows] = useState<Map<number, PropRow>>(new Map());
   const [groups, setGroups] = useState<ChangeGroup[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -46,7 +51,6 @@ export function App() {
   const [selected, setSelected] = useState<Selection | null>(null);
   const [target, setTarget] = useState<LabelTarget | null>(null);
   const [lastMenu, setLastMenu] = useState<string>(() => load(MENU_KEY, ""));
-  const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const searchRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLInputElement>(null);
@@ -55,25 +59,21 @@ export function App() {
   pendingRef.current = pendingNote;
   noisyRef.current = noisy;
 
-  const flash = useCallback((msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast((t) => (t === msg ? null : t)), 4000);
-  }, []);
+  const flash = useToast();
 
   useEffect(() => {
     let cancelled = false;
     const un: Array<() => void> = [];
     (async () => {
+      if (!inTauri) return;
       const s = await commands.labSnapshot();
       if (cancelled) return;
-      setStatus(s.status);
       setRows(new Map(s.rows.map((r) => [r.code, r])));
       setGroups(s.groups);
       setCatalog(s.catalog);
       setCatalogPath(s.catalogPath);
       setFake(s.fake);
       setNoisy(new Set(s.noisy));
-      un.push(await events.labStatus.listen((e) => setStatus(e.payload)));
       un.push(await events.labProps.listen((e) => setRows(new Map(e.payload.map((r) => [r.code, r])))));
       un.push(await events.catalogChanged.listen((e) => setCatalog(e.payload as Catalog | null)));
       un.push(
@@ -111,7 +111,7 @@ export function App() {
 
   useEffect(() => {
     save(PINNED_KEY, [...pinned]);
-    void commands.labPin([...pinned]);
+    if (inTauri) void commands.labPin([...pinned]);
   }, [pinned]);
 
   const togglePin = useCallback((code: number) => {
@@ -177,6 +177,7 @@ export function App() {
 
   // Keyboard first: / search, n note, j/k move in the feed, l or Enter label, p pin, Esc close.
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       const typing = el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
@@ -208,15 +209,18 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [target, selected, visibleGroups, openLabel, togglePin]);
+  }, [active, target, selected, visibleGroups, openLabel, togglePin]);
 
   const targetRow = target ? rows.get(target.code) : undefined;
 
   return (
-    <div className="app" data-component="lab">
-      <StatusBar status={status} catalogPath={catalogPath} onExport={exportDump} />
+    <div className="page lab" data-component="lab" hidden={!active}>
+      <PageHead title="Lab" sub="Every camera property, read live. Change something on the camera and watch it here.">
+        <StatusActions status={status} onExport={exportDump} />
+      </PageHead>
+      <StatusFacts status={status} catalogPath={catalogPath} />
       {fake && <FakeBar onAction={fakeAction} />}
-      <main className="panes">
+      <div className="lab-body">
         <PropTable
           rows={rows}
           catalog={catalog}
@@ -233,39 +237,36 @@ export function App() {
           onLabel={(code) => openLabel({ kind: "row", code })}
           now={now}
         />
-        <ChangeFeed
-          groups={visibleGroups}
-          catalog={catalog}
-          notes={notes}
-          showNoisy={showNoisy}
-          setShowNoisy={setShowNoisy}
-          pendingNote={pendingNote}
-          setPendingNote={setPendingNote}
-          noteRef={noteRef}
-          selected={selected}
-          onSelect={setSelected}
-          onLabel={openLabel}
-        />
-      </main>
-      {target && (
-        <LabelPanel
-          key={`${target.code}:${target.group ?? "row"}`}
-          target={target}
-          row={targetRow}
-          entry={entry(catalog, target.code)}
-          catalog={catalog}
-          lastMenu={lastMenu}
-          connected={status?.link === "connected" && status.screen !== "menu"}
-          onSave={saveLabel}
-          onWrite={write}
-          onClose={() => setTarget(null)}
-        />
-      )}
-      {toast && (
-        <div className="toast" role="status" data-component="toast">
-          {toast}
-        </div>
-      )}
+        <aside className="lab-aside">
+          {target && (
+            <LabelPanel
+              key={`${target.code}:${target.group ?? "row"}`}
+              target={target}
+              row={targetRow}
+              entry={entry(catalog, target.code)}
+              catalog={catalog}
+              lastMenu={lastMenu}
+              connected={status?.link === "connected" && status.screen !== "menu"}
+              onSave={saveLabel}
+              onWrite={write}
+              onClose={() => setTarget(null)}
+            />
+          )}
+          <ChangeFeed
+            groups={visibleGroups}
+            catalog={catalog}
+            notes={notes}
+            showNoisy={showNoisy}
+            setShowNoisy={setShowNoisy}
+            pendingNote={pendingNote}
+            setPendingNote={setPendingNote}
+            noteRef={noteRef}
+            selected={selected}
+            onSelect={setSelected}
+            onLabel={openLabel}
+          />
+        </aside>
+      </div>
     </div>
   );
 }

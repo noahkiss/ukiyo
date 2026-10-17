@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { Confidence, LabelPatch, PropRow, Value, WriteOutcome } from "../bindings";
 import { display, formValues, hex, rawText, TYPE_NAMES, valueKey, type Catalog, type Entry } from "../lib/decode";
+import { CloseIcon } from "../shell/icons";
 
 export type LabelTarget = { code: number; old?: Value | null; new?: Value | null; group?: number };
 
@@ -16,7 +17,11 @@ type Props = {
   onClose: () => void;
 };
 
-const CONFIDENCE: Confidence[] = ["confirmed", "likely", "guess"];
+const CONFIDENCE: Array<[Confidence, string]> = [
+  ["confirmed", "Confirmed"],
+  ["likely", "Likely"],
+  ["guess", "Guess"],
+];
 
 export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, onSave, onWrite, onClose }: Props) {
   const nameRef = useRef<HTMLInputElement>(null);
@@ -62,16 +67,18 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
   };
 
   return (
-    <aside className="panel" role="dialog" aria-modal="false" aria-labelledby="label-title" onKeyDown={onKey} data-component="label-panel">
+    <section className="card panel" role="dialog" aria-modal="false" aria-labelledby="label-title" onKeyDown={onKey} data-component="label-panel">
       <div className="panel-head">
-        <h2 id="label-title">
+        <h2 id="label-title" className="mono">
           {hex(target.code)}
-          {row && <span className="muted"> · {TYPE_NAMES[row.datatype] ?? "array"}{row.writable ? " · rw" : " · ro"}</span>}
         </h2>
-        <button type="button" className="icon" onClick={onClose} aria-label="Close" title="Close (Esc)">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
+        {row && (
+          <span className="muted small">
+            {TYPE_NAMES[row.datatype] ?? "array"} · {row.writable ? "read and write" : "read only"}
+          </span>
+        )}
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close" title="Close (Esc)">
+          <CloseIcon />
         </button>
       </div>
       <form
@@ -82,7 +89,7 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
         }}
       >
         <label className="field">
-          <span>Name</span>
+          <span>Label</span>
           <input ref={nameRef} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ColorChromeEffect" />
         </label>
         <label className="field">
@@ -113,11 +120,11 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
         )}
         <fieldset className="field">
           <legend>Confidence</legend>
-          <div className="segmented">
-            {CONFIDENCE.map((c) => (
+          <div className="seg segmented">
+            {CONFIDENCE.map(([c, label]) => (
               <label key={c} className={confidence === c ? "on" : undefined}>
                 <input type="radio" name="confidence" value={c} checked={confidence === c} onChange={() => setConfidence(c)} />
-                {c}
+                {label}
               </label>
             ))}
           </div>
@@ -127,7 +134,7 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
           <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
         <div className="panel-actions">
-          <button type="submit" className="primary" data-action="save-label">
+          <button type="submit" className="btn primary" data-action="save-label">
             Save label
           </button>
           <span className="muted">⌘↩</span>
@@ -135,7 +142,7 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
         {entry?.source && <p className="muted small">Source: {entry.source}</p>}
       </form>
       {row && row.writable && row.available && <WriteBox row={row} entry={entry} connected={connected} onWrite={onWrite} />}
-    </aside>
+    </section>
   );
 }
 
@@ -169,7 +176,7 @@ function WriteBox({ row, entry, connected, onWrite }: { row: PropRow; entry: Ent
   if (options.length === 1 && !range) return null;
   return (
     <section className="writebox" aria-label="Write" data-component="write-box">
-      <h3>Write to camera</h3>
+      <h3>Write a value</h3>
       <div className="write-row">
         {options.length ? (
           <select value={choice} onChange={(e) => (setChoice(e.target.value), setConfirming(false))} aria-label="New value">
@@ -194,15 +201,15 @@ function WriteBox({ row, entry, connected, onWrite }: { row: PropRow; entry: Ent
           <input value={choice} onChange={(e) => (setChoice(e.target.value), setConfirming(false))} aria-label="New value" />
         )}
         {!confirming ? (
-          <button type="button" disabled={!connected || !chosen || same || busy} onClick={() => setConfirming(true)} data-action="write">
+          <button type="button" className="btn primary" disabled={!connected || !chosen || same || busy} onClick={() => setConfirming(true)} data-action="write">
             Write…
           </button>
         ) : (
           <>
-            <button type="button" className="primary" disabled={busy} onClick={go} data-action="confirm-write">
+            <button type="button" className="btn primary" disabled={busy} onClick={go} data-action="confirm-write">
               Write {display(entry, row.value)} → {chosen ? display(entry, chosen) : ""}
             </button>
-            <button type="button" className="quiet" onClick={() => setConfirming(false)}>
+            <button type="button" className="btn text" onClick={() => setConfirming(false)}>
               Cancel
             </button>
           </>

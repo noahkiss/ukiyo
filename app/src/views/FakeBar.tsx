@@ -18,11 +18,11 @@ export function FakeBar({ onAction }: { onAction: (a: FakeAction) => void }) {
     <nav className="fakebar" aria-label="Fake camera" data-component="fake-bar">
       <span className="fakebar-title">Fake camera</span>
       {ACTIONS.map(([a, label]) => (
-        <button key={a} type="button" className="quiet" onClick={() => onAction(a)} data-action={`fake-${a}`}>
+        <button key={a} type="button" className="btn small raised" onClick={() => onAction(a)} data-action={`fake-${a}`}>
           {label}
         </button>
       ))}
-      <label className="switch">
+      <label className="check small">
         <input
           type="checkbox"
           checked={auto}

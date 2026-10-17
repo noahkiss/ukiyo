@@ -41,54 +41,61 @@ function ms(n: number | null): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)} s` : `${n.toFixed(n < 10 ? 1 : 0)} ms`;
 }
 
-export function StatusBar({ status, catalogPath, onExport }: { status: Status | null; catalogPath: string | null; onExport: () => void }) {
-  if (!status) return <header className="status" data-component="status-bar" />;
+/** The link state and what the camera reports, under the Lab's title. */
+export function StatusFacts({ status, catalogPath }: { status: Status | null; catalogPath: string | null }) {
+  if (!status) return <div className="lab-status" data-component="status-bar" />;
+  const connected = status.link === "connected" || status.link === "busy";
+  return (
+    <div className="lab-status" data-component="status-bar" data-state={status.link}>
+      <span className="link badge" data-state={status.link}>
+        {linkText(status)}
+      </span>
+      {status.model && (
+        <span title={catalogPath ? `Catalog: ${catalogPath}` : undefined}>
+          {status.model}
+          {status.firmware ? ` · firmware ${status.firmware}` : ""}
+        </span>
+      )}
+      {connected && status.mode && <span>{MODE[status.mode]}</span>}
+      {connected && status.capture && <span>{status.capture === "stills" ? "Stills" : "Movie"}</span>}
+      {connected && status.screen && (
+        <span className={status.screen === "menu" ? "badge warn" : undefined} data-state={status.screen}>
+          {SCREEN[status.screen]}
+        </span>
+      )}
+      {connected && (
+        <span className="timing mono" title={`${status.hot} hot codes, ${status.readable} readable`}>
+          cycle {ms(status.cycleMs)} · sweep {ms(status.sweepMs)} · {ms(status.opMs)}/op
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** The Lab's header controls: keep awake, export, connect. */
+export function StatusActions({ status, onExport }: { status: Status | null; onExport: () => void }) {
+  if (!status) return null;
   const connected = status.link === "connected" || status.link === "busy";
   const ka = status.keepAwake;
   return (
-    <header className="status" data-component="status-bar" data-state={status.link}>
-      <div className="status-facts">
-        <span className="link" data-state={status.link}>
-          {linkText(status)}
-        </span>
-        {status.model && (
-          <span title={catalogPath ? `Catalog: ${catalogPath}` : undefined}>
-            {status.model}
-            {status.firmware ? ` · fw ${status.firmware}` : ""}
-          </span>
-        )}
-        {connected && status.mode && <span>{MODE[status.mode]}</span>}
-        {connected && status.capture && <span>{status.capture === "stills" ? "Stills" : "Movie"}</span>}
-        {connected && status.screen && (
-          <span className={status.screen === "menu" ? "warn" : undefined} data-state={status.screen}>
-            {SCREEN[status.screen]}
-          </span>
-        )}
-        {connected && (
-          <span className="timing" title={`${status.hot} hot codes, ${status.readable} readable`}>
-            cycle {ms(status.cycleMs)} · sweep {ms(status.sweepMs)} · {ms(status.opMs)}/op
-          </span>
-        )}
-      </div>
-      <div className="status-actions">
-        <label className="switch">
-          <input type="checkbox" checked={ka.enabled} onChange={(e) => void commands.labKeepAwake(e.target.checked)} data-action="keep-awake" />
-          Keep camera awake
-          {ka.previous != null && <span className="muted"> · auto power off was {AUTO_OFF[ka.previous] ?? ka.previous}</span>}
-        </label>
-        <button type="button" onClick={onExport} disabled={!connected} data-action="export">
-          Export dump
+    <>
+      <label className="check">
+        <input type="checkbox" checked={ka.enabled} onChange={(e) => void commands.labKeepAwake(e.target.checked)} data-action="keep-awake" />
+        Keep camera awake
+        {ka.previous != null && <span className="muted"> · auto power off was {AUTO_OFF[ka.previous] ?? ka.previous}</span>}
+      </label>
+      <button type="button" className="btn" onClick={onExport} disabled={!connected} data-action="export">
+        Export dump
+      </button>
+      {status.link === "stopped" ? (
+        <button type="button" className="btn" onClick={() => void commands.labConnect(true)} data-action="connect">
+          Connect
         </button>
-        {status.link === "stopped" ? (
-          <button type="button" onClick={() => void commands.labConnect(true)} data-action="connect">
-            Connect
-          </button>
-        ) : (
-          <button type="button" onClick={() => void commands.labConnect(false)} data-action="disconnect">
-            Disconnect
-          </button>
-        )}
-      </div>
-    </header>
+      ) : (
+        <button type="button" className="btn" onClick={() => void commands.labConnect(false)} data-action="disconnect">
+          Disconnect
+        </button>
+      )}
+    </>
   );
 }
