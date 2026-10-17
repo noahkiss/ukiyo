@@ -1,6 +1,6 @@
 import Foundation
 
-/// PTP containers and datasets, little-endian. Mirrors src-tauri/src/camera/ptp.rs.
+/// PTP containers and datasets, little-endian. Mirrors src-tauri/core/src/camera/ptp.rs.
 enum PTP {
     static let getDeviceInfo: UInt16 = 0x1001
     static let getPropDesc: UInt16 = 0x1014

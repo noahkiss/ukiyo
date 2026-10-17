@@ -7,7 +7,7 @@ Usage: seed_xt5.py LOCAL_DIR [--force]
   LOCAL_DIR holds props-tether.json, props-movie.json, props-backupmode.json and fuji-names.json.
 
 Writes ../../catalog/x-t5.json (refuses to overwrite it without --force, since lab sessions
-edit it) and ../../src-tauri/src/camera/fake_x-t5.json. Neither file carries a current value,
+edit it) and ../../src-tauri/core/src/camera/fake_x-t5.json. Neither file carries a current value,
 serial number or owner string: the catalog holds names and shapes, the fake shape holds
 codes, types, forms and made-up values.
 """
@@ -172,7 +172,7 @@ def main():
         sys.exit(f"{out} exists; pass --force to replace it (it may hold lab labels)")
     out.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n")
     fake = {"model": meta["model"], "manufacturer": meta["manufacturer"], "firmware": "9.99", "properties": shape}
-    (ROOT / "src-tauri" / "src" / "camera" / "fake_x-t5.json").write_text(json.dumps(fake, indent=1) + "\n")
+    (ROOT / "src-tauri" / "core" / "src" / "camera" / "fake_x-t5.json").write_text(json.dumps(fake, indent=1) + "\n")
     print(f"{len(codes)} codes; {sum(1 for p in catalog_props.values() if p.get('name'))} named")
 
 

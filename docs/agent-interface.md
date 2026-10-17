@@ -1,6 +1,7 @@
 # Agent interface: CLI and MCP
 
-A design for the `ukiyo` command line tool and its MCP server. Nothing here is built yet. The
+A design for the `ukiyo` command line tool and its MCP server. Stage 1 (the core crate and
+`api`) is built; the rest is not (section 8). The
 bm task is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool
 surface, search then read, and plan then apply for every camera write.
 
@@ -30,13 +31,30 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
    (window)             human + --json          MCP tools
 ```
 
-- `ukiyo-core` takes over `src-tauri/src/camera/`, `catalog.rs`, `recipes/` and the non-Tauri
-  part of `lab.rs`. It adds three modules:
-  - `library`: presets, favourites, snapshots, user recipes, camera history, and preferences.
-  - `plan`: builds, checks and applies multi-property changes.
-  - `api`: one request enum and one response enum. Every front end speaks only this.
-- `src-tauri/` keeps the window glue: Tauri commands, events and specta bindings. Each command
-  becomes a one-line call into `api`.
+- `ukiyo-core` lives in `src-tauri/core/`, a member of the Cargo workspace rooted at
+  `src-tauri/Cargo.toml` (QuadCam keeps its sim crate the same way). `cargo test` and
+  `cargo clippy` in `src-tauri/` cover both crates. The core has no Tauri dependency; it keeps
+  `specta` so its types still export to `app/src/bindings.ts`.
+- The core holds `camera/`, `catalog.rs`, `recipes/` (with `examples/recipes_refresh.rs`) and
+  `lab.rs`. Three modules are planned or built:
+  - `library` (stage 6): presets, favourites, snapshots, user recipes, camera history, and
+    preferences.
+  - `plan` (stage 4): builds, checks and applies multi-property changes.
+  - `api` (built): every front end speaks only this.
+    - `Request`, one variant per method: `{"method": "lab_write", "params": {...}}`.
+    - `Response`, the variant of the same name: `{"method": "lab_write", "result": {...}}`.
+    - `Error`, a `code` and a `message`. Today the codes are `failed` and `no_fake_camera`;
+      section 5's codes come with stage 4.
+    - `Event`: `status`, `props`, `changes`, `catalog`, as `{"event": ..., "data": ...}`.
+      Stage 2's `subscribe` sends these.
+    - `call::<method>`, one typed function per method, and `dispatch(&Lab, Request)`. The
+      Tauri commands call `call`; the socket (stage 2) and MCP (stage 5) will call `dispatch`.
+    - Method names are the window's command names (`lab_snapshot`, `lab_write`, `lab_pin`,
+      `lab_keep_awake`, `lab_connect`, `lab_export`, `lab_label`, `lab_note`, `lab_fake`,
+      `recipe_parse`). New methods for the CLI and MCP join the same enums.
+- `src-tauri/src/` keeps the window glue: Tauri commands, the four Tauri events
+  (`events.rs`), specta bindings, and the data folder move. Each command is a one-line call
+  into `api::call`.
 - The CLI and the MCP server are one binary, `ukiyo`. `ukiyo mcp` starts the MCP server.
 
 ### One USB owner
@@ -530,7 +548,8 @@ Each stage ships on its own and keeps `cargo test` and clippy green. Start after
 work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
 
 1. **Core crate.** Move the camera, catalog, recipes and Lab logic into `ukiyo-core`. Add the
-   `api` request and response enums. The app calls `api`; no behaviour changes.
+   `api` request and response enums. The app calls `api`; no behaviour changes. Done
+   2026-10-17: `src-tauri/core/`, section 2.
 2. **Shared owner.** `ukiyo serve` with `owner.lock`, `ukiyo.sock`, events, spawn on demand
    and idle exit. The app becomes a client: its Tauri commands forward to the socket, and its
    events come from `subscribe`. No behaviour change in the window.

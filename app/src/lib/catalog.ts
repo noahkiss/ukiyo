@@ -1,5 +1,5 @@
 // The bundled recipe catalogue (catalog/recipes/catalog.json, merged from the per-source
-// files by src-tauri/examples/recipes_refresh.rs), and the step from parsed settings to a
+// files by src-tauri/core/examples/recipes_refresh.rs), and the step from parsed settings to a
 // Recipe. Settings and links only; each recipe credits its first publisher. The file is
 // about 1 MB, so it loads in its own chunk the first time a page asks for it.
 import { useEffect, useState } from "react";

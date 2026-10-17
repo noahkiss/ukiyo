@@ -35,7 +35,7 @@ struct Args {
 }
 
 fn args() -> Args {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_path_buf();
     let mut a = Args { sources: Vec::new(), max_page: None, offline: false, build_only: false, root };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {

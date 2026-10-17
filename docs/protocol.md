@@ -54,7 +54,7 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
 
 ## How the app polls
 
-The app's connection owner (`src-tauri/src/camera/owner.rs`) follows these rules; they are the
+The app's connection owner (`src-tauri/core/src/camera/owner.rs`) follows these rules; they are the
 facts above turned into behaviour. Not yet run against a camera.
 
 - One thread owns the session. Writes go ahead of every other request, and each write is

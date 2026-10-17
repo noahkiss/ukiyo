@@ -48,13 +48,16 @@ cd ../app && pnpm build
 
 | Path | Holds |
 |---|---|
-| `src-tauri/src/camera/` | The PTP core: `ptp` framing, `usb` (nusb), `fake`, `owner` (the one connection thread) |
-| `src-tauri/src/catalog.rs` | Catalog load, label, save |
-| `src-tauri/src/lab.rs` | The Lab: mirror for the window, session log, export, the fake camera's controls |
+| `src-tauri/core/` | `ukiyo-core`, the Rust core with no Tauri in it; the modules below |
+| `src-tauri/core/src/api.rs` | The requests, responses and events every front end speaks |
+| `src-tauri/src/` | The window's glue: Tauri commands (one call each into `api`), events, bindings |
+| `src-tauri/core/src/camera/` | The PTP core: `ptp` framing, `usb` (nusb), `fake`, `owner` (the one connection thread) |
+| `src-tauri/core/src/catalog.rs` | Catalog load, label, save |
+| `src-tauri/core/src/lab.rs` | The Lab: mirror for the window, session log, export, the fake camera's controls |
 | `app/` | The window: React, TypeScript, Vite |
 | `catalog/` | One JSON file per camera model (`docs/catalog.md`) |
 | `catalog/recipes/` | Recipe settings from Fuji X Weekly, film.recipes and H-P Chavaz's recipe database, with a link to each post (`docs/recipes.md`) |
-| `src-tauri/src/recipes/` | The recipe text parser, the source adapters and the de-duplicating merge |
+| `src-tauri/core/src/recipes/` | The recipe text parser, the source adapters and the de-duplicating merge |
 | `docs/protocol.md` | What is known about the camera's PTP interface |
 | `tools/ptp/` | The Python discovery scripts the Rust core was ported from |
 | `tools/catalog/seed_xt5.py` | Seeds `catalog/x-t5.json` and the fake camera's shape from local dumps |

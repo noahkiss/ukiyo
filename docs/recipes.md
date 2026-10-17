@@ -139,7 +139,7 @@ the counts and the most common warnings, then the merge counts and the near-dupl
 
 ## Adding a source
 
-Add `src-tauri/src/recipes/sources/<id>.rs` with a `SOURCE`: its `SourceInfo` and how to
+Add `src-tauri/core/src/recipes/sources/<id>.rs` with a `SOURCE`: its `SourceInfo` and how to
 fetch it, `Fetch::Feed` (the feed URL per page, and a function from a feed item to recipes)
 or `Fetch::Csv` (one URL, and a function from the file to recipes). Feed adapters call
 `post_recipes`, which finds the blocks and runs the shared parser. List it in `sources::all`. Sources earlier
@@ -147,7 +147,7 @@ in that list win credit ties on the same date.
 
 ## The parser
 
-`src-tauri/src/recipes/` parses a recipe block, one `Label: value` line per setting. The
+`src-tauri/core/src/recipes/` parses a recipe block, one `Label: value` line per setting. The
 catalogue and the app's paste-text import (`recipe_parse`) use the same code.
 
 - A block is a paragraph, or run of paragraphs, with "Film Simulation:" plus Dynamic
