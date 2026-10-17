@@ -29,7 +29,7 @@ final class Probe: NSObject, ObservableObject {
     private var opening = false
     private var tid: UInt32 = 1
 
-    // Signals for the mode line.
+    // Signals for the mode line, from the latest definite answer in this session.
     private var d381Answers = false
     private var d18eAnswers = false
     private var descRefused = false
@@ -129,14 +129,25 @@ final class Probe: NSObject, ObservableObject {
     private func readProp(_ code: UInt16) async -> Exchange {
         let x = await send(PTP.getPropValue, [UInt32(code)])
         report("GetDevicePropValue \(prop(code))", x)
-        if x.ok {
-            if let v = PTP.scalar(x.data) { line("  \(prop(code)) = \(v)\(meaning(code, v))") }
-            if code == 0xD381 { d381Answers = true }
-            if code == 0xD18E { d18eAnswers = true }
-        }
+        if x.ok, let v = PTP.scalar(x.data) { line("  \(prop(code)) = \(v)\(meaning(code, v))") }
+        // OK and DevicePropNotSupported say which mode this is. Busy, a menu or an error says nothing.
+        let definite = x.error == nil && (x.code == PTP.ok || x.code == PTP.propNotSupported)
+        if definite, code == 0xD381 { d381Answers = x.ok }
+        if definite, code == 0xD18E { d18eAnswers = x.ok }
         updateMode()
         return x
     }
+
+    /// Forgets what the last session said about the mode. The mode can change only while unplugged.
+    private func resetMode() {
+        d381Answers = false
+        d18eAnswers = false
+        descRefused = false
+        mode = "unknown (run Read state)"
+    }
+
+    /// True when the camera answered that the property does not exist in this USB mode.
+    private func notInMode(_ x: Exchange) -> Bool { x.error == nil && x.code == PTP.propNotSupported }
 
     private func writeProp(_ code: UInt16, _ value: Int, width: Int) async -> Exchange {
         let x = await send(PTP.setPropValue, [UInt32(code)], out: PTP.encode(value, width: width))
@@ -166,7 +177,7 @@ final class Probe: NSObject, ObservableObject {
             mode = "USB TETHER SHOOTING FIXED (D381 answers)"
         } else if d18eAnswers {
             mode = descRefused
-                ? "USB RAW CONV./BACKUP RESTORE (D18E answers, descriptors refused 0x2002)"
+                ? "USB RAW CONV./BACKUP RESTORE (D18E answers, descriptors refused)"
                 : "USB RAW CONV./BACKUP RESTORE (D18E answers)"
         } else {
             mode = "unknown (neither D381 nor D18E answered)"
@@ -175,6 +186,11 @@ final class Probe: NSObject, ObservableObject {
 
     private func verdict(_ step: String, _ pass: Bool, _ detail: String = "") {
         line("\(pass ? "PASS" : "FAIL")  \(step)\(detail.isEmpty ? "" : " - \(detail)")")
+    }
+
+    /// A step that does not apply in this USB mode: expected, not a failure.
+    private func skip(_ step: String, _ detail: String) {
+        line("SKIP  \(step) - \(detail)")
     }
 
     // MARK: Steps
@@ -226,7 +242,11 @@ final class Probe: NSObject, ObservableObject {
         line("== Describe D381 ==")
         let x = await send(PTP.getPropDesc, [0xD381])
         report("GetDevicePropDesc D381", x)
-        if x.code == PTP.generalError { descRefused = true; updateMode() }
+        if x.error == nil, let c = x.code {
+            // RAW CONV. mode refuses descriptors: 0x2002 on the Mac, 0x200A on an iPad.
+            descRefused = c == PTP.generalError || c == PTP.propNotSupported
+            updateMode()
+        }
         guard x.ok else { return }
         do {
             let d = try PropDesc.parse(x.data)
@@ -241,6 +261,10 @@ final class Probe: NSObject, ObservableObject {
     func writeTest() async {
         line("== Write test (D381 AUTO POWER OFF) ==")
         let first = await readProp(0xD381)
+        if notInMode(first) {
+            skip("write test", "D381 is not available in this USB mode (not tether mode)")
+            return
+        }
         guard first.ok, let original = PTP.scalar(first.data) else {
             verdict("read D381", false, "no value; not writing")
             return
@@ -276,6 +300,10 @@ final class Probe: NSObject, ObservableObject {
     func recipeRead() async {
         line("== Recipe read (RAW CONV. mode) ==")
         let first = await readProp(0xD18C)
+        if notInMode(first) {
+            skip("recipe read", "D18C is not available in this USB mode (not RAW CONV. mode)")
+            return
+        }
         guard first.ok, let original = PTP.scalar(first.data) else {
             verdict("read D18C", false, "no value; not writing (is the camera in RAW CONV. mode?)")
             return
@@ -295,8 +323,12 @@ final class Probe: NSObject, ObservableObject {
             verdict("read D18D (slot name)", false)
         }
         let field = await readProp(0xD18E)
-        verdict("read D18E (first field)", field.ok,
-                field.ok ? "value \(PTP.scalar(field.data).map(String.init) ?? PTP.hex(field.data))" : "")
+        if notInMode(field) {
+            skip("read D18E (first field)", "slot contents read only in RAW CONV. mode")
+        } else {
+            verdict("read D18E (first field)", field.ok,
+                    field.ok ? "value \(PTP.scalar(field.data).map(String.init) ?? PTP.hex(field.data))" : "")
+        }
 
         if original != 1 || !w.ok {
             let r = await writeProp(0xD18C, original, width: width)
@@ -316,12 +348,12 @@ final class Probe: NSObject, ObservableObject {
         if d381Answers {
             await writeTest()
         } else {
-            line("Skipping write test: D381 did not answer (not tether mode)")
+            skip("write test", "D381 did not answer (not tether mode)")
         }
         if d18eAnswers {
             await recipeRead()
         } else {
-            line("Skipping recipe read: D18E did not answer (not RAW CONV. mode)")
+            skip("recipe read", "D18E did not answer (not RAW CONV. mode)")
         }
         line("Mode: \(mode)")
         line("== Run all done ==")
@@ -361,6 +393,7 @@ extension Probe: ICDeviceBrowserDelegate {
         cameraName = nil
         sessionOpen = false
         opening = false
+        resetMode()
         status = "No camera. Plug one in."
     }
 }
@@ -376,6 +409,7 @@ extension Probe: ICCameraDeviceDelegate {
                 self.status = "Session failed. Replug and tap Connect."
             } else {
                 self.sessionOpen = true
+                self.resetMode()
                 self.status = "Session open."
                 self.line("Session open.")
             }

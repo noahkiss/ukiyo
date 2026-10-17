@@ -23,7 +23,9 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
   `killall PTPCamera` before claiming it.
 - Plain PTP: OpenSession 0x1002, GetDevicePropValue 0x1015, SetDevicePropValue 0x1016.
 - GetDevicePropDesc 0x1014 works in tether mode (types, rw flag, enums, ranges) and fails
-  (0x2002) in RAW CONV. mode, where only values can be read.
+  (0x2002) in RAW CONV. mode, where only values can be read. From an iPad (iOS probe,
+  2026-10-17), RAW CONV. mode answered 0x200A to GetDevicePropDesc D381 and to reads of
+  D22E, D307 and D381.
 - The device advertises no PTP events, so state changes must be polled.
 - Stills properties refuse reads in movie mode and vice versa. Stills: 181 readable; movie: 170.
   Together every one of the 264 properties is readable in one mode or the other.

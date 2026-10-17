@@ -79,17 +79,21 @@ The app never reconnects on its own.
 | Recipe read | Reads D18C, sets D18C = 1, reads D18D (slot name) and D18E (first field), restores D18C | D18C, restored |
 | Run all | All of the above. It skips the write test unless D381 answered, and the recipe read unless D18E answered. | as above |
 
-The **USB mode** line updates as answers come in:
+The **USB mode** line updates as answers come in. It resets when a session opens or the camera
+goes, and follows the latest OK or 0x200A answer for D381 and D18E:
 
 - **USB TETHER SHOOTING FIXED**: D381 answers.
-- **USB RAW CONV./BACKUP RESTORE**: D18E answers. Descriptors are refused with 0x2002.
+- **USB RAW CONV./BACKUP RESTORE**: D18E answers. Descriptors are refused (0x2002 on the Mac,
+  0x200A on an iPad).
 - **unknown**: neither answered. The camera may be in USB CARD READER mode, or iOS blocked the
   commands.
 
 ## Reading the results
 
 Each step logs the response code, the raw response container, and the data bytes. Write and
-recipe steps also log `PASS` or `FAIL` per step.
+recipe steps also log `PASS` or `FAIL` per step. A step logs `SKIP` when its property is not
+available in this USB mode (0x200A): the write test in RAW CONV. mode, the recipe read or its
+D18E field in tether mode.
 
 | Result | Meaning |
 |---|---|
@@ -97,7 +101,7 @@ recipe steps also log `PASS` or `FAIL` per step.
 | error `-21249` | ICReturnPTPNotAuthorizedToSendCommand. iOS refused the raw command. Check that camera control was allowed (Settings > PTP Probe), then unplug, replug and tap Connect. If it persists with control allowed, iOS does not allow raw PTP to this camera. |
 | `0x2019 DeviceBusy` | The camera is about to power off (AUTO POWER OFF). Wait. Do not retry in a loop. |
 | `0xA001` | A menu is open on the camera. Close it and run the step again. |
-| `0x2002 GeneralError` on Describe D381 | Expected in RAW CONV. mode. Values still read. |
+| `0x2002 GeneralError` or `0x200A` on Describe D381 | Expected in RAW CONV. mode. Values still read. |
 | `0x200A DevicePropNotSupported` | The property does not exist in this mode. Tether mode gives this for D18E. |
 | `0x201D` or `0x201C` on a write | The camera rejected the value or its format. Check how the payload went out (below). |
 
