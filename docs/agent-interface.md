@@ -49,28 +49,37 @@ and a socket.
 | `owner.lock` | An exclusive `flock`. The process that holds it is the owner. |
 | `ukiyo.sock` | The owner's Unix socket, mode 0600. Newline-delimited JSON-RPC carrying `api` requests. |
 
-Only two kinds of process can own the camera: the app, or `ukiyo serve` (a headless owner).
-The CLI and the MCP server are always clients of the socket. They never claim USB themselves.
+Only one kind of process ever owns the camera: `ukiyo serve`, the shared layer. The app, the
+CLI and the MCP server are all clients of its socket, and none of them claims USB itself. So
+the app and an agent's CLI work side by side: both see the same camera, the same plans and the
+same live changes, and nothing ever hands the USB connection over. (Owner decision
+2026-10-17. An earlier draft had the app own USB and take over from `serve`; that meant a USB
+release and re-claim on every app start, which is the reconnect pattern protocol.md warns
+about.)
 
 Rules:
 
-1. A process takes `owner.lock` before it claims the USB device, and keeps it until it has
+1. `serve` takes `owner.lock` before it claims the USB device, and keeps it until it has
    closed the session cleanly. The kernel drops a `flock` when a process dies, so a crash
    leaves no stale lock.
-2. The owner serves `ukiyo.sock`. A client connects, sends requests, and reads replies.
-3. A client finds no owner when the connect fails and `owner.lock` is free. It then removes any
-   stale socket and spawns `ukiyo serve --idle-exit 120`. It waits up to 5 s for the socket.
-   It never spawns a second time in one command.
-4. `ukiyo serve` runs the same owner thread as the app (`owner.rs`): polling, the 3 s presence
-   check, the 30 s reopen delay, one USB reset per connect attempt. It exits after 120 s with
-   no client, with a clean disconnect (AUTO POWER OFF restored, session closed).
-5. Hand-off to the app: the app starts and finds `owner.lock` held. It sends `handoff` on the
-   socket. `serve` finishes the request in progress, disconnects cleanly, releases the lock,
-   and exits. The app then takes the lock and serves the same socket path. A client that loses
-   its connection reconnects once and gets `owner_changed` in the log. Plans made on `serve`
-   are lost in the hand-off; `camera_apply` then returns `plan_expired`.
-6. The app quits: it disconnects cleanly and releases the lock. The next client command spawns
-   `serve` (rule 3).
+2. `serve` listens on `ukiyo.sock`. A client connects, sends requests, reads replies, and may
+   `subscribe` to events (property changes, mode changes, connect and disconnect, plan
+   applied, log lines). Every client gets every event, so the app's window shows a change an
+   agent made, live, and the reverse.
+3. A client of any kind (app, CLI, MCP) finds no owner when the connect fails and `owner.lock`
+   is free. It then removes any stale socket and spawns `ukiyo serve` detached (`setsid`, so
+   it outlives the client that started it). It waits up to 5 s for the socket, and never
+   spawns a second time in one command. The app bundles the same `ukiyo` binary and spawns it
+   the same way.
+4. `serve` runs the owner thread (`owner.rs`): polling, the 3 s presence check, the 30 s
+   reopen delay, one USB reset per connect attempt. All requests from all clients go through
+   its one queue, writes first, so two clients can never interleave on the wire.
+5. Lifetime: `serve` stays up while any client is connected. The app counts as a client for as
+   long as it is open. `serve` exits 120 s after the last client leaves, with a clean
+   disconnect (AUTO POWER OFF restored, session closed). Plans live in `serve`, so a plan made
+   in the CLI can be applied from the app's window, and the reverse.
+6. Each request carries an `actor` (`app`, `cli`, `mcp:<client name>`), which goes into the
+   session log and into the events, so the window can show "changed by an agent".
 7. Nothing else touches USB. `tools/ptp/` scripts check `owner.lock` and refuse to run while
    it is held.
 
@@ -297,7 +306,7 @@ Applies a plan made by `camera_plan`. Writes to the camera, reads every value ba
 - Input: `{ plan_id: string }`.
 - Returns: the applied-plan shape in section 3, with `undo_plan_id`.
 - Refuses with `plan_stale` when any planned code changed since the plan, and `plan_expired`
-  after 5 minutes or an owner hand-off. Make a new plan.
+  after 5 minutes or a restart of `serve`. Make a new plan.
 - Stops at the first failed step; later steps are `not_attempted`. Apply `undo_plan_id` to
   revert what was written.
 
@@ -397,8 +406,8 @@ The core enforces every rule here. The front ends only show them.
   - the descriptor says writable, and the code reads in the current mode (owner.rs `write`)
   - the catalog entry is `confirmed`
   - the value is in the descriptor's enum or range, and in the catalog's `values` if it has any
-- `allow_unconfirmed` (CLI `--allow-unconfirmed`) lifts only the `confirmed` rule. The MCP
-  server also needs `ukiyo mcp --allow-unconfirmed` at start, so a client config has to opt in.
+- `allow_unconfirmed` (CLI `--allow-unconfirmed`) lifts only the `confirmed` rule. MCP takes
+  the same per-plan argument, with no start flag.
 - The Lab's write box in the window is the one place that writes unconfirmed codes without a
   flag. That is the mapping tool; agents use the flag instead.
 - Recipe slot fields (D18E-D1A5) are not yet confirmed by a write. Until they are, slot writes
@@ -449,8 +458,8 @@ the Connect page's guide in the window.
 - No tool and no command turns the camera off, resets USB on demand, or retries a connect.
 - `camera connect` only lifts the Lab's stopped state; the owner then follows its 3 s and 30 s
   rules.
-- A client never retries a failed request in a loop. It reconnects to the socket once after
-  `owner_changed`, and spawns `serve` at most once per command.
+- A client never retries a failed request in a loop. It reconnects to the socket once if
+  `serve` restarted, and spawns `serve` at most once per command.
 - Keep-awake writes D381 only through the owner, and the owner restores the old value on a
   clean disconnect.
 
@@ -504,17 +513,16 @@ the Connect page's guide in the window.
 
 ## 7. Open questions
 
-1. **Hand-off.** When the app starts while `ukiyo serve` holds the camera, should the app take
-   over at once (this design), or show "in use by the command line" and wait?
-2. **Confirming by agents.** May an agent set `confidence: confirmed` through `catalog_label`
-   under the evidence rule, or should only a person in the Lab confirm?
-3. **Unconfirmed writes over MCP.** Is the start flag plus a per-plan argument right, or should
-   MCP never write unconfirmed properties?
-4. **App icon from the CLI.** The Dock icon changes only while the app runs, and the Finder icon
-   means writing onto the signed bundle (task-rtkfi0hs). Should `prefs set app-icon` only store
-   the choice, for the app to apply at its next start?
-5. **Install path.** Is a symlink at `~/.local/bin/ukiyo` the right default, or a Homebrew cask
-   that installs the app and links the binary?
+1. ~~Hand-off.~~ Settled 2026-10-17: there is no hand-off. `serve` is the only owner, and the
+   app is a client (section 2, "One USB owner").
+2. ~~Confirming by agents.~~ Settled 2026-10-17: yes, under the evidence rule.
+3. ~~Unconfirmed writes over MCP.~~ Settled 2026-10-17: the MCP server is open, with the same
+   reach as the CLI and no start flag. A plan may still set `allow_unconfirmed`. Every write
+   is still read back and logged, as protection against mistakes rather than abuse.
+4. ~~App icon from the CLI.~~ Settled 2026-10-17: `prefs set app-icon` stores the choice, and
+   the app applies it at its next start.
+5. ~~Install path.~~ Settled 2026-10-17: a Homebrew cask in the owner's tap installs the app,
+   and its `binary` stanza links the bundled `ukiyo` onto PATH, as QuadCam's cask does.
 
 ## 8. Implementation stages
 
@@ -523,11 +531,12 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
 
 1. **Core crate.** Move the camera, catalog, recipes and Lab logic into `ukiyo-core`. Add the
    `api` request and response enums. The app calls `api`; no behaviour changes.
-2. **Socket and read-only CLI.** The app takes `owner.lock` and serves `ukiyo.sock`. The `ukiyo`
-   binary ships with `status`, `settings` (read), `camera watch`, `catalog show`, `log show`,
-   `help modes`, `--json` and exit codes. It needs the app running.
-3. **Headless owner.** `ukiyo serve`, spawn on demand, idle exit, and the hand-off to the app.
-   The CLI now works with the app closed. `tools/ptp/` scripts check the lock.
+2. **Shared owner.** `ukiyo serve` with `owner.lock`, `ukiyo.sock`, events, spawn on demand
+   and idle exit. The app becomes a client: its Tauri commands forward to the socket, and its
+   events come from `subscribe`. No behaviour change in the window.
+3. **Read-only CLI.** `status`, `settings` (read), `camera watch`, `catalog show`, `log show`,
+   `help modes`, `--json` and exit codes, working with the app open or closed. `tools/ptp/`
+   scripts check the lock.
 4. **Plans and gated writes.** The `plan` module, typed errors, the `actor` field in the
    session log. CLI: `settings set`, `owner`, `plan`, `camera connect|disconnect|export`,
    `log note`. The window's Lab write box moves onto plans too.
@@ -539,5 +548,14 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    `library_save`, `library_delete`. The Settings and Hub pages switch from fixtures.
 7. **Recipes.** The user recipe library, catalogue search, `recipe_parse` with URLs, slot reads,
    and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`.
-8. **Packaging.** The `externalBin` in the bundle, the "Install command line tool" button and
-   `ukiyo install`, and the MCP config snippet in the README.
+8. **Packaging,** on QuadCam's pattern (`~/develop/quadcam`, its cask in the owner's tap):
+   - `ukiyo` is an `externalBin` in `Contents/MacOS/`, beside the app's own binary.
+   - The cask in the tap installs the whole thing: `app "ukiyo.app"`, `binary
+     "#{appdir}/ukiyo.app/Contents/MacOS/ukiyo"`, `depends_on arch: :arm64`, and a `zap`
+     covering `~/Library/Application Support/app.ukiyo` and the app's caches.
+   - Self-updates through tauri-plugin-updater, so the cask sets `auto_updates true`.
+   - GitHub releases ship an arm64 zip, and livecheck follows them.
+   - Also from QuadCam: one `api` method table that generates the socket/MCP dispatch and the
+     typed Tauri commands (`api!`), and a schema version with a surface guard test over the
+     MCP and CLI listings.
+   - The README carries the MCP config snippet (`ukiyo mcp`).
