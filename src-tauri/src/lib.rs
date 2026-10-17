@@ -61,9 +61,10 @@ async fn lab_snapshot(app: AppHandle) -> Snapshot {
 /// Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing.
 #[tauri::command]
 #[specta::specta]
-/// `from` plans a library item instead: `preset:<slug>` or `snapshot:<slug>` (a restore).
-async fn plan_create(app: AppHandle, set: indexmap::IndexMap<String, String>, allow_unconfirmed: bool, from: Option<String>) -> Result<Plan, String> {
-    match forward(&app, Request::PlanCreate { set, allow_unconfirmed, from }).await? {
+/// `from` plans a library item instead: `preset:<slug>`, `snapshot:<slug>` (a restore), or a
+/// recipe (`recipe:<slug>`, `cat:<id>`) into `slot` (`C1` to `C7`, USB RAW CONV. mode).
+async fn plan_create(app: AppHandle, set: indexmap::IndexMap<String, String>, allow_unconfirmed: bool, from: Option<String>, slot: Option<String>) -> Result<Plan, String> {
+    match forward(&app, Request::PlanCreate { set, allow_unconfirmed, from, slot }).await? {
         Response::PlanCreate(p) => Ok(*p),
         r => Err(unexpected(r)),
     }
@@ -152,8 +153,9 @@ async fn library_search(app: AppHandle, input: SearchInput) -> Result<Hits, Stri
     }
 }
 
-/// One item in full (`preset:<slug>`, `snapshot:<slug>`, `favourites`, `prefs`, `history`), or
-/// the diff of two snapshots.
+/// One item in full (`recipe:<slug>`, `cat:<id>`, `preset:<slug>`, `snapshot:<slug>`,
+/// `favourites`, `prefs`, `history`), the camera's slots (`slot:C1`, `slots`; RAW CONV. mode),
+/// or the diff of two items.
 #[tauri::command]
 #[specta::specta]
 async fn library_read(app: AppHandle, id: String, compare_to: Option<String>) -> Result<library::Read, String> {
@@ -187,6 +189,35 @@ async fn library_save(app: AppHandle, kind: SaveKind, name: Option<String>, item
     }
 }
 
+/// A recipe as the window saves it (`library_save {kind: recipe}`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct RecipeItem {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<recipes::Settings>,
+    /// Label to value, as a post writes them, over the saved recipe of that name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub set: Option<indexmap::IndexMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<Vec<recipes::Note>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sensor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<library::RecipeSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+}
+
+/// Creates or replaces a library recipe; `from: cat:<id>` copies a catalogue recipe.
+#[tauri::command]
+#[specta::specta]
+async fn recipe_save(app: AppHandle, name: Option<String>, item: Option<RecipeItem>, from: Option<String>) -> Result<Saved, String> {
+    let item = item.map(|i| serde_json::to_value(i).map_err(|e| e.to_string())).transpose()?;
+    match forward(&app, Request::LibrarySave(SaveInput { kind: SaveKind::Recipe, name, item, from })).await? {
+        Response::LibrarySave(s) => Ok(s),
+        r => Err(unexpected(r)),
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn library_delete(app: AppHandle, id: String) -> Result<Trashed, String> {
@@ -215,12 +246,17 @@ async fn prefs_set(app: AppHandle, patch: PrefsPatch) -> Result<Prefs, String> {
     }
 }
 
-// Pure parsing with no shared state, so it runs in the app and works without `serve`.
-/// Parses pasted recipe text into slot settings, notes and per-field warnings.
+// No shared state, so it runs in the app and works without `serve`; a URL is fetched on a
+// blocking thread.
+/// Parses pasted recipe text, or the recipe post at a URL, into slot settings, notes and
+/// per-field warnings.
 #[tauri::command]
 #[specta::specta]
-fn recipe_parse(text: String) -> recipes::Parsed {
-    ukiyo_core::api::call::recipe_parse(&text)
+async fn recipe_parse(text: Option<String>, url: Option<String>) -> Result<recipes::Parsed, String> {
+    tauri::async_runtime::spawn_blocking(move || ukiyo_core::api::call::recipe_parse(text.as_deref(), url.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.message)
 }
 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
@@ -242,6 +278,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             library_search,
             library_read,
             library_save,
+            recipe_save,
             library_delete,
             prefs_get,
             prefs_set,

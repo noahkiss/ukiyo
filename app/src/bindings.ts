@@ -16,24 +16,29 @@ export const commands = {
 	labLabel: (patch: LabelPatch) => typedError<Catalog_Serialize, string>(__TAURI_INVOKE("lab_label", { patch })),
 	labNote: (group: number | null, text: string) => __TAURI_INVOKE<void>("lab_note", { group, text }),
 	labFake: (action: FakeAction) => typedError<null, string>(__TAURI_INVOKE("lab_fake", { action })),
-	/**  Parses pasted recipe text into slot settings, notes and per-field warnings. */
-	recipeParse: (text: string) => __TAURI_INVOKE<Parsed_Serialize>("recipe_parse", { text }),
+	/**
+	 *  Parses pasted recipe text, or the recipe post at a URL, into slot settings, notes and
+	 *  per-field warnings.
+	 */
+	recipeParse: (text: string | null, url: string | null) => typedError<Parsed_Serialize, string>(__TAURI_INVOKE("recipe_parse", { text, url })),
 	/**
 	 *  Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing.
-	 *  `from` plans a library item instead: `preset:<slug>` or `snapshot:<slug>` (a restore).
+	 *  `from` plans a library item instead: `preset:<slug>`, `snapshot:<slug>` (a restore), or a
+	 *  recipe (`recipe:<slug>`, `cat:<id>`) into `slot` (`C1` to `C7`, USB RAW CONV. mode).
 	 */
-	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null) => typedError<Plan, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from })),
+	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null, slot: string | null) => typedError<Plan_Serialize, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from, slot })),
 	/**  Applies a plan: re-checks it, writes each step, reads each back. */
-	planApply: (planId: string) => typedError<Applied, string>(__TAURI_INVOKE("plan_apply", { planId })),
+	planApply: (planId: string) => typedError<Applied_Serialize, string>(__TAURI_INVOKE("plan_apply", { planId })),
 	planDiscard: (planId: string) => __TAURI_INVOKE<void>("plan_discard", { planId }),
 	/**  Input in the window: Ukiyo is in use, so keep-awake runs. */
 	activity: () => __TAURI_INVOKE<void>("activity"),
-	librarySearch: (input: SearchInput) => typedError<Hits, string>(__TAURI_INVOKE("library_search", { input })),
+	librarySearch: (input: SearchInput) => typedError<Hits_Serialize, string>(__TAURI_INVOKE("library_search", { input })),
 	/**
-	 *  One item in full (`preset:<slug>`, `snapshot:<slug>`, `favourites`, `prefs`, `history`), or
-	 *  the diff of two snapshots.
+	 *  One item in full (`recipe:<slug>`, `cat:<id>`, `preset:<slug>`, `snapshot:<slug>`,
+	 *  `favourites`, `prefs`, `history`), the camera's slots (`slot:C1`, `slots`; RAW CONV. mode),
+	 *  or the diff of two items.
 	 */
-	libraryRead: (id: string, compareTo: string | null) => typedError<Read, string>(__TAURI_INVOKE("library_read", { id, compareTo })),
+	libraryRead: (id: string, compareTo: string | null) => typedError<Read_Serialize, string>(__TAURI_INVOKE("library_read", { id, compareTo })),
 	/**
 	 *  Creates or replaces a preset, snapshot or favourite, or restores one from the trash.
 	 *  Never writes to the camera.
@@ -43,6 +48,16 @@ export const commands = {
 	settings: string[] | null,
 	notes: string | null,
 } | null, from: string | null) => typedError<Saved, string>(__TAURI_INVOKE("library_save", { kind, name, item, from })),
+	/**  Creates or replaces a library recipe; `from: cat:<id>` copies a catalogue recipe. */
+	recipeSave: (name: string | null, item: {
+	settings: Settings_Deserialize | null,
+	/**  Label to value, as a post writes them, over the saved recipe of that name. */
+	set: { [key in string]: string } | null,
+	notes: Note[] | null,
+	sensor: string | null,
+	source: RecipeSource_Deserialize | null,
+	comment: string | null,
+} | null, from: string | null) => typedError<Saved, string>(__TAURI_INVOKE("recipe_save", { name, item, from })),
 	libraryDelete: (id: string) => typedError<Trashed, string>(__TAURI_INVOKE("library_delete", { id })),
 	/**  The preferences in `settings.json`. */
 	prefsGet: () => __TAURI_INVOKE<Prefs>("prefs_get"),
@@ -66,17 +81,7 @@ export type Alternative = {
 	value: string,
 };
 
-export type Applied = {
-	plan_id: string,
-	applied: number,
-	failed: number,
-	not_attempted: number,
-	/**  A plan that writes back what this one changed. Apply it to revert. */
-	undo_plan_id: string | null,
-	steps: AppliedStep[],
-	/**  Other codes that changed while the plan was applied. */
-	side_effects: ChangeView[],
-};
+export type Applied = Applied_Serialize | Applied_Deserialize;
 
 /**  One step as applied. */
 export type AppliedStep = {
@@ -96,6 +101,34 @@ export type AppliedStep = {
 	attempts: number,
 	/**  A half-press closed a camera menu before the write went through. */
 	closed_menu?: boolean,
+};
+
+export type Applied_Deserialize = {
+	plan_id: string,
+	applied: number,
+	failed: number,
+	not_attempted: number,
+	/**  A plan that writes back what this one changed. Apply it to revert. */
+	undo_plan_id: string | null,
+	steps: AppliedStep[],
+	/**  Other codes that changed while the plan was applied. */
+	side_effects: ChangeView[],
+	/**  What went wrong around the steps: a slot selector that was not restored. */
+	warnings?: string[],
+};
+
+export type Applied_Serialize = {
+	plan_id: string,
+	applied: number,
+	failed: number,
+	not_attempted: number,
+	/**  A plan that writes back what this one changed. Apply it to revert. */
+	undo_plan_id: string | null,
+	steps: AppliedStep[],
+	/**  Other codes that changed while the plan was applied. */
+	side_effects: ChangeView[],
+	/**  What went wrong around the steps: a slot selector that was not restored. */
+	warnings?: string[],
 };
 
 export type Capture = "stills" | "movie";
@@ -263,6 +296,17 @@ export type Entry_Deserialize = {
 	/**  Connection and capture modes that read it: stills, movie, rawconv. */
 	modes?: string[],
 	notes?: string | null,
+	/**
+	 *  The camera takes a write of this code only while another code holds one of some
+	 *  values (Monochromatic Color needs a monochrome film simulation). Plans set such a
+	 *  prerequisite first, for the time of the write when they must.
+	 */
+	requires?: Requirement_Deserialize[],
+	/**
+	 *  Writing this code sets another code on the camera (choosing ACROS sets Color to 0).
+	 *  Plans write that other code after this one.
+	 */
+	resets?: Reset_Deserialize[],
 };
 
 export type Entry_Serialize = {
@@ -281,6 +325,17 @@ export type Entry_Serialize = {
 	/**  Connection and capture modes that read it: stills, movie, rawconv. */
 	modes?: string[],
 	notes?: string | null,
+	/**
+	 *  The camera takes a write of this code only while another code holds one of some
+	 *  values (Monochromatic Color needs a monochrome film simulation). Plans set such a
+	 *  prerequisite first, for the time of the write when they must.
+	 */
+	requires?: Requirement_Serialize[],
+	/**
+	 *  Writing this code sets another code on the camera (choosing ACROS sets Color to 0).
+	 *  Plans write that other code after this one.
+	 */
+	resets?: Reset_Serialize[],
 };
 
 /**  Why a request failed (docs/agent-interface.md, section 5, "Typed errors"). */
@@ -355,6 +410,12 @@ export type Favourites = {
 	items?: Favourite[],
 };
 
+export type FieldDiff = {
+	field: string,
+	a: string,
+	b: string,
+};
+
 /**  The value's allowed set, as the descriptor's form says. */
 export type Form = { form: "none" } | { form: "range"; min: Value; max: Value; step: Value } | { form: "enum"; values: Value[] };
 
@@ -380,17 +441,50 @@ export type HistoryView = {
 };
 
 /**  A search hit. */
-export type Hit = {
+export type Hit = Hit_Serialize | Hit_Deserialize;
+
+/**  A search hit. */
+export type Hit_Deserialize = {
 	id: string,
 	kind: string,
 	name: string,
 	summary: string,
 	/**  Wall-clock ms of the last save, or of the trashing for a trashed item. */
 	at: number | null,
+	/**  A recipe's creator and publisher. */
+	credit?: string | null,
+	/**  A recipe's post. */
+	url?: string | null,
+	/**  A recipe's sensor generation: "X-Trans V". */
+	sensor?: string | null,
 };
 
-export type Hits = {
-	items: Hit[],
+/**  A search hit. */
+export type Hit_Serialize = {
+	id: string,
+	kind: string,
+	name: string,
+	summary: string,
+	/**  Wall-clock ms of the last save, or of the trashing for a trashed item. */
+	at: number | null,
+	/**  A recipe's creator and publisher. */
+	credit?: string | null,
+	/**  A recipe's post. */
+	url?: string | null,
+	/**  A recipe's sensor generation: "X-Trans V". */
+	sensor?: string | null,
+};
+
+export type Hits = Hits_Serialize | Hits_Deserialize;
+
+export type Hits_Deserialize = {
+	items: Hit_Deserialize[],
+	total: number,
+	has_more: boolean,
+};
+
+export type Hits_Serialize = {
+	items: Hit_Serialize[],
 	total: number,
 	has_more: boolean,
 };
@@ -465,6 +559,27 @@ export type Note = {
 	value: string,
 };
 
+/**  Another recipe found in the same post. */
+export type OtherRecipe = OtherRecipe_Serialize | OtherRecipe_Deserialize;
+
+/**  Another recipe found in the same post. */
+export type OtherRecipe_Deserialize = {
+	name: string,
+	sensor?: string | null,
+	settings: Settings_Deserialize,
+	notes: Note[],
+	warnings: Warning[],
+};
+
+/**  Another recipe found in the same post. */
+export type OtherRecipe_Serialize = {
+	name: string,
+	sensor?: string | null,
+	settings: Settings_Serialize,
+	notes: Note[],
+	warnings: Warning[],
+};
+
 export type Parsed = Parsed_Serialize | Parsed_Deserialize;
 
 export type Parsed_Deserialize = {
@@ -478,6 +593,13 @@ export type Parsed_Deserialize = {
 	alternatives?: Alternative[],
 	/**  The sensor the first value is for, when the text names it. */
 	sensor?: string | null,
+	/**  From a post (`recipe_parse {url}`): the recipe's name, as its post names it. */
+	name?: string | null,
+	/**  The post the recipe came from. */
+	source_url?: string | null,
+	author?: string | null,
+	/**  Further recipes in the same post (other sensors, or a post that holds several). */
+	others?: OtherRecipe_Deserialize[],
 };
 
 export type Parsed_Serialize = {
@@ -491,9 +613,18 @@ export type Parsed_Serialize = {
 	alternatives?: Alternative[],
 	/**  The sensor the first value is for, when the text names it. */
 	sensor?: string | null,
+	/**  From a post (`recipe_parse {url}`): the recipe's name, as its post names it. */
+	name?: string | null,
+	/**  The post the recipe came from. */
+	source_url?: string | null,
+	author?: string | null,
+	/**  Further recipes in the same post (other sensors, or a post that holds several). */
+	others?: OtherRecipe_Serialize[],
 };
 
-export type Plan = {
+export type Plan = Plan_Serialize | Plan_Deserialize;
+
+export type Plan_Deserialize = {
 	plan_id: string,
 	expires_in_s: number,
 	requires: Requires,
@@ -503,6 +634,36 @@ export type Plan = {
 	/**  Refused by a gate. */
 	blocked: Left[],
 	allow_unconfirmed: boolean,
+	/**
+	 *  The custom slot a slot plan writes: `C3`. The steps then go to that slot: select it
+	 *  (D18C), write, restore D18C.
+	 */
+	slot?: string | null,
+	/**  What a slot plan's recipe is: `recipe:<slug>` or `cat:<id>`. */
+	recipe?: string | null,
+	/**  Things the plan cannot do as asked, besides blocked steps. */
+	warnings?: string[],
+};
+
+export type Plan_Serialize = {
+	plan_id: string,
+	expires_in_s: number,
+	requires: Requires,
+	steps: Step[],
+	/**  Not written in this camera state, or already at the value. */
+	skipped: Left[],
+	/**  Refused by a gate. */
+	blocked: Left[],
+	allow_unconfirmed: boolean,
+	/**
+	 *  The custom slot a slot plan writes: `C3`. The steps then go to that slot: select it
+	 *  (D18C), write, restore D18C.
+	 */
+	slot?: string | null,
+	/**  What a slot plan's recipe is: `recipe:<slug>` or `cat:<id>`. */
+	recipe?: string | null,
+	/**  Things the plan cannot do as asked, besides blocked steps. */
+	warnings?: string[],
 };
 
 /**
@@ -637,7 +798,24 @@ export type Publication_Serialize = {
 export type RawValue = number | string | number[];
 
 /**  One item as `library_read` returns it. */
-export type Read = { kind: "preset"; item: Preset } | { kind: "snapshot"; item: SettingsSnapshot } | { kind: "favourites"; item: Favourites } | { kind: "prefs"; item: Prefs } | { kind: "history"; item: HistoryView[] } | { kind: "diff"; item: Diff };
+export type Read = Read_Serialize | Read_Deserialize;
+
+/**  One item as `library_read` returns it. */
+export type Read_Deserialize = { kind: "preset"; item: Preset } | { kind: "snapshot"; item: SettingsSnapshot } | { kind: "favourites"; item: Favourites } | { kind: "prefs"; item: Prefs } | { kind: "history"; item: HistoryView[] } | { kind: "diff"; item: Diff } | { kind: "recipe"; item: Recipe_Deserialize } | { kind: "catalogue"; item: CatalogRecipe_Deserialize } | 
+/**  Two recipes, or a slot and a recipe, field by field. */
+{ kind: "recipediff"; item: RecipeDiff } | 
+/**  Custom slots as the camera holds them. */
+{ kind: "slots"; item: SlotView_Deserialize[] };
+
+/**  One item as `library_read` returns it. */
+export type Read_Serialize = { kind: "preset"; item: Preset } | { kind: "snapshot"; item: SettingsSnapshot } | { kind: "favourites"; item: Favourites } | { kind: "prefs"; item: Prefs } | { kind: "history"; item: HistoryView[] } | { kind: "diff"; item: Diff } | { kind: "recipe"; item: Recipe_Serialize } | { kind: "catalogue"; item: CatalogRecipe_Serialize } | 
+/**  Two recipes, or a slot and a recipe, field by field. */
+{ kind: "recipediff"; item: RecipeDiff } | 
+/**  Custom slots as the camera holds them. */
+{ kind: "slots"; item: SlotView_Serialize[] };
+
+/**  A recipe in the library. */
+export type Recipe = Recipe_Serialize | Recipe_Deserialize;
 
 /**  `catalog/recipes/catalog.json`. */
 export type RecipeCatalog = RecipeCatalog_Serialize | RecipeCatalog_Deserialize;
@@ -664,6 +842,97 @@ export type RecipeCatalog_Serialize = {
 	families: Family_Serialize[],
 };
 
+/**
+ *  A field-by-field comparison of two recipes' settings, with absent settings at the camera
+ *  default (the catalogue's de-duplication rule).
+ */
+export type RecipeDiff = {
+	a: string,
+	b: string,
+	changed: FieldDiff[],
+	same: number,
+};
+
+/**  A recipe as the window saves it (`library_save {kind: recipe}`). */
+export type RecipeItem = RecipeItem_Serialize | RecipeItem_Deserialize;
+
+/**  A recipe as the window saves it (`library_save {kind: recipe}`). */
+export type RecipeItem_Deserialize = {
+	settings: Settings_Deserialize | null,
+	/**  Label to value, as a post writes them, over the saved recipe of that name. */
+	set: { [key in string]: string } | null,
+	notes: Note[] | null,
+	sensor: string | null,
+	source: RecipeSource_Deserialize | null,
+	comment: string | null,
+};
+
+/**  A recipe as the window saves it (`library_save {kind: recipe}`). */
+export type RecipeItem_Serialize = {
+	settings?: Settings_Serialize | null,
+	/**  Label to value, as a post writes them, over the saved recipe of that name. */
+	set?: { [key in string]: string } | null,
+	notes?: Note[] | null,
+	sensor?: string | null,
+	source?: RecipeSource_Serialize | null,
+	comment?: string | null,
+};
+
+/**  Where a library recipe came from. */
+export type RecipeSource = RecipeSource_Serialize | RecipeSource_Deserialize;
+
+/**  Where a library recipe came from. */
+export type RecipeSource_Deserialize = {
+	/**  `cat:<id>` when it was copied from the catalogue. */
+	from?: string | null,
+	/**  The post it was published in. */
+	url?: string | null,
+	/**  Its creator, and the publisher for a catalogue recipe. */
+	credit?: string | null,
+};
+
+/**  Where a library recipe came from. */
+export type RecipeSource_Serialize = {
+	/**  `cat:<id>` when it was copied from the catalogue. */
+	from?: string | null,
+	/**  The post it was published in. */
+	url?: string | null,
+	/**  Its creator, and the publisher for a catalogue recipe. */
+	credit?: string | null,
+};
+
+/**  A recipe in the library. */
+export type Recipe_Deserialize = {
+	schema: number,
+	id: string,
+	name: string,
+	created_at: number | null,
+	updated_at: number | null,
+	settings: Settings_Deserialize,
+	/**  Settings a slot cannot hold: ISO, exposure compensation. */
+	notes?: Note[],
+	sensor?: string | null,
+	source?: RecipeSource_Deserialize | null,
+	/**  The person's own text about it. */
+	comment?: string | null,
+};
+
+/**  A recipe in the library. */
+export type Recipe_Serialize = {
+	schema: number,
+	id: string,
+	name: string,
+	created_at: number | null,
+	updated_at: number | null,
+	settings: Settings_Serialize,
+	/**  Settings a slot cannot hold: ISO, exposure compensation. */
+	notes: Note[],
+	sensor: string | null,
+	source: RecipeSource_Serialize | null,
+	/**  The person's own text about it. */
+	comment: string | null,
+};
+
 /**  Reddit threads that name a recipe, from the hn-app search (`catalog/recipes/reddit.json`). */
 export type RedditCount = {
 	threads: number,
@@ -671,11 +940,53 @@ export type RedditCount = {
 	score: number,
 };
 
+/**  One write condition: `code` must hold one of `values` (raw keys, as in `values`). */
+export type Requirement = Requirement_Serialize | Requirement_Deserialize;
+
+/**  One write condition: `code` must hold one of `values` (raw keys, as in `values`). */
+export type Requirement_Deserialize = {
+	code: string,
+	values: string[],
+	/**
+	 *  The value a plan sets for the time of the write when none of `values` holds; the first
+	 *  of `values` when absent.
+	 */
+	temp?: string | null,
+};
+
+/**  One write condition: `code` must hold one of `values` (raw keys, as in `values`). */
+export type Requirement_Serialize = {
+	code: string,
+	values: string[],
+	/**
+	 *  The value a plan sets for the time of the write when none of `values` holds; the first
+	 *  of `values` when absent.
+	 */
+	temp?: string | null,
+};
+
 /**  The camera state a plan was made in, and needs at apply. */
 export type Requires = {
 	/**  `tether`, `rawconv` ... (`ukiyo help modes`). */
 	mode: string | null,
 	capture: Capture | null,
+};
+
+/**  One camera rule: writing one of `when` (any value when empty) sets `code` to `to`. */
+export type Reset = Reset_Serialize | Reset_Deserialize;
+
+/**  One camera rule: writing one of `when` (any value when empty) sets `code` to `to`. */
+export type Reset_Deserialize = {
+	when?: string[],
+	code: string,
+	to: string,
+};
+
+/**  One camera rule: writing one of `when` (any value when empty) sets `code` to `to`. */
+export type Reset_Serialize = {
+	when?: string[],
+	code: string,
+	to: string,
 };
 
 /**
@@ -705,7 +1016,7 @@ export type SaveItem_Serialize = {
 };
 
 /**  What `library_save` stores. */
-export type SaveKind = "preset" | "snapshot" | "favourite" | "prefs";
+export type SaveKind = "recipe" | "preset" | "snapshot" | "favourite" | "prefs";
 
 export type Saved = {
 	id: string,
@@ -730,10 +1041,18 @@ export type SearchInput = {
 	kind: SearchKind,
 	query?: string | null,
 	limit?: number | null,
+	/**  Recipes: only this sensor generation ("X-Trans V"). */
+	sensor?: string | null,
+	/**  Recipes: only film simulations whose name holds this ("classic chrome"). */
+	film_sim?: string | null,
 };
 
 /**  What `library_search` looks through. */
-export type SearchKind = "preset" | "snapshot" | "favourite" | "trash";
+export type SearchKind = "preset" | "snapshot" | "favourite" | "trash" | 
+/**  The library's recipes. */
+"recipe" | 
+/**  The bundled recipe catalogue, most popular first. */
+"catalogue";
 
 /**
  *  The settings a custom slot holds. Field names follow FilmKit. `None`: the text does not
@@ -831,6 +1150,49 @@ export type Settings_Serialize = {
 	monochromaticColorMg?: number | null,
 };
 
+export type SlotField = {
+	code: string,
+	name: string | null,
+	value: number | null,
+};
+
+/**  A slot as the camera holds it, decoded. */
+export type SlotView = SlotView_Serialize | SlotView_Deserialize;
+
+/**  A slot as the camera holds it, decoded. */
+export type SlotView_Deserialize = {
+	/**  `slot:C3`. */
+	id: string,
+	slot: string,
+	name: string,
+	settings: Settings_Deserialize,
+	/**  Field values this build cannot read as a setting. */
+	warnings: string[],
+	/**  Every field as read: code, catalog name, raw value. */
+	fields: SlotField[],
+	/**  Library recipes (`recipe:<slug>`) whose settings equal the slot's. */
+	matches?: string[],
+	/**  Why this slot could not be read, when it could not. */
+	error?: string | null,
+};
+
+/**  A slot as the camera holds it, decoded. */
+export type SlotView_Serialize = {
+	/**  `slot:C3`. */
+	id: string,
+	slot: string,
+	name: string,
+	settings: Settings_Serialize,
+	/**  Field values this build cannot read as a setting. */
+	warnings: string[],
+	/**  Every field as read: code, catalog name, raw value. */
+	fields: SlotField[],
+	/**  Library recipes (`recipe:<slug>`) whose settings equal the slot's. */
+	matches: string[],
+	/**  Why this slot could not be read, when it could not. */
+	error?: string | null,
+};
+
 export type Snapshot = Snapshot_Serialize | Snapshot_Deserialize;
 
 export type Snapshot_Deserialize = {
@@ -912,6 +1274,12 @@ export type Step = {
 	 *  undo plan.
 	 */
 	gate: string,
+	/**  `set`, `prerequisite` or `restore` (`purpose`). */
+	purpose?: string,
+	/**  What the camera changes by itself when this step is written: "0xd008 Color -> 0". */
+	resets?: string[],
+	/**  Why a prerequisite or restore step is in the plan. */
+	note?: string | null,
 };
 
 /**  The window's theme. */

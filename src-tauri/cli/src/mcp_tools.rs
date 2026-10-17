@@ -10,7 +10,8 @@ Plans write only properties whose catalog confidence is confirmed, unless the pl
 A needs_* error carries a hint and a walkthrough: tell the user how to switch the camera's USB mode or STILL/MOVIE switch; never retry in a loop. \
 When camera_status lists notices (a camera menu open, playback, the switch at MOVIE), pass each text to the user; the camera answers again once they act. \
 Mapping properties: camera_watch shows what changed while the user turns a dial, then catalog_label names it. Plans expire after 5 minutes. \
-The library on this Mac (presets, snapshots, favourite settings, preferences, camera history) is library_search, library_read, library_save and library_delete; none of them writes to the camera. Apply a preset or restore a snapshot with camera_plan {preset} or {snapshot}, then camera_apply.";
+The library on this Mac (recipes, presets, snapshots, favourite settings, preferences, camera history) and the bundled recipe catalogue are library_search, library_read, library_save and library_delete; none of them writes to the camera. Apply a preset or restore a snapshot with camera_plan {preset} or {snapshot}, then camera_apply. \
+Recipes: recipe_parse reads pasted text or a post's URL; library_save {kind: recipe} keeps one; the camera's custom slots C1-C7 are library_read {id: slot:C1} and camera_plan {recipe, slot}, both in USB RAW CONV. mode.";
 
 fn code_list(what: &str) -> Value {
     json!({ "type": "array", "items": { "type": "string", "pattern": "^0x[0-9a-fA-F]{4}$" }, "description": what })
@@ -52,11 +53,13 @@ pub fn tools(fake: bool) -> Vec<Value> {
         }),
         json!({
             "name": "camera_plan",
-            "description": "Builds a change plan against the live camera. Writes nothing.\n\nBest for: every camera write: one setting, several, owner strings, a preset, or a snapshot restore.\nReturns: { plan_id, expires_in_s, requires, steps: [{ code, name, menu, before, after, confidence, gate }], skipped: [{ code, name, value, reason, message }], blocked: [...], allow_unconfirmed }. blocked steps are not written; skipped ones need nothing (unchanged) or another mode.\nQuery tips: give exactly one source: set, preset (preset:<name>) or snapshot (snapshot:<name>, a restore; the plan is also the snapshot's diff against the camera). set maps a name to a value. The name is a catalog name (AutoPowerOff), a menu label (\"AUTO POWER OFF\") or a code (0xd381); the value is a value label (OFF) or a raw number. An unknown or ambiguous name or value fails with the valid choices.\nA plan with nothing to write fails with the reason (unconfirmed_property, needs_tether ...). allow_unconfirmed lets the plan write codes whose catalog confidence is not confirmed: only when the user asks.\nFollow up with camera_apply and the plan_id, after the user agrees to the steps.",
+            "description": "Builds a change plan against the live camera. Writes nothing.\n\nBest for: every camera write: one setting, several, owner strings, a preset, a snapshot restore, or a recipe into a custom slot.\nReturns: { plan_id, expires_in_s, requires, steps: [{ code, name, menu, before, after, confidence, gate }], skipped: [{ code, name, value, reason, message }], blocked: [...], allow_unconfirmed }. blocked steps are not written; skipped ones need nothing (unchanged) or another mode.\nQuery tips: give exactly one source: set, preset (preset:<name>), snapshot (snapshot:<name>, a restore; the plan is also the snapshot's diff against the camera), or recipe (recipe:<name> or cat:<id>) with slot (C1-C7; USB RAW CONV. mode; the whole recipe or nothing). Steps come in a safe order: a step with purpose prerequisite sets what the next step needs for the time of the write, and a restore step puts it back; resets lists what the camera changes by itself. set maps a name to a value. The name is a catalog name (AutoPowerOff), a menu label (\"AUTO POWER OFF\") or a code (0xd381); the value is a value label (OFF) or a raw number. An unknown or ambiguous name or value fails with the valid choices.\nA plan with nothing to write fails with the reason (unconfirmed_property, needs_tether ...). allow_unconfirmed lets the plan write codes whose catalog confidence is not confirmed: only when the user asks.\nFollow up with camera_apply and the plan_id, after the user agrees to the steps.",
             "inputSchema": { "type": "object", "properties": {
                 "set": { "type": "object", "additionalProperties": { "type": "string" }, "minProperties": 1, "description": "{ \"<name or code>\": \"<label or raw value>\" }" },
                 "preset": { "type": "string", "description": "A preset id from library_search: preset:street." },
                 "snapshot": { "type": "string", "description": "A snapshot id from library_search: snapshot:before-trip." },
+                "recipe": { "type": "string", "description": "A recipe id: recipe:<name> or cat:<id>. Needs slot." },
+                "slot": { "type": "string", "enum": ["C1", "C2", "C3", "C4", "C5", "C6", "C7"], "description": "The custom slot a recipe goes to." },
                 "allow_unconfirmed": { "type": "boolean", "default": false },
             }, "additionalProperties": false },
             "annotations": { "title": "Plan a camera change", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false },
@@ -71,41 +74,52 @@ pub fn tools(fake: bool) -> Vec<Value> {
         }),
         json!({
             "name": "library_search",
-            "description": "Searches what Ukiyo keeps on this Mac: presets, snapshots, favourite settings, and the trash.\n\nBest for: finding a preset or snapshot by name before reading or applying it.\nReturns: { items: [{ id, kind, name, summary, at }], total, has_more }. at is wall-clock ms of the last save (of the trashing, for trash).\nQuery tips: query words must all appear in the name (and a preset's setting names); no query lists everything of the kind.\nFollow up with library_read for the full item, or camera_plan {preset} / {snapshot} to apply one.",
+            "description": "Searches what Ukiyo keeps on this Mac (recipes, presets, snapshots, favourite settings, the trash) and the bundled recipe catalogue.\n\nBest for: finding a recipe, preset or snapshot by name, film simulation or sensor before reading or applying it.\nReturns: { items: [{ id, kind, name, summary, at, credit?, url?, sensor? }], total, has_more }. at is wall-clock ms of the last save (of the trashing, for trash). Catalogue items carry their credit and post link, most popular first.\nQuery tips: query words must all appear in the name (a preset's setting names; a recipe's film simulation and credit); no query lists everything of the kind. sensor (\"X-Trans V\") and film_sim (\"classic chrome\") narrow recipes and the catalogue.\nFollow up with library_read for the full item, camera_plan {preset} / {snapshot} to apply one, or camera_plan {recipe, slot}.",
             "inputSchema": { "type": "object", "properties": {
-                "kind": { "type": "string", "enum": ["preset", "snapshot", "favourite", "trash"] },
+                "kind": { "type": "string", "enum": ["recipe", "catalogue", "preset", "snapshot", "favourite", "trash"] },
                 "query": { "type": "string" },
+                "sensor": { "type": "string", "description": "Recipes and catalogue: a sensor generation, X-Trans V." },
+                "film_sim": { "type": "string", "description": "Recipes and catalogue: part of a film simulation name, classic chrome." },
                 "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 20 },
             }, "required": ["kind"], "additionalProperties": false },
             "annotations": { "title": "Search the library", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
         }),
         json!({
             "name": "library_read",
-            "description": "Reads one library item in full, or the diff of two snapshots.\n\nBest for: a preset's settings, a snapshot's values, the favourites, the preferences, or camera history.\nReturns: { kind, item }. kind is preset ({ set: {name: value} }), snapshot ({ model, firmware, mode, capture, values: [{ code, name, value, label }] }), favourites, prefs, history (per camera: shots, per_day, per_month, connects, lenses) or diff ({ added, removed, changed: [{ code, name, a, b, a_label, b_label }], same }).\nQuery tips: id is preset:<name>, snapshot:<name>, favourites, prefs, history or history:<camera id>. compare_to (another snapshot id) returns the diff.\nNot for a snapshot against the live camera: camera_plan {snapshot} is that diff.",
+            "description": "Reads one library item in full, a custom slot on the camera, or the diff of two items.\n\nBest for: a recipe's settings, a catalogue recipe, what the camera's C1-C7 slots hold, a preset's settings, a snapshot's values, the favourites, the preferences, or camera history.\nReturns: { kind, item }. kind is recipe ({ name, settings, notes, sensor, source }), catalogue ({ name, settings, notes, sensor, credit }), slots ([{ slot, name, settings, warnings, matches }]; matches lists library recipes with the same settings), preset ({ set: {name: value} }), snapshot ({ model, firmware, mode, capture, values: [{ code, name, value, label }] }), favourites, prefs, history (per camera: shots, per_day, per_month, connects, lenses), diff ({ added, removed, changed: [{ code, name, a, b, a_label, b_label }], same }) or recipediff ({ changed: [{ field, a, b }], same }).\nQuery tips: id is recipe:<name>, cat:<id>, slot:C1 to slot:C7, slots (all seven), preset:<name>, snapshot:<name>, favourites, prefs, history or history:<camera id>. A slot read needs USB RAW CONV. mode; it selects the slot and puts the selection back. compare_to: another snapshot for a snapshot; a recipe id for a recipe or a slot.\nNot for a snapshot against the live camera: camera_plan {snapshot} is that diff.",
             "inputSchema": { "type": "object", "properties": {
                 "id": { "type": "string" },
-                "compare_to": { "type": "string", "description": "A second snapshot id." },
+                "compare_to": { "type": "string", "description": "A second snapshot id, or a recipe id to compare a recipe or slot with." },
             }, "required": ["id"], "additionalProperties": false },
             "annotations": { "title": "Read a library item", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
         }),
         json!({
             "name": "library_save",
-            "description": "Creates or replaces one item on this Mac, or restores one from the trash. Never writes to the camera.\n\nBest for: saving a preset, taking a snapshot, adding a favourite setting, changing preferences, a note in the session log, a full property dump.\nReturns: { id, kind, replaced, warnings }. A replaced preset or snapshot keeps its old version in the trash for 30 days.\nQuery tips, by kind:\n- preset: name, and item { set: { \"<name or code>\": \"<label or raw>\" } } or item { settings: [\"<name or code>\"] } (their values on the camera now), or from: snapshot:<name>.\n- snapshot: name; reads the camera now (tether mode).\n- favourite: name is the setting (a catalog name, menu label or 0x code).\n- prefs: item { theme: system|light|dark, brand_mark, app_icon, keep_awake, in_use_minutes, close_menu_to_write }; app_icon applies at the app's next start.\n- note: item { text, group? } into the session log. dump: a full Lab dump to dumps/.\n- any kind, from: trash:<name> restores that item.",
+            "description": "Creates or replaces one item on this Mac, or restores one from the trash. Never writes to the camera.\n\nBest for: saving a preset, taking a snapshot, adding a favourite setting, changing preferences, a note in the session log, a full property dump.\nReturns: { id, kind, replaced, warnings }. A replaced preset or snapshot keeps its old version in the trash for 30 days.\nQuery tips, by kind:\n- recipe: name and item { settings } (recipe_parse's settings; notes, sensor, source { url, credit }, comment optional), or item { set: { \"Highlight\": \"+1\" } } to change a saved recipe of that name, or from: cat:<id> to copy a catalogue recipe. warnings say what would not fit a slot.\n- preset: name, and item { set: { \"<name or code>\": \"<label or raw>\" } } or item { settings: [\"<name or code>\"] } (their values on the camera now), or from: snapshot:<name>.\n- snapshot: name; reads the camera now (tether mode).\n- favourite: name is the setting (a catalog name, menu label or 0x code).\n- prefs: item { theme: system|light|dark, brand_mark, app_icon, keep_awake, in_use_minutes, close_menu_to_write }; app_icon applies at the app's next start.\n- note: item { text, group? } into the session log. dump: a full Lab dump to dumps/.\n- any kind, from: trash:<name> restores that item.",
             "inputSchema": { "type": "object", "properties": {
-                "kind": { "type": "string", "enum": ["preset", "snapshot", "favourite", "prefs", "note", "dump"] },
+                "kind": { "type": "string", "enum": ["recipe", "preset", "snapshot", "favourite", "prefs", "note", "dump"] },
                 "name": { "type": "string" },
                 "item": { "type": "object" },
-                "from": { "type": "string", "description": "snapshot:<name> (a preset of its values) or trash:<name> (restore)." },
+                "from": { "type": "string", "description": "cat:<id> (a recipe copied from the catalogue), snapshot:<name> (a preset of its values) or trash:<name> (restore)." },
             }, "required": ["kind"], "additionalProperties": false },
             "annotations": { "title": "Save to the library", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
         }),
         json!({
             "name": "library_delete",
-            "description": "Deletes one library item: a preset or snapshot goes to the trash for 30 days; a favourite is removed from the list. Never touches the camera.\n\nReturns: { id, trashed_at, trash_id }. Restore with library_save { from: trash_id }.\nQuery tips: id is preset:<name>, snapshot:<name> or favourite:<code>. prefs and history cannot be deleted.",
+            "description": "Deletes one library item: a preset or snapshot goes to the trash for 30 days; a favourite is removed from the list. Never touches the camera.\n\nReturns: { id, trashed_at, trash_id }. Restore with library_save { from: trash_id }.\nQuery tips: id is recipe:<name>, preset:<name>, snapshot:<name> or favourite:<code>. prefs, history, cat: and slot: ids cannot be deleted.",
             "inputSchema": { "type": "object", "properties": {
                 "id": { "type": "string" },
             }, "required": ["id"], "additionalProperties": false },
             "annotations": { "title": "Delete a library item", "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
+        }),
+        json!({
+            "name": "recipe_parse",
+            "description": "Parses recipe text, or the recipe post at a URL, into slot settings. Stores nothing.\n\nBest for: importing a recipe someone pasted or linked.\nReturns: { name?, source_url?, author?, sensor?, settings, notes, warnings, others }. settings use the camera menu's units (highlightTone 1.5); notes are settings a slot cannot hold (ISO, exposure compensation); warnings are lines it could not use; others are further recipes in the same post.\nQuery tips: give exactly one of text and url. A post on fujixweekly.com or film.recipes reads as the catalogue does; any other page is searched for recipe blocks.\nFollow up with library_save {kind: recipe} to keep it, after the user checked the settings.",
+            "inputSchema": { "type": "object", "properties": {
+                "text": { "type": "string", "description": "The recipe as text: one Label: value line per setting." },
+                "url": { "type": "string", "description": "An http or https link to a recipe post." },
+            }, "additionalProperties": false },
+            "annotations": { "title": "Parse a recipe", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true },
         }),
         json!({
             "name": "catalog_label",
@@ -143,7 +157,7 @@ mod tests {
     #[test]
     fn surface() {
         let names = |fake| tools(fake).iter().map(|t| t["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
-        assert_eq!(names(false), ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "library_search", "library_read", "library_save", "library_delete", "catalog_label"]);
+        assert_eq!(names(false), ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "library_search", "library_read", "library_save", "library_delete", "recipe_parse", "catalog_label"]);
         assert_eq!(names(true).last().map(String::as_str), Some("fake_camera"));
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/surface/mcp_tools.json");
         let now = serde_json::to_string_pretty(&json!({ "tools": tools(true) })).unwrap() + "\n";

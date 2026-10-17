@@ -202,6 +202,17 @@ impl Server {
                 Ok((text.join("\n"), to_value(&applied)))
             }
             "catalog_label" => self.label(args(a)?),
+            "recipe_parse" => {
+                let x: ParseArgs = args(a)?;
+                let p = call::recipe_parse(x.text.as_deref(), x.url.as_deref())?;
+                let mut text = vec![format!("{}{}", p.name.clone().unwrap_or_else(|| "Recipe".into()), p.sensor.as_deref().map(|s| format!(" ({s})")).unwrap_or_default())];
+                text.extend(crate::recipes::settings_rows(&p.settings).into_iter().map(|r| format!("{}: {}", r[0].trim(), r[1])));
+                text.extend(p.notes.iter().map(|n| format!("Not in a slot: {} {}", n.label, n.value)));
+                text.extend(p.warnings.iter().map(|w| format!("Warning: {} {}: {}", w.label, w.value, w.message)));
+                text.extend(p.others.iter().map(|o| format!("Also in the post: {}", o.name)));
+                text.push("Nothing is saved. Keep it: library_save {\"kind\": \"recipe\", \"name\": ..., \"item\": {\"settings\": ...}}.".into());
+                Ok((text.join("\n"), to_value(&p)))
+            }
             "fake_camera" => {
                 let x: FakeArgs = args(a)?;
                 let action: FakeAction = serde_json::from_value(json!(x.action)).map_err(|_| bad(format!("no fake action {}", x.action)))?;
@@ -304,19 +315,24 @@ impl Server {
     }
 
     fn plan(&mut self, x: PlanArgs) -> Result<(String, Value), Fail> {
-        let from = match (x.set.is_empty(), x.preset, x.snapshot) {
-            (false, None, None) => None,
-            (true, Some(p), None) => Some(prefixed("preset", &p)),
-            (true, None, Some(s)) => Some(prefixed("snapshot", &s)),
-            (true, None, None) => return Err(bad("give one source: set (at least one name and value), preset or snapshot")),
-            _ => return Err(bad("give exactly one source: set, preset or snapshot")),
+        let from = match (x.set.is_empty(), x.preset, x.snapshot, x.recipe) {
+            (false, None, None, None) => None,
+            (true, Some(p), None, None) => Some(prefixed("preset", &p)),
+            (true, None, Some(s), None) => Some(prefixed("snapshot", &s)),
+            (true, None, None, Some(r)) => Some(crate::recipes::recipe_id(&r)),
+            (true, None, None, None) => return Err(bad("give one source: set (at least one name and value), preset, snapshot, or recipe with slot")),
+            _ => return Err(bad("give exactly one source: set, preset, snapshot or recipe")),
         };
+        let is_recipe = from.as_deref().is_some_and(|f| f.starts_with("recipe:") || f.starts_with("cat:"));
+        if is_recipe != x.slot.is_some() {
+            return Err(bad("a recipe plan names its slot (C1 to C7), and only a recipe plan does"));
+        }
         if let Some(f) = &from {
             call::library_read(&paths::data_dir(), f, None)?;
         }
         let c = self.link.client();
         conn::settled(&c, None)?;
-        let plan: Plan = match c.call(Request::PlanCreate { set: x.set, allow_unconfirmed: x.allow_unconfirmed, from })? {
+        let plan: Plan = match c.call(Request::PlanCreate { set: x.set, allow_unconfirmed: x.allow_unconfirmed, from, slot: x.slot })? {
             Response::PlanCreate(p) => *p,
             r => return Err(unexpected(r)),
         };
@@ -379,17 +395,46 @@ impl Server {
             "snapshot" => SearchKind::Snapshot,
             "favourite" => SearchKind::Favourite,
             "trash" => SearchKind::Trash,
-            k => return Err(bad(format!("no kind {k}: pick preset, snapshot, favourite or trash"))),
+            "recipe" => SearchKind::Recipe,
+            "catalogue" => SearchKind::Catalogue,
+            k => return Err(bad(format!("no kind {k}: pick recipe, catalogue, preset, snapshot, favourite or trash"))),
         };
-        let h = call::library_search(&paths::data_dir(), &SearchInput { kind, query: x.query, limit: Some(x.limit.unwrap_or(20)) });
+        let h = call::library_search(&paths::data_dir(), &SearchInput { kind, query: x.query, limit: Some(x.limit.unwrap_or(20)), sensor: x.sensor, film_sim: x.film_sim });
         let mut text: Vec<String> = h.items.iter().map(|i| format!("{}  {}", i.id, i.summary)).collect();
         text.push(format!("{} of {}{}", h.items.len(), h.total, if h.has_more { "; raise limit or narrow the query" } else { "" }));
         Ok((text.join("\n"), to_value(&h)))
     }
 
     fn library_read(&mut self, x: ReadArgs) -> Result<(String, Value), Fail> {
-        let r = call::library_read(&paths::data_dir(), &x.id, x.compare_to.as_deref())?;
+        let r = if call::is_slot_id(&x.id) {
+            let c = self.link.client();
+            conn::settled(&c, Some(Need::RawConv))?;
+            match c.call(Request::LibraryRead { id: x.id.clone(), compare_to: x.compare_to.clone() })? {
+                Response::LibraryRead(r) => *r,
+                r => return Err(unexpected(r)),
+            }
+        } else {
+            call::library_read(&paths::data_dir(), &x.id, x.compare_to.as_deref())?
+        };
+        let rows = |s: &ukiyo_core::recipes::Settings| crate::recipes::settings_rows(s).into_iter().map(|r| format!("{}: {}", r[0].trim(), r[1])).collect::<Vec<_>>().join(", ");
         let text = match &r {
+            Read::Recipe(x) => format!("{} ({}): {}", x.name, x.id, rows(&x.settings)),
+            Read::Catalogue(x) => format!("{} (cat:{}), {}: {}. Credit: {} {}", x.name, x.id, x.sensor.as_deref().unwrap_or("any sensor"), rows(&x.settings), x.credit.author.clone().unwrap_or_else(|| x.credit.name.clone()), x.credit.url),
+            Read::RecipeDiff(d) => {
+                if d.changed.is_empty() {
+                    format!("{} and {} have the same settings", d.a, d.b)
+                } else {
+                    format!("{} and {} differ in {}: {}", d.a, d.b, d.changed.len(), d.changed.iter().map(|f| format!("{} {} vs {}", f.field, f.a, f.b)).collect::<Vec<_>>().join("; "))
+                }
+            }
+            Read::Slots(v) => v
+                .iter()
+                .map(|s| match &s.error {
+                    Some(e) => format!("{}: {e}", s.slot),
+                    None => format!("{} {:?}{}: {}", s.slot, s.name, if s.matches.is_empty() { String::new() } else { format!(" (= {})", s.matches.join(", ")) }, rows(&s.settings)),
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
             Read::Preset(p) => format!("{}: {} settings: {}", p.id, p.set.len(), p.set.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(", ")),
             Read::Snapshot(s) => format!("{}: {}", s.id, s.summary()),
             Read::Favourites(f) => format!("{} favourites: {}", f.items.len(), f.items.iter().map(|f| f.name.clone().unwrap_or_else(|| f.code.clone())).collect::<Vec<_>>().join(", ")),
@@ -419,15 +464,15 @@ impl Server {
                 };
                 return Ok((format!("Dump written: {path}"), json!({ "id": "dump", "kind": "dump", "path": path, "replaced": false, "warnings": [] })));
             }
-            "recipe" => return Err(Fail::new("not_built", "recipes come with the recipe library (stage 7)")),
             _ => {}
         }
         let kind = match x.kind.as_str() {
+            "recipe" => SaveKind::Recipe,
             "preset" => SaveKind::Preset,
             "snapshot" => SaveKind::Snapshot,
             "favourite" => SaveKind::Favourite,
             "prefs" => SaveKind::Prefs,
-            k => return Err(bad(format!("no kind {k}: pick preset, snapshot, favourite, prefs, note or dump"))),
+            k => return Err(bad(format!("no kind {k}: pick recipe, preset, snapshot, favourite, prefs, note or dump"))),
         };
         let input = SaveInput { kind, name: x.name, item: x.item, from: x.from };
         let restoring = input.from.as_deref().is_some_and(|f| f.starts_with("trash:"));
@@ -497,6 +542,15 @@ struct SearchArgs {
     kind: String,
     query: Option<String>,
     limit: Option<u32>,
+    sensor: Option<String>,
+    film_sim: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParseArgs {
+    text: Option<String>,
+    url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -549,6 +603,8 @@ struct PlanArgs {
     set: IndexMap<String, String>,
     preset: Option<String>,
     snapshot: Option<String>,
+    recipe: Option<String>,
+    slot: Option<String>,
     #[serde(default)]
     allow_unconfirmed: bool,
 }

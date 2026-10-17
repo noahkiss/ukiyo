@@ -45,7 +45,7 @@ fn camera(out: Out) -> Result<Snapshot, Fail> {
 
 fn hits(out: Out, kind: SearchKind, query: &[String], empty: &str) -> Result<(), Fail> {
     let q = query.join(" ");
-    let h = call::library_search(&data(), &SearchInput { kind, query: (!q.trim().is_empty()).then_some(q), limit: Some(1000) });
+    let h = call::library_search(&data(), &SearchInput { kind, query: (!q.trim().is_empty()).then_some(q), limit: Some(1000), ..Default::default() });
     if out.json {
         out.data(&h);
         return Ok(());
@@ -190,7 +190,7 @@ pub fn snapshots_diff(out: Out, a: &str, b: Option<&str>, allow_unconfirmed: boo
     let c = conn::client(out, None);
     let r = (|| {
         conn::settled(&c, None)?;
-        match c.call(Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed, from: Some(a.clone()) })? {
+        match c.call(Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed, from: Some(a.clone()), slot: None })? {
             Response::PlanCreate(p) => {
                 let _ = c.call(Request::PlanDiscard { plan_id: p.plan_id.clone() });
                 Ok(*p)

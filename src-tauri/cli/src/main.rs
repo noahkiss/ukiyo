@@ -13,6 +13,7 @@ mod library;
 mod mcp;
 mod mcp_tools;
 mod out;
+mod recipes;
 mod writes;
 
 use clap::{Args, Parser, Subcommand};
@@ -57,6 +58,11 @@ enum Cmd {
     Snapshots {
         #[command(subcommand)]
         cmd: SnapshotsCmd,
+    },
+    /// Recipes: the library, the bundled catalogue, and the camera's C1-C7 slots.
+    Recipes {
+        #[command(subcommand)]
+        cmd: RecipesCmd,
     },
     /// App preferences in settings.json: theme, brand mark, app icon, keep-awake.
     Prefs {
@@ -208,6 +214,72 @@ enum SnapshotsCmd {
 }
 
 #[derive(Subcommand)]
+enum RecipesCmd {
+    /// The recipes in the library, or those whose name, film simulation or credit match.
+    Ls {
+        query: Vec<String>,
+        /// Only this sensor generation: "X-Trans V".
+        #[arg(long)]
+        sensor: Option<String>,
+        /// Only this film simulation: "classic chrome".
+        #[arg(long)]
+        sim: Option<String>,
+    },
+    /// Searches the bundled catalogue, most popular first.
+    Search {
+        query: Vec<String>,
+        #[arg(long)]
+        sensor: Option<String>,
+        #[arg(long)]
+        sim: Option<String>,
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+    },
+    /// One recipe's settings: a library name, recipe:<name> or cat:<id>.
+    Show { id: String },
+    /// Reads a recipe from text, a post's URL, or the catalogue; --save keeps it.
+    Import {
+        /// cat:<id> from `recipes search`.
+        cat: Option<String>,
+        /// A file with the recipe text, or - for stdin.
+        #[arg(long, value_name = "FILE")]
+        text: Option<String>,
+        /// A recipe post.
+        #[arg(long)]
+        url: Option<String>,
+        /// The name in the library. Default: the post's.
+        #[arg(long)]
+        name: Option<String>,
+        /// Save it to the library (else show it only).
+        #[arg(long)]
+        save: bool,
+    },
+    /// Changes settings of a saved recipe: FIELD=VALUE as a post writes them
+    /// (Highlight=+1.5, "Grain=Weak, Small"); an empty value clears one.
+    Edit {
+        id: String,
+        #[arg(value_name = "FIELD=VALUE", required = true)]
+        pairs: Vec<String>,
+    },
+    /// Moves a recipe to the trash.
+    Rm { id: String },
+    /// Reads a custom slot (C1-C7), or all seven, from the camera (USB RAW CONV. mode).
+    Read {
+        slot: Option<String>,
+        /// Compare the slot with a recipe: a library name, recipe:<name> or cat:<id>.
+        #[arg(long, value_name = "ID")]
+        compare: Option<String>,
+    },
+    /// Writes a recipe to a custom slot through a plan (USB RAW CONV. mode).
+    Write {
+        slot: String,
+        id: String,
+        #[command(flatten)]
+        flags: WriteFlags,
+    },
+}
+
+#[derive(Subcommand)]
 enum PrefsCmd {
     /// Every preference.
     Get,
@@ -344,7 +416,7 @@ fn main() {
         }
     };
     let out = Out { json: cli.json, quiet: cli.quiet };
-    if matches!(cli.cmd, Cmd::Status { .. } | Cmd::Presets { .. } | Cmd::Snapshots { .. } | Cmd::Prefs { .. } | Cmd::Camera { .. } | Cmd::Settings(_) | Cmd::Owner { .. } | Cmd::Plan { .. } | Cmd::Log { cmd: LogCmd::Note { .. } }) {
+    if matches!(cli.cmd, Cmd::Status { .. } | Cmd::Recipes { cmd: RecipesCmd::Read { .. } | RecipesCmd::Write { .. } } | Cmd::Presets { .. } | Cmd::Snapshots { .. } | Cmd::Prefs { .. } | Cmd::Camera { .. } | Cmd::Settings(_) | Cmd::Owner { .. } | Cmd::Plan { .. } | Cmd::Log { cmd: LogCmd::Note { .. } }) {
         if let Err(f) = conn::check_data_dir() {
             std::process::exit(out.fail(&f));
         }
@@ -367,6 +439,16 @@ fn main() {
             SnapshotsCmd::Diff { a, b, allow_unconfirmed } => library::snapshots_diff(out, &a, b.as_deref(), allow_unconfirmed),
             SnapshotsCmd::Restore { id, flags } => library::snapshots_restore(out, &id, flags),
             SnapshotsCmd::Rm { id } => library::rm(out, ukiyo_core::library::Kind::Snapshot, &id),
+        },
+        Cmd::Recipes { cmd } => match cmd {
+            RecipesCmd::Ls { query, sensor, sim } => recipes::ls(out, &query, sensor, sim),
+            RecipesCmd::Search { query, sensor, sim, limit } => recipes::search(out, &query, sensor, sim, limit),
+            RecipesCmd::Show { id } => recipes::show(out, &id),
+            RecipesCmd::Import { cat, text, url, name, save } => recipes::import(out, recipes::Import { text, url, cat, name, save }),
+            RecipesCmd::Edit { id, pairs } => recipes::edit(out, &id, &pairs),
+            RecipesCmd::Rm { id } => recipes::rm(out, &id),
+            RecipesCmd::Read { slot, compare } => recipes::read(out, slot.as_deref(), compare.as_deref()),
+            RecipesCmd::Write { slot, id, flags } => recipes::write(out, &slot, &id, flags),
         },
         Cmd::Prefs { cmd: PrefsCmd::Get } => library::prefs_get(out),
         Cmd::Prefs { cmd: PrefsCmd::Set { pairs } } => library::prefs_set(out, &pairs),

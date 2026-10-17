@@ -64,7 +64,12 @@ pub(crate) fn plan_lines(p: &Plan) -> Vec<String> {
     }
     let needs = if needs.is_empty() { String::new() } else { format!(", needs {}", needs.join(" + ")) };
     let mins = (p.expires_in_s as f64 / 60.0).ceil() as u32;
-    let mut out = vec![format!("Plan {} (expires in {mins} min){needs}", p.plan_id)];
+    let slot = match (&p.slot, &p.recipe) {
+        (Some(s), Some(r)) => format!(", writes {r} to slot {s}"),
+        (Some(s), None) => format!(", slot {s}"),
+        _ => String::new(),
+    };
+    let mut out = vec![format!("Plan {} (expires in {mins} min){needs}{slot}", p.plan_id)];
     let rows: Vec<Vec<String>> = p
         .steps
         .iter()
@@ -73,10 +78,21 @@ pub(crate) fn plan_lines(p: &Plan) -> Vec<String> {
                 "ok" => s.confidence.as_ref().map(|c| format!("{c:?}").to_lowercase()).unwrap_or_default(),
                 g => format!("{} ({g})", s.confidence.as_ref().map(|c| format!("{c:?}").to_lowercase()).unwrap_or_else(|| "unmapped".into())),
             };
-            vec![format!("  {}", s.name.clone().unwrap_or_else(|| s.code.clone())), format!("{} -> {}", s.before, s.after), gate]
+            let purpose = if s.purpose == ukiyo_core::plan::purpose::SET { String::new() } else { s.purpose.clone() };
+            vec![format!("  {}", s.name.clone().unwrap_or_else(|| s.code.clone())), format!("{} -> {}", s.before, s.after), gate, purpose]
         })
         .collect();
     out.extend(table(&rows));
+    for s in &p.steps {
+        let who = s.name.clone().unwrap_or_else(|| s.code.clone());
+        if let Some(n) = &s.note {
+            out.push(format!("  {who} ({}): {n}", s.purpose));
+        }
+        for r in &s.resets {
+            out.push(format!("  {who} -> {}: the camera also sets {r}", s.after));
+        }
+    }
+    out.extend(p.warnings.iter().map(|w| format!("  Warning: {w}")));
     out.extend(left_lines("Blocked", &p.blocked));
     out.extend(left_lines("Skipped", &p.skipped));
     out
@@ -121,6 +137,7 @@ pub(crate) fn applied_lines(a: &Applied, total: usize) -> Vec<String> {
         let label = |l: &Option<String>, v: &Option<read::RawValue>| l.clone().or_else(|| v.as_ref().map(read::RawValue::text)).unwrap_or_else(|| "-".into());
         out.push(format!("Also changed: {} {}  {} -> {}", e.code, e.name.clone().unwrap_or_default(), label(&e.old_label, &e.old), label(&e.new_label, &e.new)));
     }
+    out.extend(a.warnings.iter().map(|w| format!("Warning: {w}")));
     if a.not_attempted > 0 {
         out.push(format!("{} step(s) not attempted after the failure.", a.not_attempted));
     }
@@ -194,16 +211,16 @@ fn apply(out: Out, c: &Client, plan: Plan) -> Result<i32, Fail> {
 
 /// Plans `set` and carries it through: the common body of `settings set` and `owner set`.
 fn set(out: Out, set: IndexMap<String, String>, flags: WriteFlags) -> Result<i32, Fail> {
-    plan_and_decide(out, Request::PlanCreate { set, allow_unconfirmed: flags.allow_unconfirmed, from: None }, flags)
+    plan_and_decide(out, Request::PlanCreate { set, allow_unconfirmed: flags.allow_unconfirmed, from: None, slot: None }, flags)
 }
 
 /// Plans a library item (`preset:<slug>`, `snapshot:<slug>`) and carries it through:
 /// `presets apply` and `snapshots restore`.
 pub fn plan_from(out: Out, from: String, flags: WriteFlags) -> Result<i32, Fail> {
-    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(from) }, flags)
+    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(from), slot: None }, flags)
 }
 
-fn plan_and_decide(out: Out, req: Request, flags: WriteFlags) -> Result<i32, Fail> {
+pub(crate) fn plan_and_decide(out: Out, req: Request, flags: WriteFlags) -> Result<i32, Fail> {
     let c = conn::client(out, None);
     let r = (|| {
         conn::settled(&c, None)?;

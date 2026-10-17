@@ -228,6 +228,53 @@ fn wrong_mode_is_exit_4() {
 }
 
 #[test]
+fn recipes_library_catalogue_and_slots() {
+    let env = Env { mode: Some("rawconv"), ..Env::new() };
+    // The catalogue and the library run in this process.
+    let (code, v) = env.json(&["recipes", "search", "--sensor", "X-Trans V", "--sim", "classic chrome", "--limit", "3"]);
+    assert_eq!(code, 0, "{v}");
+    let items = v["data"]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 3);
+    assert!(items.iter().all(|i| i["id"].as_str().unwrap().starts_with("cat:") && i["credit"].is_string()));
+    let file = env.data.path().join("recipe.txt");
+    std::fs::write(&file, "Film Simulation: Classic Chrome\nGrain Effect: Weak, Small\nHighlight: -1\nShadow: +1\nISO: up to 6400\n").unwrap();
+    let (code, v) = env.json(&["recipes", "import", "--text", file.to_str().unwrap()]);
+    assert_eq!((code, v["data"]["settings"]["filmSimulation"].as_str()), (0, Some("Classic Chrome")), "{v}");
+    let (code, v) = env.json(&["recipes", "import", "--text", file.to_str().unwrap(), "--name", "My CC", "--save"]);
+    assert_eq!((code, v["data"]["id"].as_str()), (0, Some("recipe:my-cc")), "{v}");
+    let (_, v) = env.json(&["recipes", "edit", "my-cc", "Color=+2"]);
+    assert_eq!(v["data"]["replaced"], true, "{v}");
+    let (_, v) = env.json(&["recipes", "show", "my-cc"]);
+    assert_eq!((v["data"]["kind"].as_str(), v["data"]["item"]["settings"]["color"].as_f64()), (Some("recipe"), Some(2.0)), "{v}");
+    let (_, v) = env.json(&["recipes", "ls", "chrome"]);
+    assert_eq!(v["data"]["total"], 1);
+    // The camera's slots, through serve.
+    let (code, v) = env.json(&["recipes", "read", "C1"]);
+    assert_eq!(code, 0, "{v}");
+    assert_eq!((v["data"]["kind"].as_str(), v["data"]["item"][0]["name"].as_str()), (Some("slots"), Some("FAKE CHROME")), "{v}");
+    // Slot fields are not confirmed: refused without the flag (exit 5).
+    let (code, v) = env.json(&["recipes", "write", "C3", "my-cc", "--yes"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (5, Some("unconfirmed_property")), "{v}");
+    let (code, v) = env.json(&["recipes", "write", "C3", "my-cc", "--yes", "--allow-unconfirmed"]);
+    assert_eq!(code, 0, "{v}");
+    assert_eq!(v["data"]["plan"]["slot"], "C3");
+    assert_eq!(v["data"]["result"]["failed"], 0, "{v}");
+    let (_, v) = env.json(&["recipes", "read", "C3", "--compare", "my-cc"]);
+    assert_eq!((v["data"]["kind"].as_str(), v["data"]["item"]["changed"].as_array().map(Vec::len)), (Some("recipediff"), Some(0)), "{v}");
+    let out = env.run(&["recipes", "read"]);
+    assert!(text(&out).contains("C3  My CC = recipe:my-cc"), "{}", text(&out));
+    let (code, _) = env.json(&["recipes", "rm", "my-cc"]);
+    assert_eq!(code, 0);
+    let pid = env.pid();
+    env.finish(pid);
+    // Tether mode: a slot read is a typed error.
+    let env = Env::new();
+    let (code, v) = env.json(&["recipes", "read", "C1"]);
+    assert_eq!((code, v["error"]["code"].as_str(), v["error"]["walkthrough"].as_str()), (4, Some("needs_rawconv"), Some("ukiyo help modes rawconv")), "{v}");
+    env.finish(env.pid());
+}
+
+#[test]
 fn serve_unavailable_is_exit_1() {
     let env = Env::new();
     // Another process holds owner.lock with no socket: what a tools/ptp script looks like.

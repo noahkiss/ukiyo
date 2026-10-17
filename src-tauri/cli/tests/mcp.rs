@@ -22,6 +22,11 @@ struct Mcp {
 
 impl Mcp {
     fn start() -> Mcp {
+        Self::start_mode(None)
+    }
+
+    /// With `UKIYO_FAKE_MODE`, for the serve it spawns.
+    fn start_mode(mode: Option<&str>) -> Mcp {
         let cats = tempfile::tempdir().unwrap();
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog/x-t5.json");
         // GrainEffect stands for an unconfirmed property, whatever the mapping has reached.
@@ -37,7 +42,7 @@ impl Mcp {
             .env("UKIYO_CATALOG_DIR", cats.path())
             .env("UKIYO_IDLE_EXIT", "3")
             .env("UKIYO_MCP_IDLE", "2")
-            .env_remove("UKIYO_FAKE_MODE")
+            .env("UKIYO_FAKE_MODE", mode.unwrap_or("tether"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -127,7 +132,7 @@ fn tools_on_the_fake_camera() {
 
     let list = m.request("tools/list", json!({}));
     let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "library_search", "library_read", "library_save", "library_delete", "catalog_label", "fake_camera"]);
+    assert_eq!(names, ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "library_search", "library_read", "library_save", "library_delete", "recipe_parse", "catalog_label", "fake_camera"]);
     let unknown = m.request("tools/call", json!({ "name": "lab_write", "arguments": {} }));
     assert_eq!(unknown["error"]["code"], -32602, "{unknown}");
 
@@ -263,4 +268,29 @@ fn idle_connection_lets_serve_go() {
     let second = s["pid"].as_u64().unwrap() as u32;
     assert_ne!(first, second);
     m.finish(second);
+}
+
+#[test]
+fn recipe_tools_parse_save_and_write_a_slot() {
+    let mut m = Mcp::start_mode(Some("rawconv"));
+    let p = m.ok("recipe_parse", json!({ "text": "Film Simulation: Acros + R\nGrain Effect: Strong, Small\nMonochromatic Color: WC +2, MG -1\nHighlight: -1" }));
+    assert_eq!(p["settings"]["filmSimulation"], "Acros + R filter", "{p}");
+    assert_eq!(m.err("recipe_parse", json!({ "text": "x", "url": "https://example.org" }))["code"], "bad_request");
+    let saved = m.ok("library_save", json!({ "kind": "recipe", "name": "Agent Acros", "item": { "settings": p["settings"] } }));
+    assert_eq!(saved["id"], "recipe:agent-acros", "{saved}");
+    let found = m.ok("library_search", json!({ "kind": "recipe", "film_sim": "acros" }));
+    assert_eq!(found["total"], 1, "{found}");
+    let cat = m.ok("library_search", json!({ "kind": "catalogue", "query": "chrome", "limit": 2 }));
+    assert_eq!(cat["items"].as_array().unwrap().len(), 2);
+    let slots = m.ok("library_read", json!({ "id": "slots" }));
+    assert_eq!((slots["kind"].as_str(), slots["item"].as_array().map(Vec::len)), (Some("slots"), Some(7)), "{slots}");
+    assert_eq!(m.err("camera_plan", json!({ "recipe": "recipe:agent-acros" }))["code"], "bad_request", "a recipe plan names its slot");
+    let plan = m.ok("camera_plan", json!({ "recipe": "agent-acros", "slot": "C5", "allow_unconfirmed": true }));
+    assert_eq!(plan["slot"], "C5", "{plan}");
+    let done = m.ok("camera_apply", json!({ "plan_id": plan["plan_id"] }));
+    assert_eq!(done["failed"], 0, "{done}");
+    let c5 = m.ok("library_read", json!({ "id": "slot:C5", "compare_to": "recipe:agent-acros" }));
+    assert_eq!(c5["item"]["changed"].as_array().map(Vec::len), Some(0), "{c5}");
+    let s = m.ok("camera_status", json!({}));
+    m.finish(s["pid"].as_u64().unwrap() as u32);
 }

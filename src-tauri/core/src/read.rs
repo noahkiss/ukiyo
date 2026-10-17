@@ -97,7 +97,7 @@ pub fn readiness(s: &Status, rows: usize, need: Need) -> Result<(), Problem> {
         return Err(Problem {
             code: "needs_rawconv",
             message: format!("Recipe slots read and write only in USB RAW CONV./BACKUP RESTORE mode; the camera is in {}.", mode_name(mode)),
-            hint: "Unplug the cable, set CONNECTION MODE to USB RAW CONV./BACKUP RESTORE, plug back in.".into(),
+            hint: format!("Unplug the cable, set {} to USB RAW CONV./BACKUP RESTORE, plug back in.", s.model.as_deref().and_then(modes::connection_menu).map_or("CONNECTION MODE".into(), |p| p.join(" > "))),
             walkthrough: Some(modes::walkthrough("rawconv")),
             mode: Some(mode_id(mode)),
         });
