@@ -45,6 +45,13 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
 | D307 | STILL/MOVIE switch | 2 stills, 1 movie |
 
 - While a menu is open, every property returns 0xA001. Poll again after D22E returns to 1.
+  Observed 2026-10-17 (fw 4.31): opening the menu first gave one 0x2019 (busy), then D22E = 3.
+- Polling does not reset the auto power off timer. With D381 = 2 min, the camera powered off
+  2:00 after the session opened while properties were read continuously (2026-10-17). Keeping it
+  awake needs the D381 write; reopening sessions to reset the timer is the reconnect pattern
+  ruled out below.
+- D22F changes about three times a second at rest: a blob of 32-bit counts, likely the live
+  histogram.
 - Auto power off drops the camera from USB entirely; nothing can wake it over USB. Just before,
   every property returns 0x2019 (device busy) for about a second.
 - Movie mode has its own AUTO POWER OFF value (D381 read 2 there while stills was 3).
@@ -68,6 +75,10 @@ facts above turned into behaviour. Not yet run against a camera.
 - Three 0x2019 answers in a row mean busy: D22E every 500 ms. If the device then leaves the
   bus within 5 s, the app reports auto power off.
 - After the device leaves or a session fails: presence check every 3 s, no open for 30 s.
+- Checked on the X-T5 (2026-10-17): auto power off is detected (0x2019, then the device
+  leaves); a cable pull mid-session gives a transfer error (IOKit 0xe00002ed, not responding) and
+  the same 30 s hold; the camera reconnects once after the hold. Quit (idle exit) and SIGTERM
+  both close the session cleanly and release `owner.lock`.
   OpenSession failing on a fresh claim allows one USB reset per connect attempt.
 
 ## Recipe slots (RAW CONV. mode)
