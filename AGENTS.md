@@ -15,7 +15,8 @@ what comes next.
   Settings with Appearance, Connect, and Lab: Lab state and keys; it stays mounted while hidden),
   `src/views/` (the Lab's StatusBar, PropTable, ChangeFeed, LabelPanel with the write box,
   FakeBar), `src/lib/` (`camera.tsx` live status for every page, `prefs.tsx` theme, brand mark
-  and app icon choices in local storage, `decode.ts` value display), `src/fixtures/` sample data
+  and app icon choices in local storage, `decode.ts` value display, `fxw.ts` the bundled Fuji X
+  Weekly catalogue as library recipes), `src/fixtures/` sample data
   for pages without a backend (see its README), `src/styles/` (`tokens.css` light and dark
   tokens, then base, shell, pages, lab), `src/assets/` (bundled OFL fonts with licences, camera
   art, brand marks and app icons as light and dark webp). `src/bindings.ts` generated (do not edit;
@@ -24,9 +25,16 @@ what comes next.
 - `src-tauri/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
   `usb` (nusb), `fake` (fake X-T5; shape in `fake_x-t5.json`), `clock`, `owner` (the one
   connection thread: queue, polling, pause, power-off, reconnect rules), `owner_tests`.
+- `src-tauri/src/recipes/` — the recipe text parser (`mod`, `values`), recipe blocks in post
+  HTML (`html`), name and sensor from a post title (`post`), the bundled catalogue format
+  (`catalogue`), `tests` on real sample blocks. `docs/recipes.md` covers it and the credit.
+- `src-tauri/examples/fxw_refresh.rs` — rebuilds `catalog/recipes/fujixweekly.json` from the
+  Fuji X Weekly feed; caches pages in `local/fxw-feed/`.
 - `src-tauri/src/catalog.rs` — catalog load, label, save. `src-tauri/src/lab.rs` — the Lab
   (mirror, session log, export, settings, fake controls). `src-tauri/src/lib.rs` — Tauri commands
   and `specta_builder`.
+- `catalog/recipes/fujixweekly.json` — the bundled Fuji X Weekly recipes: settings and links
+  only, no photos or post text.
 - `catalog/<model>.json` — the shareable property catalog. Dev builds write labels here;
   `UKIYO_CATALOG_DIR` overrides.
 - `tools/catalog/seed_xt5.py LOCAL_DIR [--force]` — seeds `catalog/x-t5.json` and the fake shape

@@ -53,6 +53,8 @@ cd ../app && pnpm build
 | `src-tauri/src/lab.rs` | The Lab: mirror for the window, session log, export, the fake camera's controls |
 | `app/` | The window: React, TypeScript, Vite |
 | `catalog/` | One JSON file per camera model (`docs/catalog.md`) |
+| `catalog/recipes/fujixweekly.json` | Fuji X Weekly recipe settings, with a link to each post (`docs/recipes.md`) |
+| `src-tauri/src/recipes/` | The recipe text parser, shared by the catalogue build and paste import |
 | `docs/protocol.md` | What is known about the camera's PTP interface |
 | `tools/ptp/` | The Python discovery scripts the Rust core was ported from |
 | `tools/catalog/seed_xt5.py` | Seeds `catalog/x-t5.json` and the fake camera's shape from local dumps |
@@ -60,3 +62,8 @@ cd ../app && pnpm build
 The app writes session logs (`sessions/*.jsonl`), exports (`dumps/`) and `settings.json` to
 `~/Library/Application Support/app.ukiyo/`. In a dev build, labels go to the repo's
 `catalog/` so they can be committed; `UKIYO_CATALOG_DIR` points them elsewhere.
+
+## Credits
+
+The bundled film simulation recipes are © Ritchie Roesch, [Fuji X Weekly](https://fujixweekly.com).
+ukiyo bundles their settings only, with a link to each post (`docs/recipes.md`).
