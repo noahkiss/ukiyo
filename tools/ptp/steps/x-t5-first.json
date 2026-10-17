@@ -1,0 +1,132 @@
+{
+  "name": "x-t5-first",
+  "model": "X-T5",
+  "about": "First guided session: the recipe settings in IMAGE QUALITY SETTING, then common AF and shooting settings. Order matters: COLOR and CLARITY come before ACROS and HEIF, which make them unavailable.",
+  "steps": [
+    {
+      "id": "film-reala-ace",
+      "instruction": "MENU > IMAGE QUALITY SETTING > FILM SIMULATION: REALA ACE",
+      "expect": [{ "code": "0xd001", "value": 20, "label": "REALA ACE" }]
+    },
+    {
+      "id": "grain-strong-large",
+      "instruction": "MENU > IMAGE QUALITY SETTING > GRAIN EFFECT > ROUGHNESS: STRONG, then SIZE: LARGE",
+      "expect": [{ "code": "0xd023", "value": 5, "label": "STRONG LARGE" }]
+    },
+    {
+      "id": "cc-fx-blue-strong",
+      "instruction": "MENU > IMAGE QUALITY SETTING > COLOR CHROME FX BLUE: STRONG",
+      "expect": [{ "code": "0xd030", "value": 3, "label": "STRONG" }]
+    },
+    {
+      "id": "smooth-skin-weak",
+      "instruction": "MENU > IMAGE QUALITY SETTING > SMOOTH SKIN EFFECT: WEAK",
+      "expect": [{ "code": "0xd189", "value": 2, "label": "WEAK" }]
+    },
+    {
+      "id": "wb-kelvin-5000",
+      "instruction": "MENU > IMAGE QUALITY SETTING > WHITE BALANCE > COLOR TEMPERATURE: 5000K. Press MENU/OK on the shift grid without moving it.",
+      "expect": [
+        { "code": "0x5005", "value": 32775, "label": "COLOR TEMPERATURE" },
+        { "code": "0xd017", "value": 5000, "label": "5000K" }
+      ]
+    },
+    {
+      "id": "wb-auto-shift",
+      "instruction": "MENU > IMAGE QUALITY SETTING > WHITE BALANCE > AUTO. On the shift grid set R: +3 and B: -2, then press MENU/OK.",
+      "expect": [
+        { "code": "0x5005", "value": 2, "label": "AUTO" },
+        { "code": "0xd00b", "value": 3, "label": "R +3" },
+        { "code": "0xd00c", "value": -2, "label": "B -2" }
+      ],
+      "patch": {
+        "0xd00b": { "name": "WhiteBalanceShiftR", "menu": "IMAGE QUALITY SETTING > WHITE BALANCE > shift R" },
+        "0xd00c": { "name": "WhiteBalanceShiftB", "menu": "IMAGE QUALITY SETTING > WHITE BALANCE > shift B" }
+      }
+    },
+    {
+      "id": "tone-curve",
+      "instruction": "MENU > IMAGE QUALITY SETTING > TONE CURVE: HIGHLIGHTS +1.5, SHADOWS -1. If TONE CURVE is grey, set D RANGE PRIORITY: OFF first.",
+      "expect": [
+        { "code": "0xd320", "value": 15, "label": "+1.5" },
+        { "code": "0xd321", "value": -10, "label": "-1" }
+      ],
+      "patch": {
+        "0xd320": { "menu": "IMAGE QUALITY SETTING > TONE CURVE > HIGHLIGHTS", "scale": 10 },
+        "0xd321": { "menu": "IMAGE QUALITY SETTING > TONE CURVE > SHADOWS", "scale": 10 }
+      }
+    },
+    {
+      "id": "color-minus-2",
+      "instruction": "MENU > IMAGE QUALITY SETTING > COLOR: -2",
+      "expect": [{ "code": "0xd008", "value": -20, "label": "-2" }],
+      "patch": { "0xd008": { "name": "Color", "menu": "IMAGE QUALITY SETTING > COLOR", "scale": 10 } }
+    },
+    {
+      "id": "clarity-plus-3",
+      "instruction": "MENU > IMAGE QUALITY SETTING > CLARITY: +3",
+      "expect": [{ "code": "0xd032", "value": 30, "label": "+3" }],
+      "patch": { "0xd032": { "menu": "IMAGE QUALITY SETTING > CLARITY", "scale": 10 } }
+    },
+    {
+      "id": "high-iso-nr-minus-3",
+      "instruction": "MENU > IMAGE QUALITY SETTING > HIGH ISO NR: -3",
+      "expect": [{ "code": "0xd01c", "value": 28672, "label": "-3" }]
+    },
+    {
+      "id": "film-acros",
+      "instruction": "MENU > IMAGE QUALITY SETTING > FILM SIMULATION: ACROS (plain ACROS, no filter)",
+      "expect": [{ "code": "0xd001", "value": 12, "label": "ACROS" }],
+      "also": ["0xd008", "0xd029", "0xd030", "0xd104", "0xd031"],
+      "desc": ["0xd104", "0xd031"]
+    },
+    {
+      "id": "mono-color-wc-mg",
+      "instruction": "MENU > IMAGE QUALITY SETTING > MONOCHROMATIC COLOR: WARM +3 (WC), MAGENTA -2 (MG)",
+      "note": "Expects ACROS from the step before. If the grid labels differ, set the horizontal axis to +3 and the vertical axis to -2.",
+      "expect": [
+        { "code": "0xd104", "value": 30, "label": "WC +3" },
+        { "code": "0xd031", "value": -20, "label": "MG -2" }
+      ],
+      "patch": {
+        "0xd104": { "scale": 10 },
+        "0xd031": { "scale": 10 }
+      }
+    },
+    {
+      "id": "select-heif",
+      "instruction": "MENU > IMAGE QUALITY SETTING > SELECT JPEG/HEIF: HEIF",
+      "expect": [{ "code": "0xd1b2", "value": 18, "label": "HEIF" }],
+      "also": ["0xd032", "0xd033", "0xd034", "0xd035", "0xd036", "0xd018"],
+      "patch": {
+        "0xd1b2": {
+          "name": "ImageFormat",
+          "menu": "IMAGE QUALITY SETTING > SELECT JPEG/HEIF",
+          "values": { "7": "JPEG", "18": "HEIF" }
+        }
+      }
+    },
+    {
+      "id": "pre-af-on",
+      "instruction": "MENU > AF/MF SETTING > PRE-AF: ON",
+      "note": "Decodes the 1/2 ON/OFF convention for about a dozen unnamed codes.",
+      "expect": [{ "code": "0xd34b", "value": 1, "label": "ON" }],
+      "patch": { "0xd34b": { "menu": "AF/MF SETTING > PRE-AF", "values": { "1": "ON", "2": "OFF" } } }
+    },
+    {
+      "id": "focus-points-425",
+      "instruction": "MENU > AF/MF SETTING > NUMBER OF FOCUS POINTS: 425 POINTS (17 x 25)",
+      "expect": [{ "code": "0xd025", "value": 4, "label": "425 POINTS" }],
+      "also": ["0xd23a", "0xd347", "0xd372", "0xd374", "0xd395"],
+      "desc": ["0xd23a"]
+    },
+    {
+      "id": "shutter-electronic",
+      "instruction": "MENU > SHOOTING SETTING > SHUTTER TYPE: ELECTRONIC SHUTTER",
+      "note": "The value is unknown: the step records whatever D304 becomes.",
+      "expect": [{ "code": "0xd304", "label": "ELECTRONIC SHUTTER" }],
+      "also": ["0x500d", "0xd16f"],
+      "patch": { "0xd304": { "name": "ShutterType", "menu": "SHOOTING SETTING > SHUTTER TYPE" } }
+    }
+  ]
+}
