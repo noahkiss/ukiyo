@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import { FILM_SIMS, recipes as recipeFixture, slots as slotFixture, TONE_RANGES, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
 import { useCamera } from "../lib/camera";
 import { entryRecipe, filterCards, fmtDate, pickVariant, publisher, sensorOf, sortCards, useCatalog, type CatalogCard as Card, type CatalogEntry, type CatalogSort } from "../lib/catalog";
-import { href } from "../lib/router";
 import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
+import { HowToSwitch, ModeNotice } from "../shell/ModeNotice";
 import { PageHead } from "../shell/PageHead";
 import { ChevronDown, LinkIcon, LockIcon, PhotoIcon, SearchIcon } from "../shell/icons";
 import { CatalogFilters, RecipeImport } from "./RecipeImport";
@@ -103,12 +103,13 @@ export function Recipes() {
       </PageHead>
 
       {status?.mode === "rawConv" && (
-        <div className="banner warn" role="status">
+        <div className="banner warn" role="status" data-component="mode-lock">
           <LockIcon />
           <span>The camera is locked in this mode. Switch to Tether mode to shoot or change settings.</span>
-          <a href={href("connect")}>How to switch</a>
+          <HowToSwitch target="tether" />
         </div>
       )}
+      <ModeNotice needs="rawConv" what="Reading and writing slots" />
 
       <section className="slots" aria-label="Camera slots">
         {slotFixture.map((s) => {

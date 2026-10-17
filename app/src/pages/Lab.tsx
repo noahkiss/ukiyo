@@ -3,6 +3,7 @@ import { commands, events, type ChangeGroup, type FakeAction, type LabelPatch, t
 import { entry, type Catalog } from "../lib/decode";
 import { inTauri, useCamera } from "../lib/camera";
 import { useToast } from "../lib/toast";
+import { ModeNotice } from "../shell/ModeNotice";
 import { PageHead } from "../shell/PageHead";
 import { StatusActions, StatusFacts } from "../views/StatusBar";
 import { FakeBar } from "../views/FakeBar";
@@ -219,6 +220,7 @@ export function Lab({ active }: { active: boolean }) {
         <StatusActions status={status} onExport={exportDump} />
       </PageHead>
       <StatusFacts status={status} catalogPath={catalogPath} />
+      <ModeNotice needs="tether" what="Writing and the full property list" />
       {fake && <FakeBar onAction={fakeAction} />}
       <div className="lab-body">
         <PropTable

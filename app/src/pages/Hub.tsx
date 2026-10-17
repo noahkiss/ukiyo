@@ -3,6 +3,7 @@ import { connectLog, hubCamera, hubReadAt, lensesSeen, ownerDetails, shotCounts,
 import { usePrefs } from "../lib/prefs";
 import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
+import { ModeNotice } from "../shell/ModeNotice";
 import { PageHead } from "../shell/PageHead";
 import { RefreshIcon } from "../shell/icons";
 import { cameraArt } from "../assets/camera";
@@ -21,6 +22,7 @@ export function Hub() {
           Read again
         </button>
       </PageHead>
+      <ModeNotice needs="tether" what="Reading the camera's details" />
       <CameraCard />
       <div className="flex-row stretch">
         <ShotHistory />
