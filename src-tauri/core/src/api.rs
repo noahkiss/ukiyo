@@ -1,23 +1,23 @@
 //! The one surface every front end speaks (docs/agent-interface.md, section 2).
 //!
+//! - `ukiyo_api_table!`: the method table, every method once (QuadCam's `api!`). It makes
+//!   `Request`, `Response`, `METHODS`, `Request::method` and `dispatch` here, and the app's
+//!   Tauri commands in `src-tauri/src/lib.rs`. A new method is one row.
 //! - `Request`: one variant per method. On the wire it is `{"method": "plan_create",
 //!   "params": {"set": {"AutoPowerOff": "OFF"}}}`; a method with no params
 //!   leaves `params` out. Method names are the window's Tauri command names.
-//! - `Response`: one variant per method, in the same order, carrying that method's result:
+//! - `Response`: one variant per method, carrying that method's result:
 //!   `{"method": "plan_create", "result": {...}}`.
 //! - `Error`: a typed code (section 5, "Typed errors"), a message, and what fixes it.
 //! - `Event`: what the Lab reports while it runs. `ukiyo serve` sends them to every
 //!   subscribed client (`serve::wire`); the app turns them into Tauri events.
-//! - `call`: one typed function per method. `dispatch` and the Tauri commands both call these,
-//!   so a method behaves the same on every surface.
+//! - `call`: one typed function per method. The table's rows call these, and the CLI calls the
+//!   library ones directly, so a method behaves the same on every surface.
 //!
 //! - `dispatch` takes the caller's `actor` (`app`, `cli`, `mcp:<client>`), which goes into
 //!   the session log with every write, label and note.
 //!
 //! Camera writes exist only as plans: `plan_create`, then `plan_apply` (section 5).
-//!
-//! A new method is a `Request` variant, a `Response` variant, a `call` function and a
-//! `dispatch` arm. Stage 8 turns this into one table and a macro (QuadCam's `api!`).
 
 use crate::camera::owner::{ChangeGroup, PropRow, Status};
 use crate::catalog::{Catalog, LabelPatch};
@@ -26,160 +26,226 @@ use crate::plan::{Applied, Plan, PlanInput};
 use crate::library::prefs::{Prefs, PrefsPatch};
 use crate::library::{self, Hits, SaveInput, Saved, SearchInput, Store, Trashed};
 use crate::recipes::{self, Parsed};
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::Path;
 
-/// One call into the core.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-#[serde(tag = "method", content = "params", rename_all = "snake_case")]
-pub enum Request {
-    /// Everything the Lab knows now: status, rows, change feed, catalog, file paths.
-    LabSnapshot,
-    /// Codes read on every poll, besides the ones the owner always reads.
-    LabPin { codes: Vec<u16> },
-    /// The keep-awake setting: while Ukiyo is in use, the owner resets the camera's auto
-    /// power off timer. Remembered in `settings.json`.
-    LabKeepAwake { on: bool },
-    /// The Lab's connect switch: off stops the owner from connecting.
-    LabConnect { on: bool },
-    /// Writes a full property dump to `dumps/` and returns its path.
-    LabExport,
-    /// Labels one property in the model's catalog and saves the catalog.
-    LabLabel { patch: LabelPatch },
-    /// A note in the session log, tied to a change group.
-    LabNote { group: Option<u32>, text: String },
-    /// Drives the fake camera (`UKIYO_FAKE_CAMERA=1` only).
-    LabFake { action: FakeAction },
-    /// Parses recipe text, or the recipe post at a URL, into slot settings, notes and
-    /// per-field warnings. Exactly one of `text` and `url`. Stores nothing.
-    RecipeParse {
-        #[serde(default)]
-        text: Option<String>,
-        #[serde(default)]
-        url: Option<String>,
-    },
-    /// Builds a plan against the live camera: names or codes to labels or raw values.
-    /// Writes nothing.
-    PlanCreate {
-        #[serde(default)]
-        set: IndexMap<String, String>,
-        #[serde(default)]
-        allow_unconfirmed: bool,
-        /// A library item to plan instead of `set`: `preset:<slug>`, `snapshot:<slug>`, or a
-        /// recipe (`recipe:<slug>`, `cat:<id>`) with `slot`.
-        #[serde(default)]
-        from: Option<String>,
-        /// The custom slot a recipe goes to: `C1` to `C7`.
-        #[serde(default)]
-        slot: Option<String>,
-    },
-    /// A stored plan, with its time left.
-    PlanShow { plan_id: String },
-    /// Re-checks a plan, writes its steps in order, reads each back, and logs them.
-    PlanApply { plan_id: String },
-    PlanDiscard { plan_id: String },
-    /// Input in the window: Ukiyo is in use (keep-awake). Every other request counts too.
-    Activity,
-    /// Searches the library on this Mac: presets, snapshots, favourites, the trash.
-    LibrarySearch(SearchInput),
-    /// One library item in full, or the diff of two snapshots.
-    LibraryRead {
-        id: String,
-        #[serde(default)]
-        compare_to: Option<String>,
-    },
-    /// Creates or replaces one library item, or restores one from the trash. Never writes
-    /// to the camera.
-    LibrarySave(SaveInput),
-    /// Moves a preset or snapshot to the trash, or removes a favourite.
-    LibraryDelete { id: String },
-    /// The preferences in `settings.json`.
-    PrefsGet,
-    /// Changes some preferences. `keep_awake` reaches the owner at once.
-    PrefsSet { patch: PrefsPatch },
+/// The method table: every method once. Each row names the method, its `Request` variant and
+/// params, its result (none for a method with no result), and the body `dispatch` runs:
+///
+/// ```text
+/// /// Doc comment.
+/// method_name: Variant { field: Type, ... } -> ResultType = |lab, actor| body;
+/// method_name: Variant(input: Type) -> ResultType = |lab, actor| body;
+/// method_name: Variant = |lab, actor| body;
+/// ```
+///
+/// A body returns `Result<ResultType, Error>` (`Result<(), Error>` without a result). Types and
+/// calls are `$crate::` paths, since the app crate expands the table too.
+///
+/// The rows sit in three groups, by what the window does with them:
+///
+/// - `result`: the app forwards the method to `serve` as a Tauri command of the same name and
+///   params, returning its result.
+/// - `quiet`: the same, returning nothing; a failure goes to the app's log.
+/// - `own`: the app writes its own command, or has none (`plan_show`).
+///
+/// `ukiyo_api_table!(gen)` calls the macro `gen` with the rows; `ukiyo_api_table!(gen [x])`
+/// passes `[x]` first. Here it makes `Request`, `Response`, `METHODS`, `Request::method` and
+/// `dispatch`; in `src-tauri/src/lib.rs` it makes the Tauri commands. A new method is one row.
+#[macro_export]
+macro_rules! ukiyo_api_table {
+    ($gen:ident $([$($extra:tt)*])?) => {
+        $gen! {
+            $([$($extra)*])?
+            result {
+                /// Writes a full property dump to `dumps/` and returns its path.
+                lab_export: LabExport -> String = |lab, actor| $crate::api::call::lab_export(lab, actor);
+                /// Labels one property in the model's catalog and saves the catalog.
+                lab_label: LabLabel { patch: $crate::catalog::LabelPatch } -> Box<$crate::catalog::Catalog> =
+                    |lab, actor| $crate::api::call::lab_label(lab, actor, patch).map(Box::new);
+                /// Builds a plan against the live camera: names or codes to labels or raw values.
+                /// Writes nothing.
+                plan_create: PlanCreate {
+                    #[serde(default)]
+                    set: indexmap::IndexMap<String, String>,
+                    #[serde(default)]
+                    allow_unconfirmed: bool,
+                    /// A library item to plan instead of `set`: `preset:<slug>`, `snapshot:<slug>`, or a
+                    /// recipe (`recipe:<slug>`, `cat:<id>`) with `slot`.
+                    #[serde(default)]
+                    from: Option<String>,
+                    /// The custom slot a recipe goes to: `C1` to `C7`.
+                    #[serde(default)]
+                    slot: Option<String>,
+                } -> Box<$crate::plan::Plan> = |lab, actor| {
+                    $crate::api::call::plan_create(lab, $crate::plan::PlanInput { set, allow_unconfirmed, from, slot }).map(Box::new)
+                };
+                /// Re-checks a plan, writes its steps in order, reads each back, and logs them.
+                plan_apply: PlanApply { plan_id: String } -> Box<$crate::plan::Applied> =
+                    |lab, actor| $crate::api::call::plan_apply(lab, actor, &plan_id).map(Box::new);
+                /// Searches the library on this Mac: presets, snapshots, favourites, the trash.
+                library_search: LibrarySearch(input: $crate::library::SearchInput) -> $crate::library::Hits =
+                    |lab, actor| Ok($crate::api::call::library_search(lab.data_dir(), &input));
+                /// One library item in full, or the diff of two items. `slot:C1` .. `slot:C7` and
+                /// `slots` read the camera (RAW CONV. mode).
+                library_read: LibraryRead {
+                    id: String,
+                    #[serde(default)]
+                    compare_to: Option<String>,
+                } -> Box<$crate::library::Read> = |lab, actor| {
+                    if $crate::api::call::is_slot_id(&id) {
+                        $crate::api::call::slot_read(lab, actor, &id, compare_to.as_deref())
+                    } else {
+                        $crate::api::call::library_read(lab.data_dir(), &id, compare_to.as_deref())
+                    }
+                    .map(Box::new)
+                };
+                /// Moves a preset or snapshot to the trash, or removes a favourite.
+                library_delete: LibraryDelete { id: String } -> $crate::library::Trashed =
+                    |lab, actor| $crate::api::call::library_delete(lab.data_dir(), actor, &id);
+                /// Changes some preferences. `keep_awake` reaches the owner at once.
+                prefs_set: PrefsSet { patch: $crate::library::prefs::PrefsPatch } -> Box<$crate::library::prefs::Prefs> = |lab, actor| {
+                    patch.check()?;
+                    if let Some(on) = patch.keep_awake {
+                        $crate::api::call::lab_keep_awake(lab, actor, on);
+                    }
+                    $crate::api::call::prefs_set(lab.data_dir(), &patch).map(Box::new)
+                };
+            }
+            quiet {
+                /// Codes read on every poll, besides the ones the owner always reads.
+                lab_pin: LabPin { codes: Vec<u16> } = |lab, actor| {
+                    $crate::api::call::lab_pin(lab, codes);
+                    Ok(())
+                };
+                /// The keep-awake setting: while Ukiyo is in use, the owner resets the camera's auto
+                /// power off timer. Remembered in `settings.json`.
+                lab_keep_awake: LabKeepAwake { on: bool } = |lab, actor| {
+                    $crate::api::call::lab_keep_awake(lab, actor, on);
+                    Ok(())
+                };
+                /// The Lab's connect switch: off stops the owner from connecting.
+                lab_connect: LabConnect { on: bool } = |lab, actor| {
+                    $crate::api::call::lab_connect(lab, actor, on);
+                    Ok(())
+                };
+                /// A note in the session log, tied to a change group.
+                lab_note: LabNote { group: Option<u32>, text: String } = |lab, actor| {
+                    $crate::api::call::lab_note(lab, actor, group, text);
+                    Ok(())
+                };
+                /// Drops a plan without writing it.
+                plan_discard: PlanDiscard { plan_id: String } = |lab, actor| $crate::api::call::plan_discard(lab, &plan_id);
+                /// Input in the window: Ukiyo is in use (keep-awake). Every other request counts too.
+                activity: Activity = |lab, actor| Ok(());
+            }
+            own {
+                /// Everything the Lab knows now: status, rows, change feed, catalog, file paths.
+                lab_snapshot: LabSnapshot -> Box<$crate::lab::Snapshot> = |lab, actor| Ok(Box::new($crate::api::call::lab_snapshot(lab)));
+                /// Drives the fake camera (`UKIYO_FAKE_CAMERA=1` only).
+                lab_fake: LabFake { action: $crate::lab::FakeAction } = |lab, actor| $crate::api::call::lab_fake(lab, action);
+                /// Parses recipe text, or the recipe post at a URL, into slot settings, notes and
+                /// per-field warnings. Exactly one of `text` and `url`. Stores nothing.
+                recipe_parse: RecipeParse {
+                    #[serde(default)]
+                    text: Option<String>,
+                    #[serde(default)]
+                    url: Option<String>,
+                } -> Box<$crate::recipes::Parsed> = |lab, actor| $crate::api::call::recipe_parse(text.as_deref(), url.as_deref()).map(Box::new);
+                /// A stored plan, with its time left.
+                plan_show: PlanShow { plan_id: String } -> Box<$crate::plan::Plan> = |lab, actor| $crate::api::call::plan_show(lab, &plan_id).map(Box::new);
+                /// Creates or replaces one library item, or restores one from the trash. Never writes
+                /// to the camera.
+                library_save: LibrarySave(input: $crate::library::SaveInput) -> $crate::library::Saved = |lab, actor| {
+                    let snap = $crate::api::save_needs_camera(&input).then(|| lab.snapshot());
+                    let ctx = $crate::library::Context { camera: snap.as_ref(), catalog: None };
+                    $crate::api::call::library_save(lab.data_dir(), actor, &input, ctx)
+                };
+                /// The preferences in `settings.json`.
+                prefs_get: PrefsGet -> Box<$crate::library::prefs::Prefs> = |lab, actor| Ok(Box::new($crate::api::call::prefs_get(lab.data_dir())));
+            }
+        }
+    };
 }
 
-/// Every method, in `Request` order.
-pub const METHODS: &[&str] = &[
-    "lab_snapshot",
-    "lab_pin",
-    "lab_keep_awake",
-    "lab_connect",
-    "lab_export",
-    "lab_label",
-    "lab_note",
-    "lab_fake",
-    "recipe_parse",
-    "plan_create",
-    "plan_show",
-    "plan_apply",
-    "plan_discard",
-    "activity",
-    "library_search",
-    "library_read",
-    "library_save",
-    "library_delete",
-    "prefs_get",
-    "prefs_set",
-];
-
-impl Request {
-    /// The method name, as on the wire.
-    pub fn method(&self) -> &'static str {
-        METHODS[match self {
-            Request::LabSnapshot => 0,
-            Request::LabPin { .. } => 1,
-            Request::LabKeepAwake { .. } => 2,
-            Request::LabConnect { .. } => 3,
-            Request::LabExport => 4,
-            Request::LabLabel { .. } => 5,
-            Request::LabNote { .. } => 6,
-            Request::LabFake { .. } => 7,
-            Request::RecipeParse { .. } => 8,
-            Request::PlanCreate { .. } => 9,
-            Request::PlanShow { .. } => 10,
-            Request::PlanApply { .. } => 11,
-            Request::PlanDiscard { .. } => 12,
-            Request::Activity => 13,
-            Request::LibrarySearch(_) => 14,
-            Request::LibraryRead { .. } => 15,
-            Request::LibrarySave(_) => 16,
-            Request::LibraryDelete { .. } => 17,
-            Request::PrefsGet => 18,
-            Request::PrefsSet { .. } => 19,
-        }]
-    }
+/// A `dispatch` arm's response: the body's result in the variant, or the bare variant.
+macro_rules! api_respond {
+    ($v:ident, $body:expr) => {{
+        let out: Result<(), Error> = $body;
+        out?;
+        Response::$v
+    }};
+    ($v:ident, $body:expr, $ret:ty) => {{
+        let out: Result<$ret, Error> = $body;
+        Response::$v(out?)
+    }};
 }
 
-/// The answer to a `Request`: the variant of the same name.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-#[serde(tag = "method", content = "result", rename_all = "snake_case")]
-pub enum Response {
-    LabSnapshot(Box<Snapshot>),
-    LabPin,
-    LabKeepAwake,
-    LabConnect,
-    /// The dump's path.
-    LabExport(String),
-    /// The catalog after the label.
-    LabLabel(Box<Catalog>),
-    LabNote,
-    LabFake,
-    RecipeParse(Box<Parsed>),
-    PlanCreate(Box<Plan>),
-    PlanShow(Box<Plan>),
-    PlanApply(Box<Applied>),
-    PlanDiscard,
-    Activity,
-    LibrarySearch(Hits),
-    LibraryRead(Box<library::Read>),
-    LibrarySave(Saved),
-    LibraryDelete(Trashed),
-    PrefsGet(Box<Prefs>),
-    PrefsSet(Box<Prefs>),
+/// The core's side of the table: `Request`, `Response`, `METHODS`, `Request::method` and
+/// `dispatch`.
+macro_rules! api_core {
+    ($(
+        $group:ident {
+            $(
+                $(#[$m:meta])*
+                $name:ident : $v:ident
+                $( { $( $(#[$fm:meta])* $f:ident : $fty:ty ),* $(,)? } )?
+                $( ( $nt:ident : $ntty:ty ) )?
+                $( -> $ret:ty )?
+                = |$lab:ident, $actor:ident| $body:expr;
+            )*
+        }
+    )*) => {
+        /// One call into the core.
+        #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+        #[serde(tag = "method", content = "params", rename_all = "snake_case")]
+        pub enum Request {
+            $($(
+                $(#[$m])*
+                $v $( { $( $(#[$fm])* $f: $fty ),* } )? $( ($ntty) )?,
+            )*)*
+        }
+
+        /// The answer to a `Request`: the variant of the same name, with the method's result.
+        #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+        #[serde(tag = "method", content = "result", rename_all = "snake_case")]
+        pub enum Response {
+            $($( $v $( ($ret) )?, )*)*
+        }
+
+        /// Every method, in table order.
+        pub const METHODS: &[&str] = &[$($(stringify!($name)),*),*];
+
+        impl Request {
+            /// The method name, as on the wire.
+            #[allow(unused_variables)]
+            pub fn method(&self) -> &'static str {
+                match self {
+                    $($( Request::$v $( { $( $f: _ ),* } )? $( ($nt) )? => stringify!($name), )*)*
+                }
+            }
+        }
+
+        /// Answers one request from `actor`. Methods that wait on the camera block the calling
+        /// thread. Every request means Ukiyo is in use, for keep-awake.
+        #[allow(unused_variables)]
+        pub fn dispatch(lab: &Lab, actor: &str, req: Request) -> Result<Response, Error> {
+            call::activity(lab);
+            Ok(match req {
+                $($(
+                    Request::$v $( { $($f),* } )? $( ($nt) )? => {
+                        let $lab = lab;
+                        let $actor = actor;
+                        api_respond!($v, $body $(, $ret)?)
+                    }
+                )*)*
+            })
+        }
+    };
 }
+
+ukiyo_api_table!(api_core);
 
 /// Why a request failed (docs/agent-interface.md, section 5, "Typed errors").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -460,67 +526,11 @@ pub fn save_needs_camera(input: &SaveInput) -> bool {
     }
 }
 
-/// Answers one request from `actor`. Methods that wait on the camera block the calling thread.
-/// Every request means Ukiyo is in use, for keep-awake.
-pub fn dispatch(lab: &Lab, actor: &str, req: Request) -> Result<Response, Error> {
-    call::activity(lab);
-    Ok(match req {
-        Request::LabSnapshot => Response::LabSnapshot(Box::new(call::lab_snapshot(lab))),
-        Request::LabPin { codes } => {
-            call::lab_pin(lab, codes);
-            Response::LabPin
-        }
-        Request::LabKeepAwake { on } => {
-            call::lab_keep_awake(lab, actor, on);
-            Response::LabKeepAwake
-        }
-        Request::LabConnect { on } => {
-            call::lab_connect(lab, actor, on);
-            Response::LabConnect
-        }
-        Request::LabExport => Response::LabExport(call::lab_export(lab, actor)?),
-        Request::LabLabel { patch } => Response::LabLabel(Box::new(call::lab_label(lab, actor, patch)?)),
-        Request::LabNote { group, text } => {
-            call::lab_note(lab, actor, group, text);
-            Response::LabNote
-        }
-        Request::LabFake { action } => {
-            call::lab_fake(lab, action)?;
-            Response::LabFake
-        }
-        Request::RecipeParse { text, url } => Response::RecipeParse(Box::new(call::recipe_parse(text.as_deref(), url.as_deref())?)),
-        Request::PlanCreate { set, allow_unconfirmed, from, slot } => Response::PlanCreate(Box::new(call::plan_create(lab, PlanInput { set, allow_unconfirmed, from, slot })?)),
-        Request::PlanShow { plan_id } => Response::PlanShow(Box::new(call::plan_show(lab, &plan_id)?)),
-        Request::PlanApply { plan_id } => Response::PlanApply(Box::new(call::plan_apply(lab, actor, &plan_id)?)),
-        Request::PlanDiscard { plan_id } => {
-            call::plan_discard(lab, &plan_id)?;
-            Response::PlanDiscard
-        }
-        Request::Activity => Response::Activity,
-        Request::LibrarySearch(input) => Response::LibrarySearch(call::library_search(lab.data_dir(), &input)),
-        Request::LibraryRead { id, compare_to } if call::is_slot_id(&id) => Response::LibraryRead(Box::new(call::slot_read(lab, actor, &id, compare_to.as_deref())?)),
-        Request::LibraryRead { id, compare_to } => Response::LibraryRead(Box::new(call::library_read(lab.data_dir(), &id, compare_to.as_deref())?)),
-        Request::LibrarySave(input) => {
-            let snap = save_needs_camera(&input).then(|| lab.snapshot());
-            let ctx = library::Context { camera: snap.as_ref(), catalog: None };
-            Response::LibrarySave(call::library_save(lab.data_dir(), actor, &input, ctx)?)
-        }
-        Request::LibraryDelete { id } => Response::LibraryDelete(call::library_delete(lab.data_dir(), actor, &id)?),
-        Request::PrefsGet => Response::PrefsGet(Box::new(call::prefs_get(lab.data_dir()))),
-        Request::PrefsSet { patch } => {
-            patch.check()?;
-            if let Some(on) = patch.keep_awake {
-                call::lab_keep_awake(lab, actor, on);
-            }
-            Response::PrefsSet(Box::new(call::prefs_set(lab.data_dir(), &patch)?))
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::camera::owner::Link;
+    use indexmap::IndexMap;
     use serde_json::json;
     use std::time::{Duration, Instant};
 
@@ -583,9 +593,11 @@ mod tests {
             Request::PrefsSet { patch: PrefsPatch::default() },
         ];
         assert_eq!(all.len(), METHODS.len());
-        for (r, name) in all.iter().zip(METHODS) {
-            assert_eq!(r.method(), *name);
-            assert_eq!(serde_json::to_value(r).unwrap()["method"], *name);
+        let mut seen = std::collections::BTreeSet::new();
+        for r in &all {
+            assert!(METHODS.contains(&r.method()), "{} is not in METHODS", r.method());
+            assert_eq!(serde_json::to_value(r).unwrap()["method"], r.method());
+            assert!(seen.insert(r.method()), "{} twice", r.method());
         }
     }
 

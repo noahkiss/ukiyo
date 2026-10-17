@@ -1,0 +1,97 @@
+# schema_version 1
+mcp.action fake_camera.autoOff
+mcp.action fake_camera.autoOn
+mcp.action fake_camera.closeMenu
+mcp.action fake_camera.movie
+mcp.action fake_camera.nudge
+mcp.action fake_camera.openMenu
+mcp.action fake_camera.powerOff
+mcp.action fake_camera.powerOn
+mcp.action fake_camera.stills
+mcp.action fake_camera.unplug
+mcp.param camera_apply.plan_id string
+mcp.param camera_plan.allow_unconfirmed boolean
+mcp.param camera_plan.preset string
+mcp.param camera_plan.recipe string
+mcp.param camera_plan.set object
+mcp.param camera_plan.slot string
+mcp.param camera_plan.snapshot string
+mcp.param camera_status.history boolean
+mcp.param camera_watch.codes array<string>
+mcp.param camera_watch.since integer
+mcp.param camera_watch.wait_s number
+mcp.param catalog_label.code string
+mcp.param catalog_label.confidence string
+mcp.param catalog_label.menu string
+mcp.param catalog_label.name string
+mcp.param catalog_label.notes string
+mcp.param catalog_label.values object
+mcp.param fake_camera.action string
+mcp.param library_delete.id string
+mcp.param library_read.compare_to string
+mcp.param library_read.id string
+mcp.param library_save.from string
+mcp.param library_save.item object
+mcp.param library_save.kind string
+mcp.param library_save.name string
+mcp.param library_search.film_sim string
+mcp.param library_search.kind string
+mcp.param library_search.limit integer
+mcp.param library_search.query string
+mcp.param library_search.sensor string
+mcp.param recipe_parse.text string
+mcp.param recipe_parse.url string
+mcp.param settings_read.codes array<string>
+mcp.param settings_read.filter string
+mcp.param settings_read.limit integer
+mcp.param settings_read.menu string
+mcp.param settings_read.query string
+mcp.param settings_read.view string
+mcp.required camera_apply.plan_id
+mcp.required catalog_label.code
+mcp.required fake_camera.action
+mcp.required library_delete.id
+mcp.required library_read.id
+mcp.required library_save.kind
+mcp.required library_search.kind
+mcp.tool camera_apply
+mcp.tool camera_plan
+mcp.tool camera_status
+mcp.tool camera_watch
+mcp.tool catalog_label
+mcp.tool fake_camera
+mcp.tool library_delete
+mcp.tool library_read
+mcp.tool library_save
+mcp.tool library_search
+mcp.tool recipe_parse
+mcp.tool settings_read
+mcp.value camera_plan.slot=C1
+mcp.value camera_plan.slot=C2
+mcp.value camera_plan.slot=C3
+mcp.value camera_plan.slot=C4
+mcp.value camera_plan.slot=C5
+mcp.value camera_plan.slot=C6
+mcp.value camera_plan.slot=C7
+mcp.value catalog_label.confidence=confirmed
+mcp.value catalog_label.confidence=guess
+mcp.value catalog_label.confidence=likely
+mcp.value library_save.kind=dump
+mcp.value library_save.kind=favourite
+mcp.value library_save.kind=note
+mcp.value library_save.kind=prefs
+mcp.value library_save.kind=preset
+mcp.value library_save.kind=recipe
+mcp.value library_save.kind=snapshot
+mcp.value library_search.kind=catalogue
+mcp.value library_search.kind=favourite
+mcp.value library_search.kind=preset
+mcp.value library_search.kind=recipe
+mcp.value library_search.kind=snapshot
+mcp.value library_search.kind=trash
+mcp.value settings_read.filter=all
+mcp.value settings_read.filter=favourites
+mcp.value settings_read.filter=unconfirmed
+mcp.value settings_read.filter=unnamed
+mcp.value settings_read.view=menus
+mcp.value settings_read.view=rows

@@ -14,6 +14,7 @@ mod mcp;
 mod mcp_tools;
 mod out;
 mod recipes;
+mod schema;
 mod writes;
 
 use clap::{Args, Parser, Subcommand};
@@ -29,6 +30,9 @@ struct Cli {
     /// No progress lines on stderr.
     #[arg(long, global = true)]
     quiet: bool,
+    /// Prints the version of the CLI and MCP surface (schema.rs) and exits.
+    #[arg(long)]
+    schema_version: bool,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -399,6 +403,17 @@ fn main() {
         std::process::exit(ukiyo_core::serve::main(&args[2..]));
     }
     let wants_json = args.iter().any(|a| a == "--json");
+    if args.iter().any(|a| a == "--schema-version") {
+        if wants_json {
+            println!("{}", serde_json::json!({ "schema_version": schema::SCHEMA_VERSION }));
+        } else {
+            println!("{}", schema::SCHEMA_VERSION);
+        }
+        std::process::exit(0);
+    }
+    for d in schema::cli_deprecations(schema::DEPRECATIONS, &args[1..]) {
+        eprintln!("ukiyo: {}", d.warning());
+    }
     let cli = match Cli::try_parse_from(&args) {
         Ok(c) => c,
         Err(e) => {

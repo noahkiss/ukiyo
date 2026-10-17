@@ -1,0 +1,138 @@
+# schema_version 1
+cli.arg catalog show [CODE]
+cli.arg help modes [MODE]
+cli.arg log note <TEXT>
+cli.arg owner set <FIELD=VALUE>...
+cli.arg plan apply <PLAN_ID>
+cli.arg plan discard <PLAN_ID>
+cli.arg plan show <PLAN_ID>
+cli.arg prefs set <KEY=VALUE>...
+cli.arg presets apply <ID>
+cli.arg presets ls [QUERY]...
+cli.arg presets rm <ID>
+cli.arg presets save <NAME>
+cli.arg presets save [SETTING]...
+cli.arg presets show <ID>
+cli.arg recipes edit <FIELD=VALUE>...
+cli.arg recipes edit <ID>
+cli.arg recipes import [CAT]
+cli.arg recipes ls [QUERY]...
+cli.arg recipes read [SLOT]
+cli.arg recipes rm <ID>
+cli.arg recipes search [QUERY]...
+cli.arg recipes show <ID>
+cli.arg recipes write <ID>
+cli.arg recipes write <SLOT>
+cli.arg settings [QUERY]...
+cli.arg settings fav add <NAME>...
+cli.arg settings fav rm <NAME>...
+cli.arg settings set <NAME=VALUE>...
+cli.arg snapshots diff <A>
+cli.arg snapshots diff [B]
+cli.arg snapshots restore <ID>
+cli.arg snapshots rm <ID>
+cli.arg snapshots save [NAME]
+cli.arg snapshots show <ID>
+cli.arg trash restore <ID>
+cli.command camera
+cli.command camera connect
+cli.command camera disconnect
+cli.command camera export
+cli.command camera watch
+cli.command catalog
+cli.command catalog show
+cli.command help
+cli.command help modes
+cli.command log
+cli.command log note
+cli.command log show
+cli.command mcp
+cli.command owner
+cli.command owner get
+cli.command owner set
+cli.command plan
+cli.command plan apply
+cli.command plan discard
+cli.command plan show
+cli.command prefs
+cli.command prefs get
+cli.command prefs set
+cli.command presets
+cli.command presets apply
+cli.command presets ls
+cli.command presets rm
+cli.command presets save
+cli.command presets show
+cli.command recipes
+cli.command recipes edit
+cli.command recipes import
+cli.command recipes ls
+cli.command recipes read
+cli.command recipes rm
+cli.command recipes search
+cli.command recipes show
+cli.command recipes write
+cli.command serve
+cli.command settings
+cli.command settings fav
+cli.command settings fav add
+cli.command settings fav rm
+cli.command settings set
+cli.command snapshots
+cli.command snapshots diff
+cli.command snapshots ls
+cli.command snapshots restore
+cli.command snapshots rm
+cli.command snapshots save
+cli.command snapshots show
+cli.command status
+cli.command trash
+cli.command trash ls
+cli.command trash restore
+cli.flag  --json
+cli.flag  --quiet
+cli.flag  --schema-version
+cli.flag camera watch --code VALUE
+cli.flag camera watch --for VALUE
+cli.flag catalog show --model VALUE
+cli.flag log note --group VALUE
+cli.flag log show --since VALUE
+cli.flag owner set --allow-unconfirmed
+cli.flag owner set --dry-run
+cli.flag owner set -y,--yes
+cli.flag plan apply --allow-unconfirmed
+cli.flag plan apply --dry-run
+cli.flag plan apply -y,--yes
+cli.flag presets apply --allow-unconfirmed
+cli.flag presets apply --dry-run
+cli.flag presets apply -y,--yes
+cli.flag presets save --from-snapshot VALUE
+cli.flag presets save --notes VALUE
+cli.flag presets save --set VALUE
+cli.flag recipes import --name VALUE
+cli.flag recipes import --save
+cli.flag recipes import --text VALUE
+cli.flag recipes import --url VALUE
+cli.flag recipes ls --sensor VALUE
+cli.flag recipes ls --sim VALUE
+cli.flag recipes read --compare VALUE
+cli.flag recipes search --limit VALUE
+cli.flag recipes search --sensor VALUE
+cli.flag recipes search --sim VALUE
+cli.flag recipes write --allow-unconfirmed
+cli.flag recipes write --dry-run
+cli.flag recipes write -y,--yes
+cli.flag settings --code VALUE
+cli.flag settings --favourites
+cli.flag settings --menu VALUE
+cli.flag settings --menus
+cli.flag settings --unconfirmed
+cli.flag settings --unnamed
+cli.flag settings set --allow-unconfirmed
+cli.flag settings set --dry-run
+cli.flag settings set -y,--yes
+cli.flag snapshots diff --allow-unconfirmed
+cli.flag snapshots restore --allow-unconfirmed
+cli.flag snapshots restore --dry-run
+cli.flag snapshots restore -y,--yes
+cli.flag status --history

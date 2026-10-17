@@ -104,12 +104,16 @@ impl Server {
                 Ok(json!({
                     "protocolVersion": version,
                     "capabilities": { "tools": {} },
-                    "serverInfo": { "name": "ukiyo", "version": env!("CARGO_PKG_VERSION") },
+                    "serverInfo": { "name": "ukiyo", "version": env!("CARGO_PKG_VERSION"), "schemaVersion": crate::schema::SCHEMA_VERSION },
                     "instructions": INSTRUCTIONS,
                 }))
             }
             "ping" => Ok(json!({})),
-            "tools/list" => Ok(json!({ "tools": tools(self.fake) })),
+            "tools/list" => {
+                let mut list = Value::Array(tools(self.fake));
+                crate::schema::annotate_tools(&mut list, crate::schema::DEPRECATIONS);
+                Ok(json!({ "tools": list }))
+            }
             "tools/call" => {
                 let name = params["name"].as_str().unwrap_or("");
                 if !tools(self.fake).iter().any(|t| t["name"] == name) {
