@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Manage a Fujifilm X-series camera over USB"
 edition = "2021"
 license = "MIT"
-rust-version = "1.89"
+rust-version = "1.90"
 publish = false
 
 [workspace]
@@ -27,6 +27,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "indexmap"] }
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 specta-typescript = "=0.0.12"
+tauri-plugin-opener = "2.7.2"
 
 [dev-dependencies]
 tempfile = "3"

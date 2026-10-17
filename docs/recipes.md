@@ -20,6 +20,11 @@ The database is a compilation (`compilation: true`): each of its recipes credits
 creator in its Creator column, shown as "From <creator>, via H-P Chavaz recipe database".
 A row's link is the creator's original post when the sheet gives one, else the sheet.
 
+The app opens a recipe's Post and Source links in the default browser. The window may open
+only https links on the catalogue's hosts: `src-tauri/capabilities/links.json` lists them, one
+`https://<host>/*` pattern per host found in a `url` or `homepage` field. An http link, or a
+link to any other host, does not open.
+
 ## Files
 
 - `catalog/recipes/sources/<id>.json` — one per source, the recipes as that site published
@@ -136,6 +141,9 @@ ends, or the database's Recipes tab as one CSV download, at least 2 s between re
 in `local/recipe-feeds/<id>/`; delete that folder to read a feed again. A 429, a 5xx or
 any other failure stops that source and leaves its file as it was. It prints, per source,
 the counts and the most common warnings, then the merge counts and the near-duplicates.
+
+A refresh that adds a link host fails `cargo test link_hosts`. Regenerate the capability with
+`UKIYO_UPDATE_LINK_HOSTS=1 cargo test link_hosts` and review the new hosts.
 
 ## Adding a source
 
