@@ -94,6 +94,11 @@ what comes next.
   - `guided_map.py STEPS [--dry-run DUMP.json]` — guided mapping session: a dialog names one
     change per step (`steps/<name>.json`); the script diffs every property, keeps the camera awake
     with the D381 toggle, and writes a log, summary and proposed catalog patch to `local/mapping/`.
+    A steps file with `"mode": "movie"` runs with the STILL/MOVIE switch on MOVIE; a
+    `"restore": true` step lists what changed since the start.
+  - `read_backup.py` — read the camera's settings backup blob into `local/backup/`.
+- `tools/catalog/makernote_diff.py` and `backup_diff.py` — diff ExifTool MakerNote fields and
+  backup blobs between two shots or two backups, to map settings PTP does not name.
     A steps file's `"mode": "movie"` runs with the STILL/MOVIE switch on MOVIE; a `"restore": true`
     step lists every changed item with its start value.
   - `read_backup.py LABEL` — the settings backup (object handle 0, RAW CONV. mode) to
