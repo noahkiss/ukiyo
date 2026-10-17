@@ -50,6 +50,10 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
   2:00 after the session opened while properties were read continuously (2026-10-17). Keeping it
   awake needs the D381 write; reopening sessions to reset the timer is the reconnect pattern
   ruled out below.
+- What does reset it (2026-10-17, D381 at 15 s, one action every 5 s): changing D381 to another
+  value and back, and a half-press (D208 = 0x0200 + InitiateCapture, then D208 = 0x0004 +
+  InitiateCapture; the lens refocuses). GetDeviceInfo, GetStorageIDs and rewriting D381 with its
+  own value do not. A write just after the half-press release answered 0x2019 once; retry it.
 - D22F changes about three times a second at rest: a blob of 32-bit counts, likely the live
   histogram.
 - Auto power off drops the camera from USB entirely; nothing can wake it over USB. Just before,
