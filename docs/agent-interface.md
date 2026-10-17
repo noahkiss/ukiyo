@@ -61,7 +61,8 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
       server send their requests over the socket.
     - Method names are the window's command names (`lab_snapshot`, `lab_pin`,
       `lab_keep_awake`, `lab_connect`, `lab_export`, `lab_label`, `lab_note`, `lab_fake`,
-      `recipe_parse`, `plan_create`, `plan_show`, `plan_apply`, `plan_discard`). New methods
+      `recipe_parse`, `plan_create`, `plan_show`, `plan_apply`, `plan_discard`, `activity`).
+      `activity` is the window's input ping; every request counts as use for keep-awake. New methods
       for the CLI and MCP join the same enums. Stage 4 removed `lab_write`: a camera write
       exists only as a plan.
 - `src-tauri/src/` keeps the window glue: Tauri commands, the four Tauri events
@@ -262,7 +263,7 @@ Every command returns one envelope:
 // status (link, mode, capture and screen use the window's names: "rawConv", "cardReader")
 { "link": "connected", "reason": null, "model": "X-T5", "firmware": "x.yy", "mode": "tether",
   "capture": "stills", "screen": "shooting", "battery": null, "card": null, "lens": null,
-  "owner": "serve", "pid": 4242, "fake": false, "keep_awake": false,
+  "owner": "serve", "pid": 4242, "fake": false, "keep_awake": true, "keep_awake_active": true,
   "available": { "settings": true, "slots": false, "movie_props": false } }
 
 // settings
@@ -310,7 +311,7 @@ exit 1) and `not_built` (a flag for a later stage, exit 1).
 | 1 | Internal or I/O error. |
 | 2 | Usage error: bad flag, unknown name, ambiguous value. |
 | 3 | No camera: not connected, asleep, unplugged. |
-| 4 | Wrong camera state: `needs_*`, `menu_open`, `busy`. |
+| 4 | Wrong camera state: `needs_*`, `menu_open`, `in_playback`, `busy`. |
 | 5 | Refused by a gate: unconfirmed, read-only, out of range, a label without evidence (`no_evidence`) or with camera text (`private_text`). |
 | 6 | Not applied: declined at the prompt, `--dry-run`, no TTY without `--yes`, plan stale or expired. A `--dry-run` with `--json` prints `ok: true` and the plan, and still exits 6. |
 | 7 | Applied in part: at least one step failed (`readback_mismatch`, `busy` ...). The output lists each step. |
@@ -687,6 +688,13 @@ The core enforces every rule here. The front ends only show them.
   400, 800 and 1600 ms (3.1 s in all), then fails with `busy`. After a half-press release the
   X-T5 answers writes busy for about 0.2 s (docs/protocol.md). The owner never reconnects to
   retry.
+- A write the camera answers 0xA001 makes the owner read D22E. At 1 (a shooting-side menu
+  tab or the Q menu) it sends one half-press, which closes the menu, and sends the write once
+  more; the step and its change group carry `closed_menu`, and the window says "Closed the
+  camera menu to apply the change". A second 0xA001 fails with `menu_open`. At 3 (SET UP or
+  NETWORK/USB SETTING) it fails with `menu_open`; at 2 (playback), with `in_playback`. Both
+  lock every PTP operation, the half-press included, so there is no half-press and no retry.
+  `close_menu_to_write` in `settings.json` (default on) turns the half-press off.
 
 ### Read-back and the session log
 
@@ -711,9 +719,10 @@ the Connect page's guide in the window.
 | Code | When | Hint |
 |---|---|---|
 | `not_connected` | No camera on the bus | Plug in the cable and turn the camera on. |
-| `camera_asleep` | Auto power off took the camera off USB | Turn the camera on. Keep-awake holds AUTO POWER OFF at OFF. |
+| `camera_asleep` | Auto power off took the camera off USB | Turn the camera on. Keep-awake (on in Settings) resets its timer while Ukiyo is in use. |
 | `busy` | The camera answers 0x2019 | Wait; try again in a few seconds. |
-| `menu_open` | D22E = 3, or 0xA001 | Close the menu on the camera. |
+| `menu_open` | D22E = 3, or 0xA001 after the one half-press | Close the SET UP or NETWORK/USB SETTING menu on the camera. |
+| `in_playback` | D22E = 2 | Leave playback on the camera: press the playback button. |
 | `needs_tether` | Live settings in another mode | Switch to USB TETHER SHOOTING FIXED. |
 | `needs_rawconv` | Slot contents in another mode | Switch to USB RAW CONV./BACKUP RESTORE. |
 | `needs_stills`, `needs_movie` | A property of the other capture mode | Set the STILL/MOVIE switch. |
@@ -732,8 +741,9 @@ the Connect page's guide in the window.
   rules.
 - A client never retries a failed request in a loop. It reconnects to the socket once if
   `serve` restarted, and spawns `serve` at most once per command.
-- Keep-awake writes D381 only through the owner, and the owner restores the old value on a
-  clean disconnect.
+- Keep-awake writes D381 only through the owner: a neighbouring timeout and straight back to
+  the owner's value, never OFF. The camera holds the owner's value except during that round
+  trip, so nothing needs restoring on disconnect.
 
 ## 6. Mapping: every UI feature
 

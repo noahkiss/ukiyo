@@ -72,7 +72,7 @@ pub fn readiness(s: &Status, rows: usize, need: Need) -> Result<(), Problem> {
             return Err(Problem {
                 code: "camera_asleep",
                 message: "Auto power off took the camera off USB.".into(),
-                hint: "Turn the camera on. Keep-awake holds AUTO POWER OFF at OFF.".into(),
+                hint: "Turn the camera on. Keep-awake (on in Settings) resets its timer while Ukiyo is in use.".into(),
                 walkthrough: None,
                 mode: None,
             });
@@ -220,7 +220,10 @@ pub struct StatusView {
     /// The owner's process id.
     pub pid: Option<u32>,
     pub fake: bool,
+    /// The keep-awake setting.
     pub keep_awake: bool,
+    /// Keep-awake is resetting the camera's auto power off timer now.
+    pub keep_awake_active: bool,
     pub available: Available,
 }
 
@@ -251,6 +254,7 @@ pub fn status_view(snap: &Snapshot, owner: Option<&Welcome>) -> StatusView {
         pid: owner.map(|w| w.pid),
         fake: owner.map_or(snap.fake, |w| w.fake),
         keep_awake: s.keep_awake.enabled,
+        keep_awake_active: s.keep_awake.active,
         available: Available {
             settings: connected && s.mode == Some(UsbMode::Tether),
             slots: connected && s.mode == Some(UsbMode::RawConv),

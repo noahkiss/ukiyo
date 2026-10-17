@@ -3,7 +3,9 @@ import type { FakeAction } from "../bindings";
 
 const ACTIONS: Array<[FakeAction, string]> = [
   ["nudge", "Change a setting"],
-  ["openMenu", "Open menu"],
+  ["openMenu", "Open SET UP menu"],
+  ["mainMenu", "Open shooting menu"],
+  ["playback", "Playback"],
   ["closeMenu", "Close menu"],
   ["movie", "Movie"],
   ["stills", "Stills"],

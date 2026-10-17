@@ -8,6 +8,12 @@
 //! by the device leaving the bus is auto power off. The owner never reconnects in a loop:
 //! it checks presence every 3 s, waits 30 s after a disappearance before it opens the
 //! camera again, and resets USB at most once, only when OpenSession on a fresh claim fails.
+//!
+//! Keep-awake (docs/protocol.md, "How the app polls"): polling does not reset the camera's
+//! auto power off timer, but a D381 value change does. While Ukiyo is in use, the owner sets
+//! D381 to a neighbouring timeout and straight back to the owner's own value, a little more
+//! often than that timeout. It never writes OFF, so a crash between the two writes leaves at
+//! worst a 5 min or 2 min timeout.
 
 use super::clock::Clock;
 use super::ptp::{self, DeviceInfo, Form, PropDesc, Value};
@@ -22,8 +28,48 @@ use std::time::Duration;
 pub const SCREEN: u16 = 0xD22E;
 pub const STILL_MOVIE: u16 = 0xD307;
 pub const AUTO_POWER_OFF: u16 = 0xD381;
+/// The shutter gesture InitiateCapture performs (docs/fuji-vendor-ptp.md, "D208 release values").
+pub const RELEASE: u16 = 0xD208;
+/// D208: half-press (S1 on).
+pub const RELEASE_HALF_PRESS: i64 = 0x0200;
+/// D208: release S1.
+pub const RELEASE_S1_OFF: i64 = 0x0004;
 /// D381's OFF value.
 pub const AUTO_POWER_OFF_OFF: i64 = 3;
+
+/// AUTO POWER OFF in seconds for a D381 value; `None` for OFF or a value not known.
+pub fn auto_power_off_secs(v: i64) -> Option<u32> {
+    match v {
+        1 => Some(300),
+        2 => Some(120),
+        4 => Some(60),
+        5 => Some(30),
+        6 => Some(15),
+        _ => None,
+    }
+}
+
+/// How often keep-awake toggles D381 for a timeout: the timeout less a safe margin.
+pub fn keep_awake_period(timeout_s: u32) -> Duration {
+    Duration::from_secs(match timeout_s {
+        15 => 10,
+        30 => 20,
+        60 => 45,
+        120 => 90,
+        300 => 240,
+        t => (t * 3 / 4).max(5) as u64,
+    })
+}
+
+/// The D381 value keep-awake toggles to: 5 min, or 2 min when the owner's value is 5 min.
+/// Never OFF.
+pub fn keep_awake_neighbour(own: i64) -> i64 {
+    if own == 1 {
+        2
+    } else {
+        1
+    }
+}
 
 /// Timing rules. Tests shorten nothing: the fake clock makes them free.
 #[derive(Debug, Clone)]
@@ -48,6 +94,15 @@ pub struct Config {
     /// half-press release the X-T5 answers writes busy for about 0.2 s (docs/protocol.md).
     /// A busy write is retried on the same session; the owner never reconnects for it.
     pub write_retry: Vec<Duration>,
+    /// A client request or window input this recent means Ukiyo is in use: keep-awake runs.
+    pub in_use_for: Duration,
+    /// The wait before keep-awake tries again to put D381 back after a failed write.
+    pub restore_retry: Duration,
+    /// A write answered 0xA001 (a camera menu is open) gets one half-press, which closes the
+    /// menu, and one retry. Never a loop.
+    pub close_menu_to_write: bool,
+    /// How long the half-press holds S1 before the release.
+    pub half_press_hold: Duration,
 }
 
 impl Default for Config {
@@ -63,6 +118,10 @@ impl Default for Config {
             status_every: Duration::from_millis(500),
             // 100 ms doubling: five retries, 3.1 s in all.
             write_retry: [100, 200, 400, 800, 1600].into_iter().map(Duration::from_millis).collect(),
+            in_use_for: Duration::from_secs(5 * 60),
+            restore_retry: Duration::from_secs(1),
+            close_menu_to_write: true,
+            half_press_hold: Duration::from_millis(500),
         }
     }
 }
@@ -131,9 +190,12 @@ pub enum Link {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct KeepAwake {
+    /// The setting: keep the camera awake while Ukiyo is in use.
     pub enabled: bool,
-    /// The AUTO POWER OFF value to restore on a clean disconnect, while it is held at OFF.
-    pub previous: Option<i64>,
+    /// Toggling now: enabled, tether stills, AUTO POWER OFF not OFF, and Ukiyo in use.
+    pub active: bool,
+    /// Seconds between toggles while active.
+    pub period_s: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -176,7 +238,7 @@ impl Default for Status {
             op_ms: 0.0,
             hot: 0,
             readable: 0,
-            keep_awake: KeepAwake { enabled: false, previous: None },
+            keep_awake: KeepAwake { enabled: false, active: false, period_s: None },
         }
     }
 }
@@ -227,6 +289,9 @@ pub struct ChangeGroup {
     /// and for the owner's own writes (keep-awake).
     #[serde(default)]
     pub actor: Option<String>,
+    /// The write's half-press closed a camera menu first.
+    #[serde(default)]
+    pub closed_menu: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -244,12 +309,16 @@ pub struct WriteOutcome {
     /// SetDevicePropValue operations sent: 1, more when the camera answered busy.
     #[serde(default)]
     pub attempts: u32,
+    /// The camera answered 0xA001 (menu open); a half-press closed the menu and the write
+    /// was sent again.
+    #[serde(default)]
+    pub closed_menu: bool,
 }
 
 impl WriteOutcome {
     /// A write refused before anything reached the camera.
     pub fn refused(code: u16, why: impl Into<String>) -> WriteOutcome {
-        WriteOutcome { code, ok: false, result: why.into(), before: None, readback: None, rc: None, attempts: 0 }
+        WriteOutcome { code, ok: false, result: why.into(), before: None, readback: None, rc: None, attempts: 0, closed_menu: false }
     }
 }
 
@@ -257,6 +326,8 @@ impl WriteOutcome {
 pub mod refusal {
     pub const NOT_CONNECTED: &str = "not connected";
     pub const PAUSED: &str = "camera in menu or busy";
+    /// Playback answers 0xA001 to everything but D22E, the half-press included.
+    pub const PLAYBACK: &str = "camera in playback";
     pub const UNKNOWN: &str = "unknown property";
     pub const NO_DESCRIPTOR: &str = "no descriptor";
     pub const READ_ONLY: &str = "read-only";
@@ -279,9 +350,13 @@ pub enum Request {
     /// `actor` goes on the read-back's change group.
     Write { code: u16, value: Value, actor: Option<String>, reply: Option<Sender<WriteOutcome>> },
     SetPinned(Vec<u16>),
+    /// The keep-awake setting.
     KeepAwake(bool),
+    /// Someone is using Ukiyo: a client request or window input.
+    Activity,
     Export(Sender<Result<Dump, String>>),
-    /// Restores AUTO POWER OFF, closes the session, and stays off until `Connect`.
+    /// Closes the session (AUTO POWER OFF back at the owner's value), and stays off until
+    /// `Connect`.
     Disconnect,
     Connect,
     /// A clean disconnect, then the thread ends.
@@ -359,6 +434,8 @@ impl Prop {
 
 enum Pause {
     None,
+    /// A screen that answers 0xA001 to everything but D22E: the SET UP menu (D22E 3) or
+    /// playback (D22E 2).
     Menu,
     Busy,
 }
@@ -406,6 +483,15 @@ pub struct Owner {
     pinned: HashSet<u16>,
     group_id: u32,
     done: bool,
+    /// The last client request or window input.
+    last_activity: Option<Duration>,
+    /// When keep-awake toggles next.
+    next_toggle: Duration,
+    /// The owner's D381 value while the camera is left at the neighbour (a failed write back).
+    /// In memory only: the camera sits at the owner's value except during one toggle.
+    restore: Option<i64>,
+    /// The next change group is a write's read-back after a half-press closed a menu.
+    group_closed_menu: bool,
 }
 
 impl Owner {
@@ -426,6 +512,10 @@ impl Owner {
             pinned: HashSet::new(),
             group_id: 0,
             done: false,
+            last_activity: None,
+            next_toggle: Duration::ZERO,
+            restore: None,
+            group_closed_menu: false,
         }
     }
 
@@ -460,12 +550,15 @@ impl Owner {
         }
         if let Some(r) = self.queue.pop() {
             self.handle(r);
+        } else if self.awake_due() {
+            self.toggle_awake();
         } else {
             match &self.phase {
                 Phase::Idle { .. } => self.idle_step(),
                 Phase::Connected(_) => self.poll_step(),
             }
         }
+        self.refresh_awake();
         self.publish(false);
     }
 
@@ -520,14 +613,8 @@ impl Owner {
                 }
             }
             Request::SetPinned(codes) => self.pinned = codes.into_iter().collect(),
-            Request::KeepAwake(on) => {
-                self.status.keep_awake.enabled = on;
-                if on {
-                    self.hold_awake();
-                } else {
-                    self.release_awake();
-                }
-            }
+            Request::KeepAwake(on) => self.status.keep_awake.enabled = on,
+            Request::Activity => self.last_activity = Some(self.clock.now()),
             Request::Export(tx) => {
                 let _ = tx.send(self.export());
             }
@@ -563,7 +650,8 @@ impl Owner {
         let refuse = |code: u16, why: &str| WriteOutcome::refused(code, why);
         let Phase::Connected(s) = &mut self.phase else { return refuse(code, NOT_CONNECTED) };
         if !matches!(s.pause, Pause::None) {
-            return refuse(code, PAUSED);
+            let playback = matches!(s.pause, Pause::Menu) && self.status.screen == Some(Screen::Playback);
+            return refuse(code, if playback { PLAYBACK } else { PAUSED });
         }
         let Some(p) = s.props.get(&code) else { return refuse(code, UNKNOWN) };
         let Some(desc) = p.desc.as_ref() else { return refuse(code, NO_DESCRIPTOR) };
@@ -578,25 +666,61 @@ impl Owner {
             Ok(b) => b,
             Err(e) => return refuse(code, &e.0),
         };
-        // 0x2019 means "not now": wait and send the same write again, on the same session.
-        let mut attempts = 0u32;
-        let retry = self.cfg.write_retry.clone();
-        let rc = loop {
-            attempts += 1;
-            let rc = match self.op(ptp::OP_SET_PROP_VALUE, &[code as u32], Some(&bytes)) {
-                Ok(r) => r.rc,
+        let (mut rc, mut attempts) = match self.send_set(code, &bytes) {
+            Ok(x) => x,
+            Err(attempts) => return WriteOutcome { attempts, ..refuse(code, LOST) },
+        };
+        let mut closed_menu = false;
+        let mut result: Option<&str> = None;
+        if rc == ptp::RC_FUJI_MENU {
+            // Which screen refused it: D22E answers in every screen.
+            let screen = match self.op(ptp::OP_GET_PROP_VALUE, &[SCREEN as u32], None) {
+                Ok(r) if r.rc == ptp::RC_OK => Some(screen_of(&ptp::decode_value(0x0004, &r.data))),
+                Ok(_) => None,
                 Err(e) => {
                     self.lost(e);
                     return WriteOutcome { attempts, ..refuse(code, LOST) };
                 }
             };
-            match retry.get(attempts as usize - 1) {
-                Some(wait) if rc == ptp::RC_DEVICE_BUSY => self.clock.sleep(*wait),
-                _ => break rc,
+            match screen {
+                Some(Screen::Playback) => {
+                    result = Some(PLAYBACK);
+                    self.status.screen = Some(Screen::Playback);
+                }
+                Some(Screen::Menu) | None => self.status.screen = Some(Screen::Menu),
+                _ => {}
             }
-        };
+            if screen != Some(Screen::Shooting) {
+                // Playback and the SET UP menu refuse the half-press too: no retry.
+                self.enter_pause(Pause::Menu, false);
+            }
+            if screen == Some(Screen::Shooting) && self.cfg.close_menu_to_write {
+                closed_menu = true;
+            }
+        }
+        if closed_menu {
+            // A menu over the shooting screen (D22E reads 1: the main menu, Q menu, an option
+            // list): one half-press closes it, then one more try. A second 0xA001 is reported.
+            self.log(format!("write {code:#06x}: a camera menu is open (0xA001); half-press to close it"));
+            if !self.half_press() {
+                return WriteOutcome { attempts, ..refuse(code, LOST) };
+            }
+            match self.send_set(code, &bytes) {
+                Ok((r, a)) => {
+                    rc = r;
+                    attempts += a;
+                }
+                Err(a) => return WriteOutcome { attempts: attempts + a, ..refuse(code, LOST) },
+            }
+            closed_menu = rc != ptp::RC_FUJI_MENU;
+            if !closed_menu {
+                self.log(format!("write {code:#06x}: the menu is still open after the half-press"));
+            }
+        }
         // Always read back, whatever the answer.
+        self.group_closed_menu = closed_menu;
         let readback = self.read_value(code, ChangeSource::Write, actor.clone());
+        self.group_closed_menu = false;
         let tries = if attempts > 1 { format!(", {attempts} tries") } else { String::new() };
         let by = actor.as_deref().map(|a| format!(" by {a}")).unwrap_or_default();
         self.log(format!(
@@ -606,7 +730,55 @@ impl Owner {
             ptp::rc_name(rc),
             readback.as_ref().map(Value::key).unwrap_or_else(|| "nothing".into())
         ));
-        WriteOutcome { code, ok: rc == ptp::RC_OK, result: ptp::rc_name(rc).into(), before, readback, rc: Some(rc), attempts }
+        let result = result.unwrap_or(ptp::rc_name(rc)).into();
+        WriteOutcome { code, ok: rc == ptp::RC_OK, result, before, readback, rc: Some(rc), attempts, closed_menu }
+    }
+
+    /// A half-press and release (D208 = 0x0200 + InitiateCapture, hold, D208 = 0x0004 +
+    /// InitiateCapture). It closes an open camera menu; the lens may refocus; no frame is
+    /// taken. The release is sent whatever the press answered. `false`: the connection was
+    /// lost (already handled).
+    fn half_press(&mut self) -> bool {
+        let gesture = |owner: &mut Self, v: i64| -> bool {
+            let Ok(bytes) = ptp::encode(0x0004, &Value::Int(v)) else { return true };
+            if owner.send_set(RELEASE, &bytes).is_err() {
+                return false;
+            }
+            match owner.op(ptp::OP_INITIATE_CAPTURE, &[0, 0], None) {
+                Ok(_) => true,
+                Err(e) => {
+                    owner.lost(e);
+                    false
+                }
+            }
+        };
+        if !gesture(self, RELEASE_HALF_PRESS) {
+            return false;
+        }
+        self.clock.sleep(self.cfg.half_press_hold);
+        gesture(self, RELEASE_S1_OFF)
+    }
+
+    /// SetDevicePropValue, sent again on 0x2019 ("not now") on the same session after each
+    /// `write_retry` wait. Returns the last answer and the tries; `Err(tries)` when the
+    /// connection was lost (already handled).
+    fn send_set(&mut self, code: u16, bytes: &[u8]) -> Result<(u16, u32), u32> {
+        let mut attempts = 0u32;
+        let retry = self.cfg.write_retry.clone();
+        loop {
+            attempts += 1;
+            let rc = match self.op(ptp::OP_SET_PROP_VALUE, &[code as u32], Some(bytes)) {
+                Ok(r) => r.rc,
+                Err(e) => {
+                    self.lost(e);
+                    return Err(attempts);
+                }
+            };
+            match retry.get(attempts as usize - 1) {
+                Some(wait) if rc == ptp::RC_DEVICE_BUSY => self.clock.sleep(*wait),
+                _ => return Ok((rc, attempts)),
+            }
+        }
     }
 
     /// Reads one value now and reports a change as its own group.
@@ -640,43 +812,137 @@ impl Owner {
 
     fn emit_group(&mut self, source: ChangeSource, changes: Vec<Change>, actor: Option<String>) {
         self.group_id += 1;
-        let g = ChangeGroup { id: self.group_id, at: self.clock.wall_ms() as f64, source, changes, actor };
+        let closed_menu = source == ChangeSource::Write && self.group_closed_menu;
+        let g = ChangeGroup { id: self.group_id, at: self.clock.wall_ms() as f64, source, changes, actor, closed_menu };
         self.emit(Event::Changes(g));
     }
 
-    fn hold_awake(&mut self) {
-        let Phase::Connected(s) = &mut self.phase else { return };
-        if s.mode != UsbMode::Tether || self.status.capture != Some(Capture::Stills) || !s.props.get(&AUTO_POWER_OFF).is_some_and(|p| p.available && p.desc.as_ref().is_some_and(|d| d.writable)) {
+    // ---- keep-awake ----
+
+    /// The owner's own D381 value and its timeout, when keep-awake may touch D381 now:
+    /// connected, not paused, tether stills, D381 readable and writable, and not OFF.
+    fn awake_target(&self) -> Option<(i64, u32)> {
+        let Phase::Connected(s) = &self.phase else { return None };
+        if !matches!(s.pause, Pause::None) || s.redescribe || s.mode != UsbMode::Tether || self.status.capture != Some(Capture::Stills) {
+            return None;
+        }
+        let p = s.props.get(&AUTO_POWER_OFF)?;
+        let desc = p.desc.as_ref()?;
+        if !p.available || !desc.writable {
+            return None;
+        }
+        let own = match (self.restore, &p.value) {
+            (Some(r), _) => r,
+            (None, Some(Value::Int(v))) => *v,
+            _ => return None,
+        };
+        let secs = auto_power_off_secs(own)?;
+        let away = Value::Int(keep_awake_neighbour(own));
+        if let Form::Enum { values } = &desc.form {
+            if !values.contains(&away) {
+                return None;
+            }
+        }
+        Some((own, secs))
+    }
+
+    fn in_use(&self) -> bool {
+        self.last_activity.is_some_and(|t| self.clock.now().saturating_sub(t) < self.cfg.in_use_for)
+    }
+
+    /// Updates the status's keep-awake fields; a new active run toggles at once.
+    fn refresh_awake(&mut self) {
+        let target = self.awake_target();
+        let active = self.status.keep_awake.enabled && self.in_use() && target.is_some();
+        let period_s = target.filter(|_| active).map(|(_, secs)| keep_awake_period(secs).as_secs() as u32);
+        if active && !self.status.keep_awake.active {
+            self.next_toggle = self.clock.now();
+        }
+        if period_s != self.status.keep_awake.period_s {
+            match period_s {
+                Some(p) => self.log(format!("keep-awake: D381 toggles every {p} s")),
+                None => self.log("keep-awake: stopped"),
+            }
+        }
+        self.status.keep_awake.active = active;
+        self.status.keep_awake.period_s = period_s;
+    }
+
+    /// A toggle is due while active, and a failed write back is retried even when not.
+    fn awake_due(&self) -> bool {
+        (self.status.keep_awake.active || self.restore.is_some()) && self.clock.now() >= self.next_toggle && self.awake_target().is_some()
+    }
+
+    /// D381 to the neighbouring timeout and straight back to the owner's value: the camera
+    /// restarts its auto power off timer. Neither write is OFF.
+    fn toggle_awake(&mut self) {
+        let now = self.clock.now();
+        // Read D381 first: a person may have changed it since the last sweep.
+        let Some(Value::Int(cur)) = self.read_value(AUTO_POWER_OFF, ChangeSource::Camera, None) else {
+            self.next_toggle = now + self.cfg.restore_retry;
             return;
+        };
+        if self.restore.is_some_and(|own| cur != own && cur != keep_awake_neighbour(own)) {
+            self.restore = None; // The person set another value: that is the owner's value now.
         }
-        let current = s.props.get(&AUTO_POWER_OFF).and_then(|p| p.value.clone());
-        let Some(Value::Int(cur)) = current else { return };
-        if cur == AUTO_POWER_OFF_OFF {
-            return; // Already OFF; a previous value held from an earlier session stays.
+        let own = self.restore.unwrap_or(cur);
+        let Some(secs) = auto_power_off_secs(own) else {
+            self.restore = None;
+            return; // OFF: nothing to keep awake.
+        };
+        self.next_toggle = now + keep_awake_period(secs);
+        let away = keep_awake_neighbour(own);
+        if self.restore.is_none() {
+            // Set before the write: a loss right after it still puts the owner's value back.
+            self.restore = Some(own);
+            let Some((rc, back)) = self.set_quiet(away) else { return };
+            if back == Some(Value::Int(own)) {
+                // Not taken (a menu, or busy past the retries): nothing to put back.
+                self.restore = None;
+                self.log(format!("keep-awake: D381 {own} -> {away}: {} (read back {own})", ptp::rc_name(rc)));
+                return;
+            }
         }
-        let out = self.write(AUTO_POWER_OFF, Value::Int(AUTO_POWER_OFF_OFF), None);
-        if out.ok && out.readback == Some(Value::Int(AUTO_POWER_OFF_OFF)) && self.status.keep_awake.previous.is_none() {
-            self.status.keep_awake.previous = Some(cur);
+        let Some((rc, back)) = self.set_quiet(own) else { return };
+        if back == Some(Value::Int(own)) {
+            self.restore = None;
+        } else {
+            let got = back.as_ref().map(Value::key).unwrap_or_else(|| "nothing".into());
+            self.log(format!("keep-awake: D381 back to {own}: {} (read back {got}); trying again", ptp::rc_name(rc)));
+            self.next_toggle = self.clock.now() + self.cfg.restore_retry;
+            // Show the value the camera holds now.
+            self.read_value(AUTO_POWER_OFF, ChangeSource::Write, None);
         }
     }
 
-    fn release_awake(&mut self) {
-        let Some(prev) = self.status.keep_awake.previous else { return };
-        if self.session().is_none() {
-            return;
-        }
-        let out = self.write(AUTO_POWER_OFF, Value::Int(prev), None);
-        if out.ok {
-            self.status.keep_awake.previous = None;
-        }
+    /// One D381 write and its read-back, with no change group: a toggle leaves the value as
+    /// it was. `None` when the connection was lost.
+    fn set_quiet(&mut self, v: i64) -> Option<(u16, Option<Value>)> {
+        let datatype = self.session()?.props.get(&AUTO_POWER_OFF)?.datatype();
+        let bytes = ptp::encode(datatype, &Value::Int(v)).ok()?;
+        let (rc, _) = self.send_set(AUTO_POWER_OFF, &bytes).ok()?;
+        let r = match self.op(ptp::OP_GET_PROP_VALUE, &[AUTO_POWER_OFF as u32], None) {
+            Ok(r) => r,
+            Err(e) => {
+                self.lost(e);
+                return None;
+            }
+        };
+        Some((rc, (r.rc == ptp::RC_OK).then(|| ptp::decode_value(datatype, &r.data))))
     }
 
     fn close_clean(&mut self) {
         if self.session().is_none() {
             return;
         }
-        // A menu blocks writes; give the restore its chance only when the camera answers.
-        self.release_awake();
+        // A toggle that could not put D381 back gets one more try.
+        if let Some(own) = self.restore.filter(|_| self.awake_target().is_some()) {
+            if let Some((_, Some(Value::Int(v)))) = self.set_quiet(own) {
+                if v == own {
+                    self.restore = None;
+                }
+            }
+        }
         if let Some(s) = self.session() {
             let _ = s.t.op(ptp::OP_CLOSE_SESSION, &[], None);
         }
@@ -949,9 +1215,6 @@ impl Owner {
         self.status.screen = screen.map(|v| screen_of(&v)).or(Some(Screen::Unknown));
         self.emit(Event::Props(rows));
         self.publish(true);
-        if self.status.keep_awake.enabled {
-            self.hold_awake();
-        }
     }
 
     fn enter_pause(&mut self, pause: Pause, redescribe: bool) {
@@ -965,7 +1228,9 @@ impl Owner {
         s.plan.clear();
         s.cycle_changes.clear();
         if menu {
-            self.status.screen = Some(Screen::Menu);
+            if self.status.screen != Some(Screen::Playback) {
+                self.status.screen = Some(Screen::Menu);
+            }
         } else {
             self.status.link = Link::Busy;
         }
@@ -1018,9 +1283,9 @@ impl Owner {
                 if let Some(p) = s.props.get_mut(&SCREEN) {
                     p.value = Some(v);
                 }
-                if screen == Screen::Menu {
+                if matches!(screen, Screen::Menu | Screen::Playback) {
                     s.pause = Pause::Menu;
-                    self.status.screen = Some(Screen::Menu);
+                    self.status.screen = Some(screen);
                     self.status.link = Link::Connected;
                     return;
                 }
@@ -1122,7 +1387,7 @@ impl Owner {
                 } else if code == SCREEN {
                     let screen = screen_of(&v);
                     self.status.screen = Some(screen);
-                    if screen == Screen::Menu {
+                    if matches!(screen, Screen::Menu | Screen::Playback) {
                         self.finish_cycle();
                         self.enter_pause(Pause::Menu, false);
                     }

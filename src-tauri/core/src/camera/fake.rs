@@ -3,6 +3,9 @@
 //! which code: `fake_x-t5.json`, made by `tools/catalog/seed_xt5.py`) with made-up values.
 //! A `FakeHandle` plays the person at the camera: dials, menus, the STILL/MOVIE switch,
 //! auto power off.
+//!
+//! With `auto_sleep`, the fake keeps the X-T5's auto power off timer: it powers off after the
+//! D381 timeout unless D381 changed value, a session opened, or the person did something.
 
 use super::clock::Clock;
 use super::ptp::{self, Form, PropDesc, Value};
@@ -105,6 +108,18 @@ pub struct FakeState {
     /// After a write of one of these codes the camera holds this value instead, as a camera
     /// rule would (ISO 125 forces D-Range 100): the read-back differs from the write.
     pub write_coerce: BTreeMap<u16, Value>,
+    /// Power off after the D381 timeout without a reset, as the camera does. Off by default.
+    pub auto_sleep: bool,
+    /// When the auto power off timer last restarted.
+    pub idle_since: Duration,
+    /// The camera leaves the bus after this many more accepted SetDevicePropValue writes:
+    /// an unplug or a crash between two writes.
+    pub gone_after_writes: Option<u32>,
+    /// The main menu (MENU/OK) is open: D22E still reads 1 and reads answer, but writes
+    /// answer 0xA001 until a half-press closes it, as on the X-T5 (docs/protocol.md).
+    pub main_menu: bool,
+    /// D208 at each InitiateCapture: 0x0200 half-press, 0x0004 release.
+    pub gestures: Vec<i64>,
     /// The session generation: a transport from an earlier claim is dead.
     generation: u64,
     seed: u64,
@@ -112,6 +127,8 @@ pub struct FakeState {
 
 const D22E: u16 = 0xD22E;
 const D307: u16 = 0xD307;
+const D381: u16 = 0xD381;
+const D208: u16 = 0xD208;
 
 impl FakeState {
     fn movie(&self) -> bool {
@@ -201,6 +218,11 @@ impl FakeCamera {
             ops: Vec::new(),
             write_busy: 0,
             write_coerce: BTreeMap::new(),
+            auto_sleep: false,
+            idle_since: Duration::ZERO,
+            gone_after_writes: None,
+            main_menu: false,
+            gestures: Vec::new(),
             generation: 0,
             seed: 0x9E37_79B9_7F4A_7C15,
         };
@@ -226,9 +248,15 @@ impl FakeHandle {
         f(&mut self.state.lock().unwrap())
     }
 
-    /// The person opens a menu on the camera.
+    /// The person touched the camera: the auto power off timer restarts.
+    fn touched(&self, s: &mut FakeState) {
+        s.idle_since = self.clock.now();
+    }
+
+    /// The person opens the SET UP menu (D22E 3): everything but D22E answers 0xA001.
     pub fn open_menu(&self) {
         self.with(|s| {
+            self.touched(s);
             s.menu_open = true;
             if let Some(p) = s.props.get_mut(&D22E) {
                 p.value = Value::Int(3);
@@ -236,8 +264,30 @@ impl FakeHandle {
         })
     }
 
+    /// The main menu (MENU/OK): D22E stays 1, writes answer 0xA001 until a half-press.
+    pub fn open_main_menu(&self) {
+        self.with(|s| {
+            self.touched(s);
+            s.main_menu = true;
+        })
+    }
+
+    /// Playback: D22E reads 2 and everything else, the half-press included, answers 0xA001.
+    pub fn open_playback(&self) {
+        self.with(|s| {
+            self.touched(s);
+            s.menu_open = true;
+            if let Some(p) = s.props.get_mut(&D22E) {
+                p.value = Value::Int(2);
+            }
+        })
+    }
+
+    /// Closes any menu or playback.
     pub fn close_menu(&self) {
         self.with(|s| {
+            self.touched(s);
+            s.main_menu = false;
             s.menu_open = false;
             if let Some(p) = s.props.get_mut(&D22E) {
                 p.value = Value::Int(1);
@@ -253,6 +303,7 @@ impl FakeHandle {
     /// The person changes a setting on the camera.
     pub fn set(&self, code: u16, v: Value) {
         self.with(|s| {
+            self.touched(s);
             if let Some(p) = s.props.get_mut(&code) {
                 p.value = v;
             }
@@ -272,6 +323,7 @@ impl FakeHandle {
     /// The person turns the camera on again.
     pub fn power_on(&self) {
         self.with(|s| {
+            self.touched(s);
             s.off_at = None;
             s.present = true;
             s.menu_open = false;
@@ -289,6 +341,7 @@ impl FakeHandle {
     /// Changes one writable enum setting to another of its values, as a person might.
     pub fn nudge(&self) -> Option<u16> {
         self.with(|s| {
+            self.touched(s);
             let movie = s.movie();
             let candidates: Vec<u16> = s
                 .props
@@ -332,8 +385,19 @@ impl FakeHandle {
         })
     }
 
-    /// Advances the power-off sequence: after the busy second, the camera is gone.
+    /// Advances the power-off sequence: the auto power off timer, then after the busy second,
+    /// the camera is gone.
     fn settle(&self, s: &mut FakeState) {
+        let now = self.clock.now();
+        if s.auto_sleep && s.present && s.off_at.is_none() {
+            let timeout = match s.props.get(&D381).map(|p| &p.value) {
+                Some(Value::Int(v)) => super::owner::auto_power_off_secs(*v),
+                _ => None,
+            };
+            if timeout.is_some_and(|t| now.saturating_sub(s.idle_since) >= Duration::from_secs(t as u64)) {
+                s.off_at = Some(now + POWER_OFF_BUSY);
+            }
+        }
         if let Some(t) = s.off_at {
             if self.clock.now() >= t && s.present {
                 s.present = false;
@@ -415,6 +479,7 @@ impl Transport for FakeTransport {
                         return rc(ptp::RC_SESSION_ALREADY_OPEN);
                     }
                     *session = true;
+                    s.idle_since = now; // OpenSession restarts the timer (docs/protocol.md).
                     ok(Vec::new())
                 }
                 _ if !*session => rc(0x2003), // SessionNotOpen
@@ -427,12 +492,17 @@ impl Transport for FakeTransport {
                     manufacturer: s.manufacturer.clone(),
                     model: s.model.clone(),
                     firmware: s.firmware.clone(),
-                    operations: vec![0x1001, 0x1002, 0x1003, 0x1014, 0x1015, 0x1016],
+                    operations: vec![0x1001, 0x1002, 0x1003, 0x100E, 0x1014, 0x1015, 0x1016],
                     properties: s.advertised(),
                 })),
                 ptp::OP_GET_PROP_DESC | ptp::OP_GET_PROP_VALUE | ptp::OP_SET_PROP_VALUE => {
                     let Some(prop) = prop else { return rc(0x201D) };
+                    // Over the shooting screen, the shutter gesture is accepted with a menu open.
+                    let gesture = prop == D208 && code == ptp::OP_SET_PROP_VALUE;
                     if s.menu_open && !(prop == D22E && code == ptp::OP_GET_PROP_VALUE && !s.menu_hides_screen) {
+                        return rc(ptp::RC_FUJI_MENU);
+                    }
+                    if s.main_menu && code == ptp::OP_SET_PROP_VALUE && !gesture {
                         return rc(ptp::RC_FUJI_MENU);
                     }
                     let Some(p) = s.props.get(&prop).cloned() else {
@@ -474,10 +544,43 @@ impl Transport for FakeTransport {
                                 return rc(ptp::RC_DEVICE_BUSY);
                             }
                             let v = s.write_coerce.get(&prop).cloned().unwrap_or(v);
-                            s.props.get_mut(&prop).unwrap().value = v;
+                            let slot = &mut s.props.get_mut(&prop).unwrap().value;
+                            // Only a new D381 value restarts the timer; its own value does not.
+                            let restart = prop == D381 && *slot != v;
+                            *slot = v;
+                            if restart {
+                                s.idle_since = now;
+                            }
+                            if let Some(n) = s.gone_after_writes.as_mut() {
+                                if *n <= 1 {
+                                    s.gone_after_writes = None;
+                                    s.present = false;
+                                    s.generation += 1;
+                                } else {
+                                    *n -= 1;
+                                }
+                            }
                             ok(Vec::new())
                         }
                     }
+                }
+                ptp::OP_INITIATE_CAPTURE if s.menu_open => rc(ptp::RC_FUJI_MENU),
+                ptp::OP_INITIATE_CAPTURE => {
+                    let g = match s.props.get(&D208).map(|p| &p.value) {
+                        Some(Value::Int(v)) => *v,
+                        _ => 0,
+                    };
+                    s.gestures.push(g);
+                    if g == 0x0200 {
+                        // A half-press closes any menu and restarts the auto power off timer.
+                        s.main_menu = false;
+                        s.menu_open = false;
+                        if let Some(p) = s.props.get_mut(&D22E) {
+                            p.value = Value::Int(1);
+                        }
+                        s.idle_since = now;
+                    }
+                    ok(Vec::new())
                 }
                 _ => rc(ptp::RC_OPERATION_NOT_SUPPORTED),
             }

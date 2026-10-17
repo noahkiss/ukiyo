@@ -334,7 +334,7 @@ pub fn camera_connect(out: Out, on: bool) -> Result<i32, Fail> {
     } else if on {
         line("Connect switch on. ukiyo serve looks for the camera every 3 s, and waits 30 s after it left.");
     } else {
-        line("Disconnected: session closed cleanly, AUTO POWER OFF restored if keep-awake held it. ukiyo camera connect turns it back on.");
+        line("Disconnected: session closed cleanly. ukiyo camera connect turns it back on.");
     }
     Ok(DONE)
 }

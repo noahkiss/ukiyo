@@ -84,7 +84,7 @@ facts above turned into behaviour. Not yet run against a camera.
   codes) plus the next 8 codes of a rotating sweep over every readable property. No sleeps.
 - A code answering 0x2002 when described is skipped by the sweep. A D307 change describes
   every property again, since stills and movie read different sets.
-- D22E = 3 or any 0xA001 pauses the sweep; D22E is then read every 500 ms until it shows
+- D22E = 3 or 2 or any 0xA001 pauses the sweep; D22E is then read every 500 ms until it shows
   another screen. Whether D22E itself answers 0xA001 in a menu is not yet known; either works.
 - Three 0x2019 answers in a row mean busy: D22E every 500 ms. If the device then leaves the
   bus within 5 s, the app reports auto power off.
@@ -94,6 +94,21 @@ facts above turned into behaviour. Not yet run against a camera.
   the same 30 s hold; the camera reconnects once after the hold. Quit (idle exit) and SIGTERM
   both close the session cleanly and release `owner.lock`.
   OpenSession failing on a fresh claim allows one USB reset per connect attempt.
+- Keep-awake (setting `keep_awake` in `settings.json`, on by default): while Ukiyo is in use,
+  the owner reads D381, sets it to a neighbouring timeout (5 min, or 2 min when the owner's
+  value is 5 min), and straight back to the owner's value, then reads it back. It repeats
+  before the owner's timeout runs out: every 10 s at 15 s, 20 s at 30 s, 45 s at 1 min, 90 s
+  at 2 min, 4 min at 5 min. "In use" is any client request (app, CLI, MCP) or window input
+  in the last 5 minutes (`in_use_minutes`). Tether and stills only; nothing at OFF, in movie
+  mode or in RAW CONV. It never writes OFF: a loss between the two writes leaves the
+  neighbouring timeout, and the owner writes its value back after the reconnect. A toggle
+  answered 0xA001 is skipped (a person in a menu keeps the camera awake), with no half-press.
+  Not yet run against the camera in the app; the toggle itself kept an X-T5 awake (above).
+- Screens: D22E 1 with writes answering 0xA001 is a shooting-side menu tab or the Q menu; a
+  half-press (D208 = 0x0200 + InitiateCapture(0, 0), 0.5 s, D208 = 0x0004 + InitiateCapture)
+  closes it. D22E 3 (SET UP, NETWORK/USB SETTING, any depth) and D22E 2 (playback) answer
+  0xA001 to everything else, the half-press included. The owner pauses for both 2 and 3, and
+  half-presses only at 1, once per write (`close_menu_to_write`, on by default).
 
 ## Recipe slots (RAW CONV. mode)
 

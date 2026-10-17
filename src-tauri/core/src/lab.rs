@@ -46,9 +46,23 @@ pub struct Snapshot {
     pub noisy: Vec<u16>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// `settings.json` in the app data dir. A field the file lacks takes its default.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 struct Settings {
+    /// Keep the camera awake while Ukiyo is in use (the owner's D381 toggle).
     keep_awake: bool,
+    /// Minutes after the last client request or window input that still count as in use.
+    in_use_minutes: u32,
+    /// A write the camera refuses with a menu open over the shooting screen gets one
+    /// half-press, which closes the menu, and one retry.
+    close_menu_to_write: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings { keep_awake: true, in_use_minutes: 5, close_menu_to_write: true }
+    }
 }
 
 /// What the person at the fake camera does (`UKIYO_FAKE_CAMERA=1` only).
@@ -56,6 +70,9 @@ struct Settings {
 #[serde(rename_all = "camelCase")]
 pub enum FakeAction {
     OpenMenu,
+    /// The main menu: D22E stays 1, writes answer 0xA001 until a half-press.
+    MainMenu,
+    Playback,
     CloseMenu,
     Movie,
     Stills,
@@ -97,6 +114,7 @@ pub struct Lab {
     /// Plans by id, until applied, discarded or expired.
     plans: Mutex<HashMap<String, Stored>>,
     next_plan: AtomicU32,
+    settings: Mutex<Settings>,
 }
 
 fn wall_ms() -> i64 {
@@ -157,6 +175,8 @@ impl Lab {
             let mode = if std::env::var("UKIYO_FAKE_MODE").is_ok_and(|v| v == "rawconv") { FakeMode::RawConv } else { FakeMode::Tether };
             let cam = FakeCamera::x_t5(clock.clone(), mode).with_op_cost(Duration::from_millis(3));
             let h = cam.handle();
+            // The fake sleeps after its AUTO POWER OFF time, so keep-awake has work to do.
+            h.with(|s| s.auto_sleep = true);
             (Box::new(cam), Some((h, Arc::new(AtomicBool::new(true)))))
         } else {
             (Box::new(UsbConnector), None)
@@ -172,10 +192,13 @@ impl Lab {
         };
         // The first line, before the owner thread can log a status.
         write_log(&log, serde_json::json!({ "kind": "start", "fake": fake.is_some() }));
-        let (tx, thread) = owner::spawn(connector, clock, sink, Config::default());
-        if settings.keep_awake {
-            let _ = tx.send(Request::KeepAwake(true));
-        }
+        let cfg = Config {
+            in_use_for: Duration::from_secs(u64::from(settings.in_use_minutes.max(1)) * 60),
+            close_menu_to_write: settings.close_menu_to_write,
+            ..Config::default()
+        };
+        let (tx, thread) = owner::spawn(connector, clock, sink, cfg);
+        let _ = tx.send(Request::KeepAwake(settings.keep_awake));
         if let Some((h, auto)) = &fake {
             let (h, auto) = (h.clone(), auto.clone());
             std::thread::spawn(move || {
@@ -202,6 +225,7 @@ impl Lab {
             lock: Mutex::new(Some(lock)),
             plans: Mutex::new(HashMap::new()),
             next_plan: AtomicU32::new(1),
+            settings: Mutex::new(settings),
         })
     }
 
@@ -240,14 +264,26 @@ impl Lab {
         self.send(Request::SetPinned(codes));
     }
 
+    /// The keep-awake setting: while Ukiyo is in use, the owner resets the camera's auto power
+    /// off timer. Saved in `settings.json`.
     pub fn keep_awake(&self, actor: &str, on: bool) {
         self.send(Request::KeepAwake(on));
-        let s = Settings { keep_awake: on };
-        let _ = std::fs::write(self.data_dir.join("settings.json"), serde_json::to_string_pretty(&s).unwrap_or_default());
+        let text = {
+            let mut s = self.settings.lock().unwrap();
+            s.keep_awake = on;
+            serde_json::to_string_pretty(&*s).unwrap_or_default()
+        };
+        let _ = std::fs::write(self.data_dir.join("settings.json"), text);
         self.log_line(serde_json::json!({ "kind": "keep_awake", "actor": actor, "on": on }));
     }
 
-    /// The Lab's connect switch. Off closes the session cleanly (AUTO POWER OFF restored) and
+    /// Someone is using Ukiyo (a client request, or input in the window): keep-awake runs for
+    /// `in_use_minutes` after the last one. Not logged.
+    pub fn activity(&self) {
+        self.send(Request::Activity);
+    }
+
+    /// The Lab's connect switch. Off closes the session cleanly and
     /// keeps the owner off USB; on lets the owner look again under its 3 s and 30 s rules.
     pub fn connect(&self, actor: &str, on: bool) {
         self.send(if on { Request::Connect } else { Request::Disconnect });
@@ -412,6 +448,8 @@ impl Lab {
         let Some((h, auto)) = &self.fake else { return Err("no fake camera".into()) };
         match a {
             FakeAction::OpenMenu => h.open_menu(),
+            FakeAction::MainMenu => h.open_main_menu(),
+            FakeAction::Playback => h.open_playback(),
             FakeAction::CloseMenu => h.close_menu(),
             FakeAction::Movie => h.set_movie(true),
             FakeAction::Stills => h.set_movie(false),
@@ -427,7 +465,7 @@ impl Lab {
         Ok(())
     }
 
-    /// A clean disconnect (AUTO POWER OFF restored, session closed), then the thread ends.
+    /// A clean disconnect (session closed), then the thread ends.
     ///
     /// Releases `owner.lock` only when the thread has ended. A thread that did not end in 5 s
     /// may still hold USB, so the lock stays until the process exits.

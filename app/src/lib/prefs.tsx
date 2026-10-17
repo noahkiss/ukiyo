@@ -48,7 +48,7 @@ export type Prefs = { theme: ThemePref; brandMark: string; appIcon: string };
 
 const DEFAULTS: Prefs = { theme: "system", brandMark: BRAND_MARKS[0].id, appIcon: APP_ICONS[0].id };
 
-// No settings command covers app preferences yet (settings.json holds only keep-awake), so
+// No settings command covers app preferences yet (settings.json holds only the camera connection settings), so
 // they live in local storage.
 const KEY = "ukiyo.appearance";
 

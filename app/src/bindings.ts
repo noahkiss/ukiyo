@@ -23,6 +23,8 @@ export const commands = {
 	/**  Applies a plan: re-checks it, writes each step, reads each back. */
 	planApply: (planId: string) => typedError<Applied, string>(__TAURI_INVOKE("plan_apply", { planId })),
 	planDiscard: (planId: string) => __TAURI_INVOKE<void>("plan_discard", { planId }),
+	/**  Input in the window: Ukiyo is in use, so keep-awake runs. */
+	activity: () => __TAURI_INVOKE<void>("activity"),
 };
 
 /** Events */
@@ -69,6 +71,8 @@ export type AppliedStep = {
 	error: ErrorCode | null,
 	/**  Writes sent: more than 1 when the camera answered busy first. */
 	attempts: number,
+	/**  A half-press closed a camera menu before the write went through. */
+	closed_menu?: boolean,
 };
 
 export type Capture = "stills" | "movie";
@@ -161,6 +165,8 @@ export type ChangeGroup = {
 	 *  and for the owner's own writes (keep-awake).
 	 */
 	actor?: string | null,
+	/**  The write's half-press closed a camera menu first. */
+	closedMenu?: boolean,
 };
 
 export type ChangeSource = 
@@ -236,7 +242,9 @@ export type ErrorCode =
 /**  The camera answered 0x2019 for longer than the owner retries. */
 "busy" | 
 /**  A menu is open on the camera. */
-"menu_open" | "needs_tether" | "needs_rawconv" | "needs_stills" | "needs_movie" | 
+"menu_open" | 
+/**  The camera shows playback, which answers no reads or writes. */
+"in_playback" | "needs_tether" | "needs_rawconv" | "needs_stills" | "needs_movie" | 
 /**  A process outside ukiyo holds the USB device. */
 "owner_conflict" | 
 /**  The catalog does not mark the code `confirmed`, and the plan does not allow it. */
@@ -253,7 +261,9 @@ export type ErrorCode =
 "private_text";
 
 /**  What the person at the fake camera does (`UKIYO_FAKE_CAMERA=1` only). */
-export type FakeAction = "openMenu" | "closeMenu" | "movie" | "stills" | "powerOff" | "powerOn" | "unplug" | "nudge" | "autoOn" | "autoOff";
+export type FakeAction = "openMenu" | 
+/**  The main menu: D22E stays 1, writes answer 0xA001 until a half-press. */
+"mainMenu" | "playback" | "closeMenu" | "movie" | "stills" | "powerOff" | "powerOn" | "unplug" | "nudge" | "autoOn" | "autoOff";
 
 export type Family = Family_Serialize | Family_Deserialize;
 
@@ -279,9 +289,12 @@ export type Family_Serialize = {
 export type Form = { form: "none" } | { form: "range"; min: Value; max: Value; step: Value } | { form: "enum"; values: Value[] };
 
 export type KeepAwake = {
+	/**  The setting: keep the camera awake while Ukiyo is in use. */
 	enabled: boolean,
-	/**  The AUTO POWER OFF value to restore on a clean disconnect, while it is held at OFF. */
-	previous: number | null,
+	/**  Toggling now: enabled, tether stills, AUTO POWER OFF not OFF, and Ukiyo in use. */
+	active: boolean,
+	/**  Seconds between toggles while active. */
+	periodS: number | null,
 };
 
 export type LabChanges = ChangeGroup;

@@ -94,6 +94,13 @@ async fn lab_keep_awake(app: AppHandle, on: bool) {
     log_failure("lab_keep_awake", forward(&app, Request::LabKeepAwake { on }).await)
 }
 
+/// Input in the window: Ukiyo is in use, so keep-awake runs.
+#[tauri::command]
+#[specta::specta]
+async fn activity(app: AppHandle) {
+    log_failure("activity", forward(&app, Request::Activity).await)
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn lab_connect(app: AppHandle, on: bool) {
@@ -153,6 +160,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             plan_create,
             plan_apply,
             plan_discard,
+            activity,
         ])
         // The bundled recipe catalogue's shape; the window imports the JSON itself.
         .typ::<recipes::catalogue::RecipeCatalog>()

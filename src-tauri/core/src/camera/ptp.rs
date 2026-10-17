@@ -10,6 +10,8 @@ pub const OP_CLOSE_SESSION: u16 = 0x1003;
 pub const OP_GET_PROP_DESC: u16 = 0x1014;
 pub const OP_GET_PROP_VALUE: u16 = 0x1015;
 pub const OP_SET_PROP_VALUE: u16 = 0x1016;
+/// InitiateCapture(0, 0): performs the gesture written to D208 first.
+pub const OP_INITIATE_CAPTURE: u16 = 0x100E;
 
 pub const RC_OK: u16 = 0x2001;
 pub const RC_OPERATION_NOT_SUPPORTED: u16 = 0x2005;

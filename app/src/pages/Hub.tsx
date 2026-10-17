@@ -23,6 +23,7 @@ export function Hub() {
         </button>
       </PageHead>
       <ModeNotice needs="tether" what="Reading the camera's details" />
+      <KeepAwakeLine />
       <CameraCard />
       <div className="flex-row stretch">
         <ShotHistory />
@@ -57,6 +58,16 @@ export function Hub() {
         </section>
       </div>
     </div>
+  );
+}
+
+function KeepAwakeLine() {
+  const { status } = useCamera();
+  if (!status?.keepAwake.active) return null;
+  return (
+    <p className="small muted keep-awake-line" data-component="keep-awake-line">
+      Keeping the camera awake while you use Ukiyo.
+    </p>
   );
 }
 

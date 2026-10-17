@@ -114,6 +114,9 @@ pub struct AppliedStep {
     pub error: Option<ErrorCode>,
     /// Writes sent: more than 1 when the camera answered busy first.
     pub attempts: u32,
+    /// A half-press closed a camera menu before the write went through.
+    #[serde(default)]
+    pub closed_menu: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -181,7 +184,10 @@ fn describe(code: u16, e: Option<&Entry>) -> String {
 pub fn ready(snap: &Snapshot) -> Result<(), Error> {
     read::readiness(&snap.status, snap.rows.len(), Need::Connected)?;
     if snap.status.screen == Some(Screen::Menu) {
-        return Err(err(ErrorCode::MenuOpen, "A menu is open on the camera; it answers nothing until the menu closes.").hint("Close the menu on the camera."));
+        return Err(err(ErrorCode::MenuOpen, "A menu is open on the camera; it answers nothing until the menu closes.").hint("Close the SET UP or NETWORK/USB SETTING menu on the camera."));
+    }
+    if snap.status.screen == Some(Screen::Playback) {
+        return Err(err(ErrorCode::InPlayback, "The camera shows playback; it answers nothing until it returns to shooting.").hint("Leave playback on the camera: press the playback button."));
     }
     Ok(())
 }
@@ -405,11 +411,13 @@ pub fn applied_step(snap: &Snapshot, r: &Raw, out: &WriteOutcome, link: Link) ->
         Some(ptp::RC_OK) if readback_ok => None,
         Some(ptp::RC_OK) => Some(ErrorCode::ReadbackMismatch),
         Some(ptp::RC_DEVICE_BUSY) => Some(ErrorCode::Busy),
+        Some(ptp::RC_FUJI_MENU) if out.result == refusal::PLAYBACK => Some(ErrorCode::InPlayback),
         Some(ptp::RC_FUJI_MENU) => Some(ErrorCode::MenuOpen),
         Some(0x201C) | Some(0x201D) => Some(ErrorCode::ValueOutOfRange),
         Some(ptp::RC_ACCESS_DENIED) => Some(ErrorCode::ReadOnly),
         Some(_) => Some(ErrorCode::Failed),
         None => Some(match out.result.as_str() {
+            refusal::PLAYBACK => ErrorCode::InPlayback,
             refusal::PAUSED if link == Link::Busy => ErrorCode::Busy,
             refusal::PAUSED => ErrorCode::MenuOpen,
             refusal::NOT_CONNECTED | refusal::LOST => ErrorCode::NotConnected,
@@ -428,6 +436,7 @@ pub fn applied_step(snap: &Snapshot, r: &Raw, out: &WriteOutcome, link: Link) ->
         result: out.result.clone(),
         error,
         attempts: out.attempts,
+        closed_menu: out.closed_menu,
     }
 }
 

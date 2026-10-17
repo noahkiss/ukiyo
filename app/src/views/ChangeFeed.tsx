@@ -47,6 +47,7 @@ export function ChangeFeed(p: Props) {
               <div className="group-head">
                 <time>{time(g.at)}</time>
                 {g.source === "write" && <span className="badge changed">Write</span>}
+                {g.closedMenu && <span className="small muted">Closed the camera menu to apply the change</span>}
                 {g.changes.length > 1 && <span className="muted">{g.changes.length} codes</span>}
                 {note && <span className="group-note">{note}</span>}
               </div>

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { commands } from "../bindings";
+import { inTauri, useCamera } from "../lib/camera";
 import { menus as menuFixture, presets, searchWords, snapshots, type SettingRow } from "../fixtures/settings";
 import { APP_ICONS, BRAND_MARKS, usePrefs, type ArtChoice, type ThemePref } from "../lib/prefs";
 import { href } from "../lib/router";
@@ -10,6 +12,7 @@ import { CameraIcon, SearchIcon, StarIcon } from "../shell/icons";
 
 const FAVOURITES = "favourites";
 const APPEARANCE = "appearance";
+const CONNECTION = "connection";
 
 type Hit = { row: SettingRow; menu: string; score: number };
 
@@ -63,14 +66,19 @@ export function Settings({ sub }: { sub: string | null }) {
 
   return (
     <div className="page settings" data-component="settings">
-      <PageHead title="Settings" sub={section === APPEARANCE ? "How Ukiyo looks on this Mac." : "The camera's menus. A change writes to the camera at once."}>
+      <PageHead
+        title="Settings"
+        sub={
+          section === APPEARANCE ? "How Ukiyo looks on this Mac." : section === CONNECTION ? "How Ukiyo treats the connected camera." : "The camera's menus. A change writes to the camera at once."
+        }
+      >
         <CameraChip />
         <button type="button" className="btn" onClick={() => notBuilt("Snapshots")}>
           <CameraIcon />
           Take snapshot
         </button>
       </PageHead>
-      {section !== APPEARANCE && <ModeNotice needs="tether" what="Reading and changing settings" />}
+      {section !== APPEARANCE && section !== CONNECTION && <ModeNotice needs="tether" what="Reading and changing settings" />}
 
       <div className="settings-search">
         <label className="search-box big">
@@ -119,10 +127,15 @@ export function Settings({ sub }: { sub: string | null }) {
           <a href={href("settings", APPEARANCE)} className="tree-item" aria-current={section === APPEARANCE ? "page" : undefined}>
             <span>Appearance</span>
           </a>
+          <a href={href("settings", CONNECTION)} className="tree-item" aria-current={section === CONNECTION ? "page" : undefined}>
+            <span>Camera connection</span>
+          </a>
         </nav>
 
         {section === APPEARANCE ? (
           <Appearance />
+        ) : section === CONNECTION ? (
+          <Connection />
         ) : (
           <section className="card settings-list" aria-labelledby="menu-title">
             <div className="settings-list-head">
@@ -229,6 +242,34 @@ function SettingLine({ row, hit, onChange }: { row: SettingRow; hit: boolean; on
         <StarIcon filled={!!row.fav} />
       </button>
     </div>
+  );
+}
+
+function Connection() {
+  const { status } = useCamera();
+  const on = status?.keepAwake.enabled ?? false;
+  return (
+    <section className="card settings-list" aria-labelledby="connection-title" data-component="connection">
+      <div className="settings-list-head">
+        <h2 id="connection-title">Camera connection</h2>
+      </div>
+      <div className="setting">
+        <div className="setting-name">
+          <span id="keep-awake-label">Keep the camera awake while you use Ukiyo</span>
+          <span className="tiny muted">In use means a click or key press in Ukiyo, or a CLI or agent request, in the last 5 minutes.</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          className="toggle"
+          aria-checked={on}
+          aria-labelledby="keep-awake-label"
+          disabled={!inTauri}
+          data-action="keep-awake"
+          onClick={() => void commands.labKeepAwake(!on)}
+        />
+      </div>
+    </section>
   );
 }
 

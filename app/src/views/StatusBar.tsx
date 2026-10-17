@@ -14,7 +14,6 @@ const SCREEN: Record<string, string> = {
   unknown: "Screen unknown",
 };
 
-const AUTO_OFF: Record<number, string> = { 1: "5 MIN", 2: "2 MIN", 3: "OFF", 4: "1 MIN", 5: "30 SEC", 6: "15 SEC" };
 
 function linkText(s: Status): string {
   const wait = s.reopenInS != null ? ` · reconnect in ${Math.ceil(s.reopenInS)} s` : "";
@@ -82,7 +81,7 @@ export function StatusActions({ status, onExport }: { status: Status | null; onE
       <label className="check">
         <input type="checkbox" checked={ka.enabled} onChange={(e) => void commands.labKeepAwake(e.target.checked)} data-action="keep-awake" />
         Keep camera awake
-        {ka.previous != null && <span className="muted"> · auto power off was {AUTO_OFF[ka.previous] ?? ka.previous}</span>}
+        {ka.active && ka.periodS != null && <span className="muted"> · resetting every {ka.periodS} s</span>}
       </label>
       <button type="button" className="btn" onClick={onExport} disabled={!connected} data-action="export">
         Export dump

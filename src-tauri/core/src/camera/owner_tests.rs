@@ -17,6 +17,10 @@ struct Rig {
 }
 
 fn rig_with(mode: FakeMode, setup: impl FnOnce(&FakeHandle)) -> Rig {
+    rig_cfg(mode, Config::default(), setup)
+}
+
+fn rig_cfg(mode: FakeMode, cfg: Config, setup: impl FnOnce(&FakeHandle)) -> Rig {
     let clock = FakeClock::new();
     let arc: Arc<dyn Clock> = Arc::new(clock.clone());
     let cam = FakeCamera::x_t5(arc.clone(), mode);
@@ -25,7 +29,7 @@ fn rig_with(mode: FakeMode, setup: impl FnOnce(&FakeHandle)) -> Rig {
     let events = Arc::new(Mutex::new(Vec::new()));
     let ev = events.clone();
     let (tx, rx) = channel();
-    let owner = Owner::new(Box::new(cam), arc, Box::new(move |e| ev.lock().unwrap().push(e)), rx, Config::default());
+    let owner = Owner::new(Box::new(cam), arc, Box::new(move |e| ev.lock().unwrap().push(e)), rx, cfg);
     Rig { owner, tx, cam: handle, clock, events }
 }
 
@@ -77,6 +81,40 @@ impl Rig {
     fn ops_since(&self, t: Duration) -> Vec<super::fake::OpRecord> {
         self.cam.with(|s| s.ops.iter().filter(|o| o.at >= t).cloned().collect())
     }
+
+    /// SetDevicePropValue operations on D381 since `t`.
+    fn apo_sets_since(&self, t: Duration) -> Vec<super::fake::OpRecord> {
+        self.ops_since(t).into_iter().filter(|o| o.code == ptp::OP_SET_PROP_VALUE && o.param == Some(AUTO_POWER_OFF as u32)).collect()
+    }
+
+    /// Runs for `d` with someone using Ukiyo: an activity ping every 20 s. Returns whether
+    /// the link stayed connected.
+    fn run_in_use(&mut self, d: Duration) -> bool {
+        let end = self.now() + d;
+        while self.now() < end {
+            self.tx.send(Request::Activity).unwrap();
+            let step = (end - self.now()).min(Duration::from_secs(20));
+            if self.run_until(step, |r| r.owner.status().link != Link::Connected) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn write(&mut self, code: u16, v: i64) -> WriteOutcome {
+        let (wtx, wrx) = channel();
+        self.tx.send(Request::Write { code, value: Value::Int(v), actor: Some("cli".into()), reply: Some(wtx) }).unwrap();
+        self.owner.step();
+        wrx.recv().unwrap()
+    }
+}
+
+/// A fake X-T5 that sleeps after its AUTO POWER OFF time, set to `apo`.
+fn sleepy(apo: i64) -> Rig {
+    rig_with(FakeMode::Tether, move |h| {
+        h.with(|s| s.auto_sleep = true);
+        h.set(AUTO_POWER_OFF, Value::Int(apo));
+    })
 }
 
 #[test]
@@ -321,19 +359,173 @@ fn a_failed_open_session_resets_once_then_backs_off() {
 }
 
 #[test]
-fn keep_awake_sets_off_and_restores_on_disconnect() {
-    let mut r = rig();
-    r.cam.set(AUTO_POWER_OFF, Value::Int(1));
+fn without_keep_awake_the_fake_sleeps_at_its_timeout() {
+    let mut r = sleepy(6);
+    r.connect();
+    assert!(r.run_until(Duration::from_secs(20), |r| r.owner.status().link == Link::Asleep));
+    assert_eq!(r.owner.status().reason.as_deref(), Some("auto power off"));
+}
+
+#[test]
+fn keep_awake_toggles_d381_and_keeps_the_camera_awake() {
+    let mut r = sleepy(6); // 15 s
     r.tx.send(Request::KeepAwake(true)).unwrap();
     r.connect();
-    r.run_for(Duration::from_millis(50));
-    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(AUTO_POWER_OFF_OFF)));
-    assert_eq!(r.owner.status().keep_awake.previous, Some(1));
+    let groups = r.groups().len();
+    // The fake keeps its last 10 000 operations: count in 10 s pieces.
+    let mut sets = vec![];
+    for _ in 0..12 {
+        let t = r.now();
+        assert!(r.run_in_use(Duration::from_secs(10)), "slept while in use: {:?}", r.owner.status());
+        sets.extend(r.apo_sets_since(t));
+    }
+    let ka = r.owner.status().keep_awake.clone();
+    assert_eq!(ka, KeepAwake { enabled: true, active: true, period_s: Some(10) });
+    // Two writes per toggle: one toggle at once, then every 10 s.
+    assert!((24..=26).contains(&sets.len()), "{} D381 writes in 120 s", sets.len());
+    assert!(sets.iter().all(|o| o.rc == Some(ptp::RC_OK)));
+    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(6)), "back at the owner's value");
+    assert!(r.groups()[groups..].iter().all(|g| g.changes.iter().all(|c| c.code != AUTO_POWER_OFF)), "a toggle reports no change");
+}
+
+#[test]
+fn keep_awake_stops_when_ukiyo_is_idle_and_the_camera_sleeps() {
+    let mut r = sleepy(5); // 30 s
+    r.tx.send(Request::KeepAwake(true)).unwrap();
+    r.connect();
+    r.tx.send(Request::Activity).unwrap();
+    // In use for 5 minutes after the one ping: awake, toggling every 20 s.
+    assert!(!r.run_until(Duration::from_secs(290), |r| r.owner.status().link != Link::Connected));
+    assert_eq!(r.owner.status().keep_awake.period_s, Some(20));
+    // Then idle: no more toggles, and the camera sleeps on its own schedule.
+    assert!(r.run_until(Duration::from_secs(60), |r| !r.owner.status().keep_awake.active));
+    let t = r.now();
+    assert!(r.run_until(Duration::from_secs(40), |r| r.owner.status().link == Link::Asleep));
+    assert!(r.apo_sets_since(t).is_empty(), "no toggle while idle");
+    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(5)));
+}
+
+#[test]
+fn keep_awake_never_writes_when_auto_power_off_is_off() {
+    let mut r = sleepy(AUTO_POWER_OFF_OFF);
+    r.tx.send(Request::KeepAwake(true)).unwrap();
+    r.connect();
+    let t = r.now();
+    assert!(r.run_in_use(Duration::from_secs(60)));
+    assert!(r.apo_sets_since(t).is_empty());
+    assert!(!r.owner.status().keep_awake.active);
+}
+
+#[test]
+fn keep_awake_never_writes_in_movie_mode() {
+    let mut r = rig_with(FakeMode::Tether, |h| {
+        h.set(AUTO_POWER_OFF, Value::Int(6));
+        h.set_movie(true);
+    });
+    r.tx.send(Request::KeepAwake(true)).unwrap();
+    r.connect();
+    assert_eq!(r.owner.status().capture, Some(Capture::Movie));
+    let t = r.now();
+    assert!(r.run_in_use(Duration::from_secs(60)));
+    assert!(r.apo_sets_since(t).is_empty());
+    assert!(!r.owner.status().keep_awake.active);
+}
+
+#[test]
+fn keep_awake_writes_nothing_while_the_setting_is_off() {
+    let mut r = sleepy(6);
+    r.connect();
+    let t = r.now();
+    r.tx.send(Request::Activity).unwrap();
+    r.run_for(Duration::from_secs(12));
+    assert!(r.apo_sets_since(t).is_empty());
+    assert!(!r.owner.status().keep_awake.active);
+}
+
+/// The neighbour of every timeout is another timeout, never OFF.
+#[test]
+fn the_toggle_value_is_never_off() {
+    for own in [1, 2, 4, 5, 6] {
+        let away = keep_awake_neighbour(own);
+        assert_ne!(away, AUTO_POWER_OFF_OFF);
+        assert_ne!(away, own);
+        assert!(auto_power_off_secs(away).is_some());
+        let secs = auto_power_off_secs(own).unwrap();
+        assert!(keep_awake_period(secs) < Duration::from_secs(secs as u64));
+    }
+    let periods: Vec<u64> = [15, 30, 60, 120, 300].iter().map(|s| keep_awake_period(*s).as_secs()).collect();
+    assert_eq!(periods, [10, 20, 45, 90, 240]);
+}
+
+/// The camera leaves the bus between the two writes: it holds the neighbouring timeout,
+/// not OFF, and the owner puts its value back after the reconnect.
+#[test]
+fn a_loss_between_the_two_writes_leaves_a_timeout_and_is_put_back() {
+    let mut r = sleepy(6);
+    r.tx.send(Request::KeepAwake(true)).unwrap();
+    r.connect();
+    r.run_in_use(Duration::from_secs(1));
+    r.cam.with(|s| s.gone_after_writes = Some(1));
+    assert!(!r.run_in_use(Duration::from_secs(15)), "the camera left");
+    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(1)), "5 min, not OFF");
+    r.cam.power_on();
+    // The put-back runs once the camera is back, in use or not.
+    assert!(r.run_until(Duration::from_secs(60), |r| r.owner.status().link == Link::Connected));
+    assert!(r.run_until(Duration::from_secs(2), |r| r.cam.value(AUTO_POWER_OFF) == Some(Value::Int(6))));
+}
+
+#[test]
+fn a_busy_toggle_write_is_retried() {
+    let mut r = sleepy(6);
+    r.tx.send(Request::KeepAwake(true)).unwrap();
+    r.connect();
+    r.cam.with(|s| s.write_busy = 2);
+    let t = r.now();
+    assert!(r.run_in_use(Duration::from_secs(5)));
+    let sets = r.apo_sets_since(t);
+    assert_eq!(sets.iter().filter(|o| o.rc == Some(ptp::RC_DEVICE_BUSY)).count(), 2, "{sets:?}");
+    assert_eq!(sets.iter().filter(|o| o.rc == Some(ptp::RC_OK)).count(), 2, "{sets:?}");
+    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(6)));
+    assert_eq!(r.owner.status().link, Link::Connected);
+}
+
+/// A menu over the shooting screen refuses the toggle: that tick is skipped, with no
+/// half-press (the person in the menu keeps the camera awake).
+#[test]
+fn a_menu_skips_the_toggle_without_a_half_press() {
+    let mut r = sleepy(6);
+    r.tx.send(Request::KeepAwake(true)).unwrap();
+    r.connect();
+    r.cam.open_main_menu();
+    let t = r.now();
+    r.run_in_use(Duration::from_secs(1));
+    let sets = r.apo_sets_since(t);
+    assert_eq!(sets.len(), 1, "one refused write, no write back: {sets:?}");
+    assert_eq!(sets[0].rc, Some(ptp::RC_FUJI_MENU));
+    assert!(r.cam.with(|s| s.gestures.is_empty()), "no half-press");
+    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(6)));
+}
+
+#[test]
+fn shutdown_closes_the_session_and_leaves_auto_power_off_as_it_was() {
+    let mut r = sleepy(2);
+    r.tx.send(Request::KeepAwake(true)).unwrap();
+    r.connect();
+    r.run_in_use(Duration::from_secs(1));
+    r.tx.send(Request::Shutdown).unwrap();
+    r.owner.step();
+    assert!(r.owner.is_done());
+    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(2)));
+    assert_eq!(r.cam.with(|s| s.ops.last().map(|o| o.code)), Some(ptp::OP_CLOSE_SESSION));
+}
+
+#[test]
+fn disconnect_stays_stopped_until_connect() {
+    let mut r = rig();
+    r.connect();
     r.tx.send(Request::Disconnect).unwrap();
     r.owner.step();
-    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(1)));
     assert_eq!(r.owner.status().link, Link::Stopped);
-    // Stopped means stopped: no opens until Connect.
     let n = r.cam.with(|s| s.opens.len());
     r.run_for(Duration::from_secs(60));
     assert_eq!(r.cam.with(|s| s.opens.len()), n);
@@ -341,19 +533,64 @@ fn keep_awake_sets_off_and_restores_on_disconnect() {
     r.connect();
 }
 
+/// A shooting-side menu leaves D22E at 1 and refuses writes: one half-press closes it, and
+/// the write goes through on the retry.
 #[test]
-fn shutdown_restores_auto_power_off() {
+fn a_write_in_a_shooting_menu_closes_it_with_a_half_press() {
     let mut r = rig();
-    r.cam.set(AUTO_POWER_OFF, Value::Int(2));
     r.connect();
-    r.tx.send(Request::KeepAwake(true)).unwrap();
-    r.owner.step();
-    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(3)));
-    r.tx.send(Request::Shutdown).unwrap();
-    r.owner.step();
-    assert!(r.owner.is_done());
-    assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(2)));
-    assert_eq!(r.cam.with(|s| s.ops.last().map(|o| o.code)), Some(ptp::OP_CLOSE_SESSION));
+    r.cam.open_main_menu();
+    let out = r.write(0xD023, 3);
+    assert!(out.ok && out.closed_menu, "{out:?}");
+    assert_eq!((out.readback, out.attempts), (Some(Value::Int(3)), 2));
+    assert_eq!(r.cam.with(|s| s.gestures.clone()), [RELEASE_HALF_PRESS, RELEASE_S1_OFF]);
+    let g = r.groups().into_iter().find(|g| g.source == ChangeSource::Write).unwrap();
+    assert!(g.closed_menu);
+}
+
+#[test]
+fn a_write_in_a_shooting_menu_with_the_setting_off_fails_as_menu_open() {
+    let mut r = rig_cfg(FakeMode::Tether, Config { close_menu_to_write: false, ..Config::default() }, |_| {});
+    r.connect();
+    r.cam.open_main_menu();
+    let out = r.write(0xD023, 3);
+    assert!(!out.ok && !out.closed_menu);
+    assert_eq!(out.rc, Some(ptp::RC_FUJI_MENU));
+    assert!(r.cam.with(|s| s.gestures.is_empty()));
+}
+
+/// Playback refuses everything, the half-press included: no half-press, no retry, and the
+/// owner pauses as for the SET UP menu.
+#[test]
+fn a_write_in_playback_fails_fast() {
+    let mut r = rig();
+    r.connect();
+    r.cam.open_playback();
+    let t = r.now();
+    let out = r.write(0xD023, 3);
+    assert!(!out.ok && !out.closed_menu);
+    assert_eq!((out.rc, out.result.as_str()), (Some(ptp::RC_FUJI_MENU), refusal::PLAYBACK));
+    assert_eq!(r.ops_since(t).iter().filter(|o| o.code == ptp::OP_SET_PROP_VALUE).count(), 1, "one write, no retry");
+    assert!(r.cam.with(|s| s.gestures.is_empty()));
+    assert_eq!(r.owner.status().screen, Some(Screen::Playback));
+    // Paused: the next write is refused before it reaches the camera.
+    let out = r.write(0xD023, 3);
+    assert_eq!((out.rc, out.result.as_str()), (None, refusal::PLAYBACK));
+    r.cam.close_menu();
+    assert!(r.run_until(Duration::from_secs(2), |r| r.owner.status().screen == Some(Screen::Shooting)));
+}
+
+/// The SET UP menu (D22E 3) refuses the half-press too: no half-press.
+#[test]
+fn a_write_in_the_set_up_menu_fails_fast() {
+    let mut r = rig();
+    r.connect();
+    r.cam.open_menu();
+    let out = r.write(0xD023, 3);
+    assert!(!out.ok && !out.closed_menu);
+    assert_eq!(out.rc, Some(ptp::RC_FUJI_MENU));
+    assert!(r.cam.with(|s| s.gestures.is_empty()));
+    assert_eq!(r.owner.status().screen, Some(Screen::Menu));
 }
 
 /// After a half-press release the X-T5 answers writes 0x2019 for about 0.2 s: the owner

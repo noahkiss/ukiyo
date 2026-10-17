@@ -29,6 +29,23 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Input in the window tells the owner Ukiyo is in use, for keep-awake: at most every 30 s.
+  useEffect(() => {
+    if (!inTauri) return;
+    let last = 0;
+    const ping = () => {
+      const now = Date.now();
+      if (now - last < 30_000) return;
+      last = now;
+      void commands.activity();
+    };
+    const kinds = ["pointerdown", "keydown", "wheel"] as const;
+    for (const k of kinds) window.addEventListener(k, ping, { passive: true });
+    return () => {
+      for (const k of kinds) window.removeEventListener(k, ping);
+    };
+  }, []);
+
   return <CameraContext.Provider value={cam}>{children}</CameraContext.Provider>;
 }
 

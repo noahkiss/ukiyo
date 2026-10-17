@@ -209,7 +209,8 @@ function WriteBox({ row, entry, connected, writer }: { row: PropRow; entry: Entr
     const s = a.steps[0];
     if (!s) return setResult({ ok: false, text: "Nothing written" });
     const back = `read back ${s.readback ?? "nothing"}`;
-    setResult(s.ok ? { ok: true, text: `Written · ${back}` } : { ok: false, text: `Not written: ${s.error ?? s.result} (${s.result}) · ${back}` });
+    const menu = s.closed_menu ? "Closed the camera menu to apply the change · " : "";
+    setResult(s.ok ? { ok: true, text: `${menu}Written · ${back}` } : { ok: false, text: `Not written: ${s.error ?? s.result} (${s.result}) · ${back}` });
   };
 
   const choose = (v: string) => {

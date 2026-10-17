@@ -31,8 +31,9 @@ With a real camera:
 
 The camera's own menu blocks every read while it is open. The app pauses, shows "Camera in
 menu", and resumes when the menu closes. When the camera powers itself off, the app waits 30
-seconds before it reconnects. "Keep camera awake" sets AUTO POWER OFF to OFF while connected
-and restores it on Disconnect or quit.
+seconds before it reconnects. "Keep the camera awake while you use Ukiyo" (Settings > Camera
+connection, on by default) resets the camera's auto power off timer while you use the app: it
+sets AUTO POWER OFF to a neighbouring timeout and straight back, and never to OFF.
 
 ## Tests
 

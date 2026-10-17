@@ -33,7 +33,7 @@ pub fn exit_for(code: &str) -> i32 {
     match code {
         "usage" | "not_found" | "ambiguous" => 2,
         "not_connected" | "camera_asleep" => 3,
-        "busy" | "menu_open" | "owner_conflict" => 4,
+        "busy" | "menu_open" | "in_playback" | "owner_conflict" => 4,
         c if c.starts_with("needs_") => 4,
         "unconfirmed_property" | "read_only" | "value_out_of_range" | "no_evidence" | "private_text" => 5,
         "plan_stale" | "plan_expired" => 6,

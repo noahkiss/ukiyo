@@ -61,7 +61,7 @@ pub(crate) fn status_lines(v: &StatusView) -> Vec<String> {
     if v.link != Link::Connected {
         let reason = v.reason.as_deref().map(|r| format!(" ({r})")).unwrap_or_default();
         let hint = match v.link {
-            Link::Asleep => "Turn the camera on. Keep-awake holds AUTO POWER OFF at OFF.",
+            Link::Asleep => "Turn the camera on. Keep-awake (on in Settings) resets its timer while Ukiyo is in use.",
             Link::Stopped => "The Lab's connect switch is off.",
             Link::Busy => "The camera is busy; try again in a few seconds.",
             _ => "Plug in the cable and turn the camera on. Set its USB mode first: ukiyo help modes",
@@ -82,7 +82,9 @@ pub(crate) fn status_lines(v: &StatusView) -> Vec<String> {
     if let Some(c) = &v.card {
         head.push(format!("card {c} left"));
     }
-    if v.keep_awake {
+    if v.keep_awake_active {
+        head.push("keeping the camera awake".into());
+    } else if v.keep_awake {
         head.push("keep-awake on".into());
     }
     head.push(owner_text(v));

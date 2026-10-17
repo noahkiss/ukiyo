@@ -36,7 +36,8 @@ pub enum Request {
     LabSnapshot,
     /// Codes read on every poll, besides the ones the owner always reads.
     LabPin { codes: Vec<u16> },
-    /// Holds AUTO POWER OFF at OFF while connected; remembered in `settings.json`.
+    /// The keep-awake setting: while Ukiyo is in use, the owner resets the camera's auto
+    /// power off timer. Remembered in `settings.json`.
     LabKeepAwake { on: bool },
     /// The Lab's connect switch: off stops the owner from connecting.
     LabConnect { on: bool },
@@ -62,6 +63,8 @@ pub enum Request {
     /// Re-checks a plan, writes its steps in order, reads each back, and logs them.
     PlanApply { plan_id: String },
     PlanDiscard { plan_id: String },
+    /// Input in the window: Ukiyo is in use (keep-awake). Every other request counts too.
+    Activity,
 }
 
 /// Every method, in `Request` order.
@@ -79,6 +82,7 @@ pub const METHODS: &[&str] = &[
     "plan_show",
     "plan_apply",
     "plan_discard",
+    "activity",
 ];
 
 impl Request {
@@ -98,6 +102,7 @@ impl Request {
             Request::PlanShow { .. } => 10,
             Request::PlanApply { .. } => 11,
             Request::PlanDiscard { .. } => 12,
+            Request::Activity => 13,
         }]
     }
 }
@@ -121,6 +126,7 @@ pub enum Response {
     PlanShow(Box<Plan>),
     PlanApply(Box<Applied>),
     PlanDiscard,
+    Activity,
 }
 
 /// Why a request failed (docs/agent-interface.md, section 5, "Typed errors").
@@ -143,6 +149,8 @@ pub enum ErrorCode {
     Busy,
     /// A menu is open on the camera.
     MenuOpen,
+    /// The camera shows playback, which answers no reads or writes.
+    InPlayback,
     NeedsTether,
     NeedsRawconv,
     NeedsStills,
@@ -180,6 +188,7 @@ impl ErrorCode {
             CameraAsleep => "camera_asleep",
             Busy => "busy",
             MenuOpen => "menu_open",
+            InPlayback => "in_playback",
             NeedsTether => "needs_tether",
             NeedsRawconv => "needs_rawconv",
             NeedsStills => "needs_stills",
@@ -322,10 +331,16 @@ pub mod call {
     pub fn plan_discard(lab: &Lab, plan_id: &str) -> Result<(), Error> {
         lab.discard(plan_id)
     }
+
+    pub fn activity(lab: &Lab) {
+        lab.activity()
+    }
 }
 
 /// Answers one request from `actor`. Methods that wait on the camera block the calling thread.
+/// Every request means Ukiyo is in use, for keep-awake.
 pub fn dispatch(lab: &Lab, actor: &str, req: Request) -> Result<Response, Error> {
+    call::activity(lab);
     Ok(match req {
         Request::LabSnapshot => Response::LabSnapshot(Box::new(call::lab_snapshot(lab))),
         Request::LabPin { codes } => {
@@ -358,6 +373,7 @@ pub fn dispatch(lab: &Lab, actor: &str, req: Request) -> Result<Response, Error>
             call::plan_discard(lab, &plan_id)?;
             Response::PlanDiscard
         }
+        Request::Activity => Response::Activity,
     })
 }
 
@@ -394,7 +410,7 @@ mod tests {
     #[test]
     fn error_code_names() {
         use ErrorCode::*;
-        for c in [Failed, NoFakeCamera, BadRequest, Unavailable, NotConnected, CameraAsleep, Busy, MenuOpen, NeedsTether, NeedsRawconv, NeedsStills, NeedsMovie, OwnerConflict, UnconfirmedProperty, ReadOnly, ValueOutOfRange, NotFound, Ambiguous, PlanStale, PlanExpired, ReadbackMismatch, NoEvidence, PrivateText] {
+        for c in [Failed, NoFakeCamera, BadRequest, Unavailable, NotConnected, CameraAsleep, Busy, MenuOpen, InPlayback, NeedsTether, NeedsRawconv, NeedsStills, NeedsMovie, OwnerConflict, UnconfirmedProperty, ReadOnly, ValueOutOfRange, NotFound, Ambiguous, PlanStale, PlanExpired, ReadbackMismatch, NoEvidence, PrivateText] {
             assert_eq!(serde_json::to_value(c).unwrap(), json!(c.name()));
             assert_eq!(ErrorCode::from_name(c.name()), c);
         }
@@ -418,6 +434,7 @@ mod tests {
             Request::PlanShow { plan_id: String::new() },
             Request::PlanApply { plan_id: String::new() },
             Request::PlanDiscard { plan_id: String::new() },
+            Request::Activity,
         ];
         assert_eq!(all.len(), METHODS.len());
         for (r, name) in all.iter().zip(METHODS) {

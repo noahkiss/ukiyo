@@ -18,7 +18,7 @@ const BASE: Status = {
   opMs: 3.1,
   hot: 24,
   readable: 264,
-  keepAwake: { enabled: false, previous: null },
+  keepAwake: { enabled: true, active: true, periodS: 90 },
 };
 
 export function previewStatus(): Status | null {
