@@ -130,6 +130,7 @@ pub fn run() {
     }
     let typed = specta.invoke_handler();
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(typed)
         .setup(move |app| {
             specta.mount_events(app);
@@ -201,5 +202,75 @@ mod tests {
         std::fs::create_dir_all(&old).unwrap();
         assert_eq!(super::migrate_data_dir(&new).unwrap(), None);
         assert!(old.exists());
+    }
+
+    /// The hosts of every https `url` and `homepage` in the bundled recipe catalogue.
+    fn catalogue_link_hosts(root: &std::path::Path) -> std::collections::BTreeSet<String> {
+        fn walk(v: &serde_json::Value, out: &mut std::collections::BTreeSet<String>) {
+            match v {
+                serde_json::Value::Object(m) => {
+                    for (k, v) in m {
+                        if let (true, Some(u)) = (k == "url" || k == "homepage", v.as_str()) {
+                            if let Some(host) = https_host(u) {
+                                out.insert(host);
+                            }
+                        }
+                        walk(v, out);
+                    }
+                }
+                serde_json::Value::Array(a) => a.iter().for_each(|v| walk(v, out)),
+                _ => {}
+            }
+        }
+        let dir = root.join("catalog/recipes");
+        let mut files = vec![dir.join("catalog.json")];
+        files.extend(std::fs::read_dir(dir.join("sources")).unwrap().map(|e| e.unwrap().path()));
+        let mut out = std::collections::BTreeSet::new();
+        for f in files.iter().filter(|f| f.extension().is_some_and(|x| x == "json")) {
+            let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(f).unwrap()).unwrap();
+            walk(&v, &mut out);
+        }
+        out
+    }
+
+    /// The host of an https URL, or None when the URL is not https or the host is malformed.
+    fn https_host(u: &str) -> Option<String> {
+        let rest = u.strip_prefix("https://")?;
+        let host = rest.split(['/', '?', '#']).next()?.to_ascii_lowercase();
+        let ok = host.contains('.') && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+        ok.then_some(host)
+    }
+
+    /// `capabilities/links.json` lets the window open https links on the catalogue's hosts only.
+    #[test]
+    fn link_hosts() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let allow: Vec<_> = catalogue_link_hosts(&manifest.join(".."))
+            .into_iter()
+            .map(|h| serde_json::json!({ "url": format!("https://{h}/*") }))
+            .collect();
+        let cap = serde_json::json!({
+            "$schema": "../gen/schemas/desktop-schema.json",
+            "identifier": "links",
+            "description": "Open recipe links in the default browser: https on the recipe catalogue's hosts only. Generated: UKIYO_UPDATE_LINK_HOSTS=1 cargo test link_hosts",
+            "windows": ["main"],
+            "permissions": [{ "identifier": "opener:allow-open-url", "allow": allow }]
+        });
+        let fresh = serde_json::to_string_pretty(&cap).unwrap() + "\n";
+        let committed = manifest.join("capabilities/links.json");
+        if std::env::var_os("UKIYO_UPDATE_LINK_HOSTS").is_some() {
+            std::fs::write(&committed, &fresh).unwrap();
+            return;
+        }
+        let on_disk = std::fs::read_to_string(&committed).unwrap_or_default();
+        assert!(on_disk == fresh, "capabilities/links.json is out of date: UKIYO_UPDATE_LINK_HOSTS=1 cargo test link_hosts");
+    }
+
+    #[test]
+    fn https_host_rejects_http_and_malformed() {
+        assert_eq!(https_host("https://Film.Recipes/2024/x/?a#b").as_deref(), Some("film.recipes"));
+        assert_eq!(https_host("http://fujixweekly.com/"), None);
+        assert_eq!(https_host("https://fujixweekly-com/2019/"), None);
+        assert_eq!(https_host("https://a.com@evil.com/"), None);
     }
 }

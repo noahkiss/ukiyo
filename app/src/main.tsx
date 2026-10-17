@@ -7,6 +7,9 @@ import "./styles/shell.css";
 import "./styles/pages.css";
 import "./styles/lab.css";
 import { App } from "./App";
+import { openExternalLinks } from "./lib/links";
+
+openExternalLinks();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

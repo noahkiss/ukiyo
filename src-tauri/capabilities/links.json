@@ -1,0 +1,171 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "links",
+  "description": "Open recipe links in the default browser: https on the recipe catalogue's hosts only. Generated: UKIYO_UPDATE_LINK_HOSTS=1 cargo test link_hosts",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://alexcoghe.com/*"
+        },
+        {
+          "url": "https://alikgriffin.com/*"
+        },
+        {
+          "url": "https://bestlightphotoblog.wordpress.com/*"
+        },
+        {
+          "url": "https://cliftonbeard.zenfolio.com/*"
+        },
+        {
+          "url": "https://community.fujixweekly.com/*"
+        },
+        {
+          "url": "https://craigbergonzoniblog.com/*"
+        },
+        {
+          "url": "https://docs.google.com/*"
+        },
+        {
+          "url": "https://elio.blog/*"
+        },
+        {
+          "url": "https://f16.click/*"
+        },
+        {
+          "url": "https://film.recipes/*"
+        },
+        {
+          "url": "https://fujigraphy.home.blog/*"
+        },
+        {
+          "url": "https://fujixweekly.com/*"
+        },
+        {
+          "url": "https://fujixweekly.wordpress.com/*"
+        },
+        {
+          "url": "https://gqglasgow.wordpress.com/*"
+        },
+        {
+          "url": "https://jamiechancetravels.com/*"
+        },
+        {
+          "url": "https://jerredz.com/*"
+        },
+        {
+          "url": "https://leaandlens.com/*"
+        },
+        {
+          "url": "https://leicestercollective.com/*"
+        },
+        {
+          "url": "https://lifeunintended.com/*"
+        },
+        {
+          "url": "https://my.fujifilmrecipes.com/*"
+        },
+        {
+          "url": "https://nzdigital.blogspot.com/*"
+        },
+        {
+          "url": "https://onecameraonelens.com/*"
+        },
+        {
+          "url": "https://oyvindwashere.medium.com/*"
+        },
+        {
+          "url": "https://piotrecipes.wordpress.com/*"
+        },
+        {
+          "url": "https://shuttergang.com/*"
+        },
+        {
+          "url": "https://suhailra440.wixsite.com/*"
+        },
+        {
+          "url": "https://sunflowerinthesky.smugmug.com/*"
+        },
+        {
+          "url": "https://themostbeautifulworld.com/*"
+        },
+        {
+          "url": "https://tudormateescu.com/*"
+        },
+        {
+          "url": "https://usuallydave.com/*"
+        },
+        {
+          "url": "https://www.captnlook.com/*"
+        },
+        {
+          "url": "https://www.crawnical.com/*"
+        },
+        {
+          "url": "https://www.derekclarkphotography.com/*"
+        },
+        {
+          "url": "https://www.dpreview.com/*"
+        },
+        {
+          "url": "https://www.f16.click/*"
+        },
+        {
+          "url": "https://www.facebook.com/*"
+        },
+        {
+          "url": "https://www.helenfennell.com/*"
+        },
+        {
+          "url": "https://www.hemelsteen.nl/*"
+        },
+        {
+          "url": "https://www.instagram.com/*"
+        },
+        {
+          "url": "https://www.ivanyolo.com/*"
+        },
+        {
+          "url": "https://www.jamiechancetravels.com/*"
+        },
+        {
+          "url": "https://www.jmpeltier.com/*"
+        },
+        {
+          "url": "https://www.josephdagostinophotography.com/*"
+        },
+        {
+          "url": "https://www.laroquephoto.com/*"
+        },
+        {
+          "url": "https://www.mantenphotography.com/*"
+        },
+        {
+          "url": "https://www.msecchi.com/*"
+        },
+        {
+          "url": "https://www.obscurarecipes.com/*"
+        },
+        {
+          "url": "https://www.photologen.de/*"
+        },
+        {
+          "url": "https://www.prophotonut.com/*"
+        },
+        {
+          "url": "https://www.reddit.com/*"
+        },
+        {
+          "url": "https://www.tdernux.com/*"
+        },
+        {
+          "url": "https://www.youtube.com/*"
+        }
+      ]
+    }
+  ]
+}
