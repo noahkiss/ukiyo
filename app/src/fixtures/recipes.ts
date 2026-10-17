@@ -17,7 +17,7 @@ export type Recipe = {
   grainSize: "Small" | "Large";
   colorChrome: "Off" | "Weak" | "Strong";
   colorChromeBlue: "Off" | "Weak" | "Strong";
-  dr: "DR100" | "DR200" | "DR400";
+  dr: "DR100" | "DR200" | "DR400" | "Auto";
   highlights: number;
   shadows: number;
   colour: number;
@@ -56,9 +56,19 @@ export const slots: SlotState[] = [
 ];
 
 /** Film simulations the X-T5 offers. */
-export const FILM_SIMS = ["Provia", "Velvia", "Astia", "Classic Chrome", "Pro Neg. Hi", "Pro Neg. Std", "Classic Negative", "Nostalgic Neg.", "Eterna", "Eterna Bleach Bypass", "Acros", "Acros + R filter", "Monochrome", "Sepia"];
+export const FILM_SIMS = ["Provia", "Velvia", "Astia", "Classic Chrome", "Pro Neg. Hi", "Pro Neg. Std", "Classic Negative", "Nostalgic Neg.", "Eterna", "Eterna Bleach Bypass", "Acros", "Acros + Ye filter", "Acros + R filter", "Acros + G filter", "Monochrome", "Monochrome + Ye filter", "Monochrome + R filter", "Monochrome + G filter", "Sepia"];
 
-export const WHITE_BALANCES = ["Auto", "Daylight", "Shade", "Colour temperature 3800K", "Colour temperature 4600K", "Colour temperature 5200K"];
+export const WHITE_BALANCES = ["Auto", "Auto White Priority", "Auto Ambience Priority", "Daylight", "Shade", "Fluorescent 1", "Fluorescent 2", "Fluorescent 3", "Incandescent", "Underwater", "Colour temperature 3800K", "Colour temperature 4600K", "Colour temperature 5200K"];
+
+/** The X-T5's colour temperature range, in kelvin. */
+export const KELVIN_RANGE = [2500, 10000] as const;
+
+/** A white balance the X-T5 offers: a preset, or a colour temperature in range. */
+export function wbOnBody(wb: string): boolean {
+  const k = /^Colour temperature (\d+)K$/.exec(wb);
+  if (k) return Number(k[1]) >= KELVIN_RANGE[0] && Number(k[1]) <= KELVIN_RANGE[1];
+  return WHITE_BALANCES.includes(wb);
+}
 
 /** The X-T5's range for each tone setting: min, max, step. */
 export const TONE_RANGES = {

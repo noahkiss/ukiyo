@@ -51,7 +51,7 @@ pub fn fxw_source() -> Source {
     Source {
         name: "Fuji X Weekly".into(),
         url: "https://fujixweekly.com".into(),
-        credit: "Recipes by Ritchie Roesch, Fuji X Weekly (fujixweekly.com). ukiyo bundles the settings only, with a link to each post.".into(),
+        credit: "Recipes © Ritchie Roesch, Fuji X Weekly (fujixweekly.com)".into(),
     }
 }
 

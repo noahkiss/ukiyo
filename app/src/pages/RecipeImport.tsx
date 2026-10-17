@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fxwPasteResult, fxwResults, type FxwResult, type ParsedRecipe } from "../fixtures/fxw";
-import { FILM_SIMS, TONE_RANGES, WB_SHIFT_RANGE, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
+import { commands } from "../bindings";
+import { fxwPasteResult } from "../fixtures/fxw";
+import { FILM_SIMS, TONE_RANGES, WB_SHIFT_RANGE, wbOnBody, type Recipe, type Slot } from "../fixtures/recipes";
+import { inTauri } from "../lib/camera";
+import { catalogue, filterEntries, fmtDate, fxwEntries, fxwSensors, fxwSims, isMono, simTones, toParsed, type FxwEntry, type ParsedRecipe } from "../lib/fxw";
 import { CloseIcon, SearchIcon } from "../shell/icons";
 
 type Tab = "search" | "link" | "text";
@@ -41,7 +44,7 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
     if (!candidate) ref.current?.querySelector<HTMLElement>(".sheet-body input, .sheet-body textarea")?.focus();
   }, [tab, candidate]);
 
-  const fromResult = (r: FxwResult): Candidate => ({ parsed: r.parsed, source: { label: "Fuji X Weekly", url: r.url }, tones: r.tones });
+  const fromResult = (r: FxwEntry): Candidate => ({ parsed: r.parsed, source: { label: "Fuji X Weekly", url: r.url }, tones: r.tones });
 
   return (
     <dialog ref={ref} className="sheet" aria-labelledby="import-title" onClose={onClose} onCancel={onClose} data-component="recipe-import">
@@ -66,29 +69,36 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
           </div>
           {tab === "search" && <SearchTab onPick={(r) => setCandidate(fromResult(r))} />}
           {tab === "link" && <LinkTab onRead={(url) => setCandidate({ ...fromResult(fxwPasteResult), source: { label: "Fuji X Weekly", url } })} />}
-          {tab === "text" && <TextTab onRead={() => setCandidate({ ...fromResult(fxwPasteResult), source: { label: "Pasted text", url: null } })} />}
+          {tab === "text" && <TextTab onRead={(parsed) => setCandidate({ parsed, source: { label: "Pasted text", url: null }, tones: simTones(parsed.sim) })} />}
         </>
       )}
     </dialog>
   );
 }
 
-const fmtDate = (iso: string) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+/** Results shown at once; the filters narrow the rest. */
+const RESULT_LIMIT = 100;
 
-function SearchTab({ onPick }: { onPick: (r: FxwResult) => void }) {
+function SearchTab({ onPick }: { onPick: (r: FxwEntry) => void }) {
   const [q, setQ] = useState("");
-  // FIXTURE: filters the sample results; the RSS search replaces this.
-  const results = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    return fxwResults.filter((r) => !s || `${r.title} ${r.parsed.sim} ${r.sensor}`.toLowerCase().includes(s));
-  }, [q]);
+  const [sensor, setSensor] = useState("");
+  const [sim, setSim] = useState("");
+  // The bundled catalogue; nothing is fetched.
+  const all = useMemo(() => filterEntries(fxwEntries, { q, sensor, sim }), [q, sensor, sim]);
+  const results = all.slice(0, RESULT_LIMIT);
   return (
     <div className="sheet-body">
-      <label className="search-box">
-        <SearchIcon />
-        <span className="visually-hidden">Search Fuji X Weekly</span>
-        <input type="search" placeholder="Recipe name, film simulation or sensor" value={q} onChange={(e) => setQ(e.target.value)} />
-      </label>
+      <div className="filter-line">
+        <label className="search-box">
+          <SearchIcon />
+          <span className="visually-hidden">Search Fuji X Weekly</span>
+          <input type="search" placeholder="Recipe name, film simulation or sensor" value={q} onChange={(e) => setQ(e.target.value)} />
+        </label>
+        <FxwFilters sensor={sensor} setSensor={setSensor} sim={sim} setSim={setSim} />
+      </div>
+      <p className="tiny muted">
+        {all.length > RESULT_LIMIT ? `${RESULT_LIMIT} of ${all.length} recipes` : `${all.length} ${all.length === 1 ? "recipe" : "recipes"}`} · {catalogue.source.credit}
+      </p>
       <ul className="rows results">
         {results.map((r) => (
           <li key={r.id} className="result-line">
@@ -98,12 +108,13 @@ function SearchTab({ onPick }: { onPick: (r: FxwResult) => void }) {
               ))}
             </span>
             <span className="stack result-text">
-              <span className="strong">{r.title}</span>
+              <span className="strong">{r.name}</span>
               <span className="small muted">
                 {fmtDate(r.date)} · {r.parsed.sim}
+                {r.video && " · Video"}
               </span>
             </span>
-            <span className={r.sensor === "X-Trans V" ? "badge ink" : "badge"}>{r.sensor}</span>
+            {r.sensor && <span className={r.sensor === "X-Trans V" ? "badge ink" : "badge"}>{r.sensor}</span>}
             <a className="small" href={r.url} target="_blank" rel="noreferrer">
               Post
             </a>
@@ -115,6 +126,32 @@ function SearchTab({ onPick }: { onPick: (r: FxwResult) => void }) {
         {results.length === 0 && <li className="empty">No recipes match.</li>}
       </ul>
     </div>
+  );
+}
+
+/** Sensor and film simulation filters over the bundled catalogue. "" is any. */
+export function FxwFilters({ sensor, setSensor, sim, setSim }: { sensor: string; setSensor: (s: string) => void; sim: string; setSim: (s: string) => void }) {
+  return (
+    <>
+      <label>
+        <span className="visually-hidden">Sensor</span>
+        <select className="select narrow" value={sensor} onChange={(e) => setSensor(e.target.value)}>
+          <option value="">All sensors</option>
+          {fxwSensors.map((s) => (
+            <option key={s}>{s}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span className="visually-hidden">Film simulation</span>
+        <select className="select narrow" value={sim} onChange={(e) => setSim(e.target.value)}>
+          <option value="">All film simulations</option>
+          {fxwSims.map((s) => (
+            <option key={s}>{s}</option>
+          ))}
+        </select>
+      </label>
+    </>
   );
 }
 
@@ -142,14 +179,28 @@ function LinkTab({ onRead }: { onRead: (url: string) => void }) {
   );
 }
 
-function TextTab({ onRead }: { onRead: () => void }) {
+function TextTab({ onRead }: { onRead: (p: ParsedRecipe) => void }) {
   const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const read = async () => {
+    if (!inTauri) {
+      setError("Reading pasted text needs the ukiyo app.");
+      return;
+    }
+    const p = await commands.recipeParse(text);
+    if (Object.keys(p.settings).length === 0) {
+      setError("No recipe settings found. Paste one setting per line, such as “Film Simulation: Classic Chrome”.");
+      return;
+    }
+    onRead(toParsed("Pasted recipe", p.settings, p.notes, p.warnings, { label: "Pasted text", url: null }));
+  };
   return (
     <form
       className="sheet-body"
       onSubmit={(e) => {
         e.preventDefault();
-        if (text.trim()) onRead();
+        setError(null);
+        if (text.trim()) read().catch((err) => setError(String(err)));
       }}
     >
       <label className="field">
@@ -161,13 +212,18 @@ function TextTab({ onRead }: { onRead: () => void }) {
           Read recipe
         </button>
       </div>
+      {error && (
+        <div className="banner warn" role="alert">
+          <span>{error}</span>
+        </div>
+      )}
     </form>
   );
 }
 
 const signed = (x: number) => (x > 0 ? "+" : "") + x;
 
-type Field = { label: string; value: string; problem?: string };
+type Field = { label: string; value: string; problem?: string; absent?: boolean };
 
 /** Each parsed field, flagged when the body cannot take it. */
 function fields(p: ParsedRecipe): Field[] {
@@ -178,9 +234,9 @@ function fields(p: ParsedRecipe): Field[] {
   });
   const [wbMin, wbMax] = WB_SHIFT_RANGE;
   const shiftBad = [p.wbShift.r, p.wbShift.b].some((x) => x < wbMin || x > wbMax);
-  return [
+  const list: Field[] = [
     { label: "Film simulation", value: p.sim, problem: FILM_SIMS.includes(p.sim) ? undefined : `Not on the ${BODY}` },
-    { label: "White balance", value: p.wb, problem: WHITE_BALANCES.includes(p.wb) ? undefined : `Not on the ${BODY}` },
+    { label: "White balance", value: p.wb, problem: wbOnBody(p.wb) ? undefined : `Not on the ${BODY}` },
     { label: "White balance shift", value: `R ${signed(p.wbShift.r)} · B ${signed(p.wbShift.b)}`, problem: shiftBad ? `${BODY} takes ${wbMin} to +${wbMax}` : undefined },
     { label: "Grain", value: p.grain === "Off" ? "Off" : `${p.grain}, ${p.grainSize}` },
     { label: "Color Chrome effect", value: p.colorChrome },
@@ -193,6 +249,7 @@ function fields(p: ParsedRecipe): Field[] {
     range("Noise reduction", p.noiseReduction, TONE_RANGES.noiseReduction),
     range("Clarity", p.clarity, TONE_RANGES.clarity),
   ];
+  return list.map((f) => (p.missing?.includes(f.label) ? { ...f, absent: true } : f));
 }
 
 function Review({ c, onBack, onSave, onWrite }: { c: Candidate; onBack: () => void; onSave: (r: Recipe) => void; onWrite: (s: Slot) => void }) {
@@ -200,13 +257,13 @@ function Review({ c, onBack, onSave, onWrite }: { c: Candidate; onBack: () => vo
   const [slot, setSlot] = useState<Slot | "">("");
   const list = fields(c.parsed);
   const problems = list.filter((f) => f.problem).length;
-  const { notes, ...rest } = c.parsed;
+  const { notes, missing: _missing, warnings = [], ...rest } = c.parsed;
   const recipe: Recipe = {
     ...rest,
     name,
     id: "import",
     slot: null,
-    mono: /acros|monochrome|sepia/i.test(c.parsed.sim),
+    mono: isMono(c.parsed.sim),
     tones: c.tones,
     source: c.source,
     notes,
@@ -249,6 +306,16 @@ function Review({ c, onBack, onSave, onWrite }: { c: Candidate; onBack: () => vo
             <dd>
               <span className={f.problem ? "red strong" : undefined}>{f.value}</span>
               {f.problem && <span className="tiny review-problem">{f.problem}</span>}
+              {f.absent && !f.problem && <span className="tiny muted review-problem">Not in the recipe; camera default</span>}
+            </dd>
+          </div>
+        ))}
+        {warnings.map((w, i) => (
+          <div key={`w${i}`} className="review-field bad">
+            <dt>{w.label || "Line"}</dt>
+            <dd>
+              {w.value}
+              <span className="tiny review-problem">{w.message}</span>
             </dd>
           </div>
         ))}

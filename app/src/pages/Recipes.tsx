@@ -1,14 +1,21 @@
 import { useMemo, useState } from "react";
 import { FILM_SIMS, recipes as recipeFixture, slots as slotFixture, TONE_RANGES, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
 import { useCamera } from "../lib/camera";
+import { catalogue, entryRecipe, filterEntries, fmtDate, fxwEntries, type FxwEntry } from "../lib/fxw";
 import { href } from "../lib/router";
 import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
 import { PageHead } from "../shell/PageHead";
 import { ChevronDown, LinkIcon, LockIcon, PhotoIcon, SearchIcon } from "../shell/icons";
-import { RecipeImport } from "./RecipeImport";
+import { FxwFilters, RecipeImport } from "./RecipeImport";
 
 type Show = "all" | "colour" | "mono";
+type Collection = "mine" | "fxw";
+
+/** Fuji X Weekly cards shown before "Show more". */
+const FXW_PAGE = 60;
+
+const fxwById = new Map(fxwEntries.map((e) => [e.id, e]));
 
 const signed = (x: number) => (x > 0 ? "+" : "") + x;
 
@@ -30,17 +37,29 @@ export function Recipes() {
   const notBuilt = useNotBuilt();
   const [library, setLibrary] = useState<Recipe[]>(recipeFixture);
   const [selectedId, setSelectedId] = useState("r3");
-  const saved = selectedId === "new" ? NEW_C7 : (library.find((r) => r.id === selectedId) ?? library[0]);
+  const find = (id: string): Recipe => {
+    if (id === "new") return NEW_C7;
+    const e = fxwById.get(id);
+    if (e) return entryRecipe(e);
+    return library.find((r) => r.id === id) ?? library[0];
+  };
+  const saved = find(selectedId);
   const [draft, setDraft] = useState<Recipe>(saved);
   const [search, setSearch] = useState("");
   const [show, setShow] = useState<Show>("all");
   const [importing, setImporting] = useState(false);
+  const [collection, setCollection] = useState<Collection>("mine");
+  const [sensor, setSensor] = useState("");
+  const [sim, setSim] = useState("");
+  const [fxwLimit, setFxwLimit] = useState(FXW_PAGE);
   const changes = diff(saved, draft);
 
   const select = (id: string) => {
     setSelectedId(id);
-    setDraft(id === "new" ? NEW_C7 : (library.find((r) => r.id === id) ?? library[0]));
+    setDraft(find(id));
   };
+
+  const fxwShown = useMemo(() => filterEntries(fxwEntries, { q: search, sensor, sim, show }), [search, sensor, sim, show]);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -48,7 +67,7 @@ export function Recipes() {
   }, [library, search, show]);
 
   const saveToLibrary = () => {
-    if (draft.id === "new") {
+    if (draft.id === "new" || fxwById.has(draft.id)) {
       const r = { ...draft, id: `r${library.length + 1}` };
       setLibrary([...library, r]);
       setSelectedId(r.id);
@@ -105,6 +124,18 @@ export function Recipes() {
             <h2 id="lib" className="card-title">
               Library
             </h2>
+            <div className="seg" role="group" aria-label="Collection">
+              {(
+                [
+                  ["mine", "My recipes"],
+                  ["fxw", "Fuji X Weekly"],
+                ] as Array<[Collection, string]>
+              ).map(([k, label]) => (
+                <button key={k} type="button" aria-pressed={collection === k} onClick={() => setCollection(k)}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <label className="search-box">
               <SearchIcon />
               <span className="visually-hidden">Search recipes</span>
@@ -132,6 +163,38 @@ export function Recipes() {
               From a photo
             </button>
           </div>
+          {collection === "fxw" && (
+            <div className="library-tools">
+              <FxwFilters
+                sensor={sensor}
+                setSensor={(v) => {
+                  setSensor(v);
+                  setFxwLimit(FXW_PAGE);
+                }}
+                sim={sim}
+                setSim={(v) => {
+                  setSim(v);
+                  setFxwLimit(FXW_PAGE);
+                }}
+              />
+              <span className="tiny muted grow">
+                {fxwShown.length} of {fxwEntries.length} recipes · {catalogue.source.credit}
+              </span>
+            </div>
+          )}
+          {collection === "fxw" ? (
+            <div className="library-grid">
+              {fxwShown.slice(0, fxwLimit).map((e) => (
+                <FxwCard key={e.id} e={e} on={e.id === selectedId} onSelect={() => select(e.id)} />
+              ))}
+              {fxwShown.length === 0 && <p className="muted">No recipes match.</p>}
+              {fxwShown.length > fxwLimit && (
+                <button type="button" className="btn more-btn" onClick={() => setFxwLimit(fxwLimit + FXW_PAGE)}>
+                  Show more ({fxwShown.length - fxwLimit})
+                </button>
+              )}
+            </div>
+          ) : (
           <div className="library-grid">
             {shown.map((r) => (
               <button key={r.id} type="button" className="recipe-card" aria-pressed={r.id === selectedId} onClick={() => select(r.id)}>
@@ -149,6 +212,7 @@ export function Recipes() {
             ))}
             {shown.length === 0 && <p className="muted">No recipes match.</p>}
           </div>
+          )}
         </section>
 
         {importing && (
@@ -170,6 +234,37 @@ export function Recipes() {
   );
 }
 
+/** A catalogue card: the recipe, a credit line and a link to the post. */
+function FxwCard({ e, on, onSelect }: { e: FxwEntry; on: boolean; onSelect: () => void }) {
+  const r = entryRecipe(e);
+  return (
+    <div className="recipe-card fxw-card">
+      <button type="button" className="fxw-card-main" aria-pressed={on} onClick={onSelect}>
+        <Tones tones={r.tones} tall />
+        <span className="recipe-body">
+          <span className="recipe-top">
+            <span className="recipe-name">{r.name}</span>
+            {e.sensor && <span className="badge">{e.sensor}</span>}
+          </span>
+          <span className="small muted">
+            {r.sim}
+            {e.video && " · Video"}
+          </span>
+          <span className="mono tiny muted">{summary(r)}</span>
+        </span>
+      </button>
+      <span className="recipe-credit tiny muted">
+        <span>
+          {catalogue.source.name} · {fmtDate(e.date)}
+        </span>
+        <a href={e.url} target="_blank" rel="noreferrer">
+          Post
+        </a>
+      </span>
+    </div>
+  );
+}
+
 function Tones({ tones, tall }: { tones: string[]; tall?: boolean }) {
   return (
     <span className={tall ? "tones tall" : "tones"} aria-hidden="true">
@@ -185,7 +280,7 @@ const SEGS: Array<[keyof Recipe, string, string[]]> = [
   ["grainSize", "Grain size", ["Small", "Large"]],
   ["colorChrome", "Color Chrome effect", ["Off", "Weak", "Strong"]],
   ["colorChromeBlue", "Color Chrome FX Blue", ["Off", "Weak", "Strong"]],
-  ["dr", "Dynamic range", ["DR100", "DR200", "DR400"]],
+  ["dr", "Dynamic range", ["DR100", "DR200", "DR400", "Auto"]],
 ];
 
 const SLIDERS: Array<[keyof typeof TONE_RANGES, string]> = [
@@ -209,7 +304,7 @@ type EditorProps = {
 
 function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }: EditorProps) {
   const set = <K extends keyof Recipe>(k: K, v: Recipe[K]) => setDraft({ ...draft, [k]: v });
-  const where = draft.slot ? `In slot ${draft.slot}` : "In library";
+  const where = draft.slot ? `In slot ${draft.slot}` : draft.id.startsWith("fxw:") ? "From Fuji X Weekly" : "In library";
   return (
     <aside className="card editor" aria-labelledby="ed">
       <div className="editor-head">
@@ -251,6 +346,7 @@ function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }:
       <label className="edit-line">
         White balance
         <select className="select" value={draft.wb} onChange={(e) => set("wb", e.target.value)}>
+          {!WHITE_BALANCES.includes(draft.wb) && <option value={draft.wb}>{draft.wb}</option>}
           {WHITE_BALANCES.map((s) => (
             <option key={s}>{s}</option>
           ))}
@@ -297,7 +393,7 @@ function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }:
           {draft.slot ? `Write to slot ${draft.slot}` : "Write to a slot"}
         </button>
         <div className="actions-pair">
-          <button type="button" className="btn" onClick={onSave} disabled={changes === 0 && draft.id !== "new"}>
+          <button type="button" className="btn" onClick={onSave} disabled={changes === 0 && draft.id !== "new" && !draft.id.startsWith("fxw:")}>
             Save to library
           </button>
           <button type="button" className="btn text" onClick={onDiscard} disabled={changes === 0}>

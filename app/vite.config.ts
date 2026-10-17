@@ -8,7 +8,8 @@ const PORT = 4823;
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
-  server: { port: PORT, strictPort: true, host: "localhost" },
+  // fs.allow: the bundled recipe catalogue lives in the repo's catalog/, outside app/.
+  server: { port: PORT, strictPort: true, host: "localhost", fs: { allow: [".", "../catalog/recipes"] } },
   preview: { port: PORT, strictPort: true, host: "localhost" },
   build: { outDir: "dist", target: "safari16", emptyOutDir: true },
 });

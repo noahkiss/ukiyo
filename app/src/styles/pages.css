@@ -534,6 +534,55 @@
   padding: 0 7px;
 }
 
+.fxw-card {
+  cursor: default;
+}
+
+.fxw-card:has([aria-pressed="true"]) {
+  border: 2px solid var(--red-fill);
+}
+
+.fxw-card:hover:not(:has([aria-pressed="true"])) {
+  border-color: var(--line-strong);
+}
+
+.fxw-card-main {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recipe-credit {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.more-btn {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+.filter-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filter-line .search-box {
+  flex: 1 1 240px;
+}
+
 .editor {
   flex: 1 1 360px;
   min-width: 0;
