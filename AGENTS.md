@@ -10,9 +10,17 @@ what comes next.
 - `docs/protocol.md` — what is known about the camera's PTP interface. Update it with every finding.
 - `docs/catalog.md` — the property catalog format.
 - `app/` — the window: React + TypeScript + Vite (pnpm, Node from `.node-version`).
-  `src/App.tsx` state and keys, `src/views/` (StatusBar, PropTable, ChangeFeed, LabelPanel with
-  the write box, FakeBar), `src/lib/decode.ts` value display, `src/bindings.ts` generated (do not
-  edit; `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort).
+  `src/App.tsx` the shell and hash routes (`#/hub`, `#/settings/appearance`), `src/shell/`
+  (Sidebar with the brand-mark slot, page head, camera chip, icons), `src/pages/` (Hub, Recipes,
+  Settings with Appearance, Connect, and Lab: Lab state and keys; it stays mounted while hidden),
+  `src/views/` (the Lab's StatusBar, PropTable, ChangeFeed, LabelPanel with the write box,
+  FakeBar), `src/lib/` (`camera.tsx` live status for every page, `prefs.tsx` theme, brand mark
+  and app icon choices in local storage, `decode.ts` value display), `src/fixtures/` sample data
+  for pages without a backend (see its README), `src/styles/` (`tokens.css` light and dark
+  tokens, then base, shell, pages, lab), `src/assets/` (bundled OFL fonts with licences, camera
+  art, placeholder brand marks and app icons). `src/bindings.ts` generated (do not edit;
+  `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort). In a
+  browser outside Tauri, `?camera=tether|rawconv|cardreader` previews a camera state.
 - `src-tauri/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
   `usb` (nusb), `fake` (fake X-T5; shape in `fake_x-t5.json`), `clock`, `owner` (the one
   connection thread: queue, polling, pause, power-off, reconnect rules), `owner_tests`.
