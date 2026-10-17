@@ -86,6 +86,9 @@ what comes next.
   - `guided_map.py STEPS [--dry-run DUMP.json]` — guided mapping session: a dialog names one
     change per step (`steps/<name>.json`); the script diffs every property, keeps the camera awake
     with the D381 toggle, and writes a log, summary and proposed catalog patch to `local/mapping/`.
+- `tools/wifi/` — guided Wi-Fi and Bluetooth test run (uv inline deps): `run_wifi_tests.py
+  [--dry-run]`, `fujiptpip.py` (Fuji PTP over TCP), `macnet.py`, `ble.py`, `fakecam.py`. Logs to
+  `local/wifi-test/`. `docs/wifi.md` covers what sources say and the Wi-Fi transport sketch.
 - `tools/ios-ptp-probe/` — iOS/iPadOS test app (XcodeGen, ImageCaptureCore): can a phone read
   and write the camera's PTP properties over USB-C? Signing from gitignored `Local.xcconfig`; see
   its README.
