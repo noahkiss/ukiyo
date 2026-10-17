@@ -1103,3 +1103,142 @@
 a.btn {
   text-decoration: none;
 }
+
+/* Recipes: import sheet */
+.sheet {
+  width: min(760px, calc(100vw - 64px));
+  max-height: calc(100vh - 64px);
+  padding: 22px 24px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-l);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.sheet[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sheet::backdrop {
+  background: rgba(20, 18, 16, 0.45);
+}
+
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.sheet-head .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.results {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.result-line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+}
+
+.result-swatch {
+  flex: 0 0 56px;
+  height: 36px;
+  margin-top: 0;
+  border-radius: 6px;
+}
+
+.result-text {
+  flex: 1 1 auto;
+}
+
+.review-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.review-swatch {
+  flex: 0 0 120px;
+  height: 44px;
+  margin-top: 0;
+  border-radius: var(--radius);
+}
+
+.grow-field {
+  flex: 1 1 auto;
+}
+
+.review-fields {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  column-gap: 24px;
+}
+
+.review-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.review-field dt {
+  color: var(--muted);
+}
+
+.review-field dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  font-weight: 500;
+}
+
+.review-field.bad {
+  background: var(--hit);
+  margin: 0 -8px;
+  padding: 9px 8px;
+}
+
+.review-problem {
+  font-weight: 400;
+  color: var(--red-text);
+}
+
+.review-problem.muted {
+  color: var(--muted);
+}
+
+.sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.sheet-actions .select.narrow {
+  height: var(--control-h);
+}

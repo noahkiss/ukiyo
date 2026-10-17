@@ -24,6 +24,10 @@ export type Recipe = {
   sharpness: number;
   noiseReduction: number;
   clarity: number;
+  /** Where an imported recipe came from. */
+  source?: { label: string; url: string | null };
+  /** Settings from the source that a slot cannot hold, such as ISO. */
+  notes?: Array<[string, string]>;
 };
 
 export type SlotState = { slot: Slot; recipeId: string | null; state: "Matches" | "Edited" | "New"; name?: string; sim?: string; tones?: string[] };
@@ -51,6 +55,19 @@ export const slots: SlotState[] = [
   { slot: "C7", recipeId: null, state: "New", name: "Unnamed recipe", sim: "Provia · not in library", tones: ["#7A8A96", "#B9B2A4", "#5A5048", "#D9D2C2", "#2E3236"] },
 ];
 
-export const FILM_SIMS = ["Provia", "Velvia", "Astia", "Classic Chrome", "Pro Neg. Hi", "Pro Neg. Std", "Classic Negative", "Nostalgic Neg.", "Eterna", "Eterna Bleach Bypass", "Reala Ace", "Acros", "Acros + R filter", "Monochrome", "Sepia"];
+/** Film simulations the X-T5 offers. */
+export const FILM_SIMS = ["Provia", "Velvia", "Astia", "Classic Chrome", "Pro Neg. Hi", "Pro Neg. Std", "Classic Negative", "Nostalgic Neg.", "Eterna", "Eterna Bleach Bypass", "Acros", "Acros + R filter", "Monochrome", "Sepia"];
 
 export const WHITE_BALANCES = ["Auto", "Daylight", "Shade", "Colour temperature 3800K", "Colour temperature 4600K", "Colour temperature 5200K"];
+
+/** The X-T5's range for each tone setting: min, max, step. */
+export const TONE_RANGES = {
+  highlights: [-2, 4, 0.5],
+  shadows: [-2, 4, 0.5],
+  colour: [-4, 4, 1],
+  sharpness: [-4, 4, 1],
+  noiseReduction: [-4, 4, 1],
+  clarity: [-5, 5, 1],
+} as const;
+
+export const WB_SHIFT_RANGE = [-9, 9] as const;

@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { FILM_SIMS, recipes as recipeFixture, slots as slotFixture, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
+import { FILM_SIMS, recipes as recipeFixture, slots as slotFixture, TONE_RANGES, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
 import { useCamera } from "../lib/camera";
 import { href } from "../lib/router";
 import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
 import { PageHead } from "../shell/PageHead";
 import { ChevronDown, LinkIcon, LockIcon, PhotoIcon, SearchIcon } from "../shell/icons";
+import { RecipeImport } from "./RecipeImport";
 
 type Show = "all" | "colour" | "mono";
 
@@ -33,6 +34,7 @@ export function Recipes() {
   const [draft, setDraft] = useState<Recipe>(saved);
   const [search, setSearch] = useState("");
   const [show, setShow] = useState<Show>("all");
+  const [importing, setImporting] = useState(false);
   const changes = diff(saved, draft);
 
   const select = (id: string) => {
@@ -121,9 +123,9 @@ export function Recipes() {
                 </button>
               ))}
             </div>
-            <button type="button" className="btn" onClick={() => notBuilt("Importing a recipe")}>
+            <button type="button" className="btn" onClick={() => setImporting(true)} data-action="import">
               <LinkIcon />
-              Import from link or text
+              Import
             </button>
             <button type="button" className="btn" onClick={() => notBuilt("Reading a recipe from a photo")}>
               <PhotoIcon />
@@ -141,6 +143,7 @@ export function Recipes() {
                   </span>
                   <span className="small muted">{r.sim}</span>
                   <span className="mono tiny muted">{summary(r)}</span>
+                  {r.source && <span className="tiny muted">From {r.source.label}</span>}
                 </span>
               </button>
             ))}
@@ -148,6 +151,19 @@ export function Recipes() {
           </div>
         </section>
 
+        {importing && (
+          <RecipeImport
+            onClose={() => setImporting(false)}
+            onSave={(r) => {
+              const saved = { ...r, id: `r${library.length + 1}` };
+              setLibrary([...library, saved]);
+              setSelectedId(saved.id);
+              setDraft(saved);
+              setImporting(false);
+            }}
+            onWrite={(slot) => notBuilt(`Writing to slot ${slot}`)}
+          />
+        )}
         <Editor draft={draft} saved={saved} changes={changes} setDraft={setDraft} onWrite={(slot) => notBuilt(slot ? `Writing to slot ${slot}` : "Writing to a slot")} onSave={saveToLibrary} onDiscard={() => setDraft(saved)} />
       </div>
     </div>
@@ -172,13 +188,13 @@ const SEGS: Array<[keyof Recipe, string, string[]]> = [
   ["dr", "Dynamic range", ["DR100", "DR200", "DR400"]],
 ];
 
-const SLIDERS: Array<[keyof Recipe, string, number, number, number]> = [
-  ["highlights", "Highlights", -2, 4, 0.5],
-  ["shadows", "Shadows", -2, 4, 0.5],
-  ["colour", "Colour", -4, 4, 1],
-  ["sharpness", "Sharpness", -4, 4, 1],
-  ["noiseReduction", "Noise reduction", -4, 4, 1],
-  ["clarity", "Clarity", -5, 5, 1],
+const SLIDERS: Array<[keyof typeof TONE_RANGES, string]> = [
+  ["highlights", "Highlights"],
+  ["shadows", "Shadows"],
+  ["colour", "Colour"],
+  ["sharpness", "Sharpness"],
+  ["noiseReduction", "Noise reduction"],
+  ["clarity", "Clarity"],
 ];
 
 type EditorProps = {
@@ -204,6 +220,21 @@ function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }:
           {where} · {changes === 0 ? "no changes" : `${changes} ${changes === 1 ? "change" : "changes"}`}
         </span>
       </div>
+      {draft.source && (
+        <p className="small muted">
+          Source:{" "}
+          {draft.source.url ? (
+            <a href={draft.source.url} target="_blank" rel="noreferrer">
+              {draft.source.label}
+            </a>
+          ) : (
+            draft.source.label
+          )}
+        </p>
+      )}
+      {draft.notes && draft.notes.length > 0 && (
+        <p className="small muted">{draft.notes.map(([k, v]) => `${k}: ${v}`).join(" · ")}</p>
+      )}
       <label className="field">
         Name
         <input type="text" className="name-input" value={draft.name} onChange={(e) => set("name", e.target.value)} />
@@ -211,6 +242,7 @@ function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }:
       <label className="edit-line">
         Film simulation
         <select className="select" value={draft.sim} onChange={(e) => set("sim", e.target.value)}>
+          {!FILM_SIMS.includes(draft.sim) && <option value={draft.sim}>{draft.sim} (not on the X-T5)</option>}
           {FILM_SIMS.map((s) => (
             <option key={s}>{s}</option>
           ))}
@@ -248,7 +280,8 @@ function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }:
         </div>
       ))}
       <div className="sliders">
-        {SLIDERS.map(([k, label, min, max, step]) => {
+        {SLIDERS.map(([k, label]) => {
+          const [min, max, step] = TONE_RANGES[k];
           const v = draft[k] as number;
           return (
             <label key={k} className="slider">
