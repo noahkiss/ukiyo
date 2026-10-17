@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Placeholder until Ukiyo has its own icon. -->
+  <circle cx="512" cy="512" r="230" fill="none" stroke="#ffffff" stroke-width="64"/>
+  <circle cx="512" cy="512" r="90" fill="#ffffff"/>
+</svg>

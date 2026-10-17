@@ -8,62 +8,46 @@ It uses ImageCaptureCore: `ICDeviceBrowser` finds the camera, the app opens one 
 `ICCameraDevice.requestSendPTPCommand(_:outData:completion:)` sends PTP command containers
 that the app builds itself. Protocol facts come from `docs/protocol.md`.
 
-## Set the signing team
+## Install from TestFlight
 
-Signing settings live in `Local.xcconfig`, which git ignores. Never commit it.
+The probe ships through TestFlight as the first builds of Ukiyo (bundle ID
+`com.nkmkdigital.ukiyo`). On the device it is named PTP Probe.
+
+1. Install the TestFlight app from the App Store on the iPhone or iPad.
+2. Accept the TestFlight invitation for Ukiyo, from the email or from TestFlight itself. Members
+   of the internal group get every build.
+3. In TestFlight, tap **Install** on the newest build.
+
+No cable install, Developer Mode or profile trust is needed.
+
+## Upload a build
+
+Signing settings live in two gitignored files. Never commit them.
 
 ```sh
 cd tools/ios-ptp-probe
-cp Local.xcconfig.example Local.xcconfig
+cp Local.xcconfig.example Local.xcconfig   # team ID, Apple Distribution, the App Store profile
+cp Local.example.env Local.env             # App Store Connect API key commands
+./testflight.sh
 ```
 
-Edit `Local.xcconfig`:
+`testflight.sh` generates the project, archives a Release build and uploads it. The build number
+is the UTC time (`YYYYMMDDHHMM`); raise `MARKETING_VERSION` in `project.yml` by hand. App Store
+Connect takes a few minutes to process a build, then the internal group gets it.
 
-| Setting | Value |
-|---|---|
-| `DEVELOPMENT_TEAM` | your Apple team ID (Xcode > Settings > Accounts shows it). A free personal team works. |
-| `BUNDLE_ID_PREFIX` | a reverse-DNS prefix you own, for example `com.yourname`. The bundle id becomes `<prefix>.ptpprobe`. |
+The Mac that uploads needs the Apple Distribution identity in its keychain and the profile
+`match AppStore com.nkmkdigital.ukiyo` installed.
 
-Without `Local.xcconfig` the bundle id is `com.example.ptpprobe` and no team is set. That
-builds for the simulator, but it does not sign for a device.
-
-## Build and run on a device
-
-1. Generate the project (the `.xcodeproj` and `Info.plist` are generated and gitignored):
-
-   ```sh
-   xcodegen generate
-   ```
-
-2. Turn on Developer Mode on the device: Settings > Privacy & Security > Developer Mode. The
-   device restarts.
-3. Connect the device to the Mac and find its UDID:
-
-   ```sh
-   xcrun devicectl list devices
-   ```
-
-4. Build and install:
-
-   ```sh
-   xcodebuild build -project PTPProbe.xcodeproj -scheme PTPProbe \
-     -destination 'platform=iOS,id=<udid>' -derivedDataPath build -allowProvisioningUpdates
-   xcrun devicectl device install app --device <udid> build/Build/Products/Debug-iphoneos/PTPProbe.app
-   ```
-
-   Or open `PTPProbe.xcodeproj` in Xcode, pick the device, and press Run.
-
-5. Trust the developer profile on the device: Settings > General > VPN & Device Management >
-   your developer app > Trust. This is needed once per team. A free personal team's profile
-   expires after 7 days; rebuild after that.
-
-Simulator and unsigned builds (compile checks only; the simulator finds no camera):
+Simulator and unsigned builds (compile checks only; the simulator finds no camera). Generate
+the project first (`xcodegen generate`; the `.xcodeproj` and `Info.plist` are gitignored):
 
 ```sh
 xcodebuild build -project PTPProbe.xcodeproj -scheme PTPProbe -sdk iphonesimulator -derivedDataPath build
 xcodebuild build -project PTPProbe.xcodeproj -scheme PTPProbe -destination 'generic/platform=iOS' \
   -derivedDataPath build CODE_SIGNING_ALLOWED=NO
 ```
+
+The icon (`Icon/AppIcon.icon`) is a placeholder until Ukiyo has its own.
 
 ## Set up the camera
 

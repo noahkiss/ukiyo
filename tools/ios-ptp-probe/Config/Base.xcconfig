@@ -1,8 +1,11 @@
 // Shared build settings. Signing comes from Local.xcconfig (gitignored); see README.md.
-BUNDLE_ID_PREFIX = com.example
-PRODUCT_BUNDLE_IDENTIFIER = $(BUNDLE_ID_PREFIX).ptpprobe
-CODE_SIGN_STYLE = Automatic
+// The probe ships as the first TestFlight builds of Ukiyo, so it uses the app's bundle ID.
+PRODUCT_BUNDLE_IDENTIFIER = com.nkmkdigital.ukiyo
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
 DEVELOPMENT_TEAM =
+PROBE_IOS_PROFILE =
+PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*] = $(PROBE_IOS_PROFILE)
 
 // Must stay last so Local.xcconfig overrides the values above.
 #include? "../Local.xcconfig"

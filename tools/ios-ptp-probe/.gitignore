@@ -1,4 +1,5 @@
 Local.xcconfig
+Local.env
 *.xcodeproj/
 build/
 Sources/Info.plist

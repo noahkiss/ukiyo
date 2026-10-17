@@ -1,3 +1,7 @@
 // Copy to Local.xcconfig (gitignored) and fill in. Never commit the copy.
-DEVELOPMENT_TEAM = YOURTEAMID
-BUNDLE_ID_PREFIX = com.yourname
+// Identities: security find-identity -v -p codesigning
+DEVELOPMENT_TEAM = <TEAM_ID>
+CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
+// The App Store profile for com.nkmkdigital.ukiyo, installed on this Mac.
+// Its name as `security cms -D -i <file>` prints it under Name.
+PROBE_IOS_PROFILE = match AppStore com.nkmkdigital.ukiyo
