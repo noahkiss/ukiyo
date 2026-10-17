@@ -57,8 +57,8 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
   for 0.13-0.22 s (five trials); queue writes and retry with a ~100-250 ms backoff.
 - PC priority (D207 = 2) does not keep it awake either (slept at 15 s). `docs/fuji-vendor-ptp.md`
   found no keep-alive operation in any source, Fuji's SDK included.
-- D212 (the change-event list) read count 0 at rest, even while D22F changed. Not yet read
-  during a dial change.
+- D212 (the change-event list) stays empty over USB: count 0 at rest and while the shutter
+  dial changed 0x500D five times. Polling is the change source.
 - D22F changes about three times a second at rest: a blob of 32-bit counts, likely the live
   histogram.
 - Auto power off drops the camera from USB entirely; nothing can wake it over USB. Just before,
