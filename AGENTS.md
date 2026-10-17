@@ -34,7 +34,8 @@ what comes next.
   `src-tauri/` cover both crates.
 - `src-tauri/core/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
   `usb` (nusb), `fake` (fake X-T5; shape in `fake_x-t5.json`), `clock`, `owner` (the one
-  connection thread: queue, polling, pause, power-off, reconnect rules), `owner_tests`.
+  connection thread: queue, polling, pause, power-off, reconnect rules, keep-awake D381 toggle,
+  menu-close half-press), `owner_tests`.
 - `src-tauri/core/src/recipes/` — the recipe text parser (`mod`, `values`), recipe blocks in post
   HTML (`html`), name and sensor from a post title (`post`), the catalogue formats and the
   de-duplicating merge and popularity (`catalogue`), sensor families (`family`), one adapter
@@ -99,7 +100,7 @@ what comes next.
 - `local/` — gitignored. Raw dumps, logs and the working property map. They contain camera and
   lens serial numbers and owner strings.
 - App data (`~/Library/Application Support/com.nkmkdigital.ukiyo/`): `sessions/*.jsonl`, `dumps/`,
-  `settings.json`, `owner.lock`, `ukiyo.sock`, `serve.log`.
+  `settings.json` (`keep_awake`, `in_use_minutes`, `close_menu_to_write`), `owner.lock`, `ukiyo.sock`, `serve.log`.
 
 ## Build, test, run
 
