@@ -21,13 +21,19 @@
     },
     "0x5005": {
       "name": "WhiteBalance",
+      "menu": "IMAGE QUALITY SETTING > WHITE BALANCE",
       "type": "uint16",
+      "values": {
+        "2": "AUTO",
+        "32775": "COLOR TEMPERATURE"
+      },
       "confidence": "confirmed",
-      "source": "PTP",
+      "source": "PTP + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Other WB modes not yet mapped."
     },
     "0x5007": {
       "name": "FNumber",
@@ -175,13 +181,13 @@
         "19": "NOSTALGIC Neg.",
         "20": "REALA ACE"
       },
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "19 and 20 are not in libgphoto2; inferred from the enum length."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 20 = REALA ACE, 12 = ACROS and 17 = CLASSIC Neg. seen on the camera. Choosing ACROS sets Color (0xd008) to 0. 19 and 20 are not in libgphoto2; 19 is inferred from the enum length."
     },
     "0xd007": {
       "name": "DRangeMode",
@@ -201,14 +207,17 @@
       ]
     },
     "0xd008": {
-      "name": "ColorMode",
+      "name": "Color",
+      "menu": "IMAGE QUALITY SETTING > COLOR",
       "type": "int16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "scale": 10,
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: -2 reads -20. Choosing ACROS sets it to 0. libgphoto2 calls it ColorMode."
     },
     "0xd00a": {
       "name": "ColorSpace",
@@ -221,34 +230,41 @@
       ]
     },
     "0xd00b": {
-      "name": "WhitebalanceTune1",
+      "name": "WhiteBalanceShiftR",
+      "menu": "IMAGE QUALITY SETTING > WHITE BALANCE",
       "type": "int16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The R axis of the WB shift grid. Signed, one step per unit: R +3 reads 3. libgphoto2 calls it WhitebalanceTune1."
     },
     "0xd00c": {
-      "name": "WhitebalanceTune2",
+      "name": "WhiteBalanceShiftB",
+      "menu": "IMAGE QUALITY SETTING > WHITE BALANCE",
       "type": "int16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The B axis of the WB shift grid. Signed, one step per unit: B -2 reads -2. libgphoto2 calls it WhitebalanceTune2."
     },
     "0xd017": {
       "name": "ColorTemperature",
+      "menu": "IMAGE QUALITY SETTING > WHITE BALANCE > Color Temperature",
       "type": "uint16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "unit": "K",
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The Kelvin value, raw: 5000K reads 5000. Reads 0 when white balance is not COLOR TEMPERATURE."
     },
     "0xd018": {
       "name": "Quality",
@@ -285,12 +301,13 @@
         "28672": "-3",
         "32768": "-4"
       },
-      "confidence": "likely",
-      "source": "menu map",
+      "confidence": "confirmed",
+      "source": "menu map + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 32768 = -4 and 28672 = -3 seen on the camera."
     },
     "0xd020": {
       "name": "FaceDetectionMode",
@@ -321,12 +338,13 @@
         "4": "WEAK LARGE",
         "5": "STRONG LARGE"
       },
-      "confidence": "likely",
-      "source": "menu map",
+      "confidence": "confirmed",
+      "source": "menu map + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 4 = WEAK LARGE and 5 = STRONG LARGE seen on the camera."
     },
     "0xd024": {
       "name": "SetEyeAFMode",
@@ -345,11 +363,12 @@
         "3": "117 POINTS",
         "4": "425 POINTS"
       },
-      "confidence": "likely",
-      "source": "menu map",
+      "confidence": "confirmed",
+      "source": "menu map + lab session",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 3 and 4 seen on the camera."
     },
     "0xd026": {
       "name": "MFAssistMode",
@@ -451,35 +470,45 @@
     },
     "0xd030": {
       "name": "ColorChromeFXBlue",
+      "menu": "IMAGE QUALITY SETTING > COLOR CHROME FX BLUE",
       "type": "uint16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "values": {
+        "1": "OFF",
+        "3": "STRONG"
+      },
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 2 is likely WEAK, not yet seen."
     },
     "0xd031": {
       "name": "MonochromaticColorMG",
       "menu": "IMAGE QUALITY SETTING > MONOCHROMATIC COLOR",
       "type": "int16",
-      "confidence": "likely",
-      "source": "menu map",
+      "scale": 10,
+      "confidence": "confirmed",
+      "source": "menu map + lab session",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Range collapses to 0 with a colour film simulation."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: MG -2 reads -20. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. The range collapses to 0 with a colour film simulation."
     },
     "0xd032": {
       "name": "Clarity",
+      "menu": "IMAGE QUALITY SETTING > CLARITY",
       "type": "int16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "scale": 10,
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: +3 reads 30. Choosing HEIF (0xd1b2) sets it to 0."
     },
     "0xd033": {
       "name": "ShutterDialAuto",
@@ -555,13 +584,14 @@
       "name": "MonochromaticColorWC",
       "menu": "IMAGE QUALITY SETTING > MONOCHROMATIC COLOR",
       "type": "int16",
-      "confidence": "likely",
-      "source": "menu map",
+      "scale": 10,
+      "confidence": "confirmed",
+      "source": "menu map + lab session",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "libgphoto2 calls it BlackImageTone."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: WC +3 reads 30. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. libgphoto2 calls it BlackImageTone."
     },
     "0xd106": {
       "name": "FrameGuideMode",
@@ -867,13 +897,19 @@
     },
     "0xd189": {
       "name": "SmoothSkinEffect",
+      "menu": "IMAGE QUALITY SETTING > SMOOTH SKIN EFFECT",
       "type": "uint16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "values": {
+        "1": "OFF",
+        "2": "WEAK"
+      },
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 3 is likely STRONG, not yet seen."
     },
     "0xd18a": {
       "type": "string",
@@ -1118,10 +1154,19 @@
       ]
     },
     "0xd1b2": {
+      "name": "ImageFormat",
+      "menu": "IMAGE QUALITY SETTING > SELECT JPEG/HEIF",
       "type": "uint16",
+      "values": {
+        "7": "JPEG",
+        "18": "HEIF"
+      },
+      "confidence": "confirmed",
+      "source": "lab session",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Choosing HEIF sets Clarity (0xd032) to 0."
     },
     "0xd1b3": {
       "name": "DigitalTeleConv",
@@ -1415,7 +1460,8 @@
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Unresolved. A comma list of numbers; changed when PRE-AF and SHUTTER TYPE changed (lab session 2026-10-17). docs/fuji-vendor-ptp.md lists FocusLimiterIndicator."
     },
     "0xd227": {
       "type": "string",
@@ -2102,7 +2148,8 @@
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Unresolved. Did not move when SHUTTER TYPE was set to ELECTRONIC SHUTTER (lab session 2026-10-17); its meaning is open. docs/fuji-vendor-ptp.md guesses PerformanceSettings (boost modes)."
     },
     "0xd305": {
       "type": "uint16",
@@ -2144,13 +2191,16 @@
     },
     "0xd320": {
       "name": "HighLightTone",
+      "menu": "IMAGE QUALITY SETTING > TONE CURVE > HIGHLIGHTS",
       "type": "int16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "scale": 10,
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: +1.5 reads 15."
     },
     "0xd321": {
       "name": "ShadowTone",
@@ -2219,12 +2269,18 @@
     },
     "0xd34b": {
       "name": "PreAFMode",
+      "menu": "AF/MF SETTING > PRE-AF",
       "type": "uint16",
-      "confidence": "likely",
-      "source": "libgphoto2",
+      "values": {
+        "1": "ON",
+        "2": "OFF"
+      },
+      "confidence": "confirmed",
+      "source": "libgphoto2 + lab session",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31)."
     },
     "0xd34d": {
       "name": "LMOMode",

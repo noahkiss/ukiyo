@@ -150,23 +150,24 @@ the catalog's.
 | IMAGE QUALITY SETTING > IMAGE SIZE | `0x5003` ImageSize (confirmed) | `0xd18e` PresetImageSize (likely) |
 | IMAGE QUALITY SETTING > IMAGE QUALITY | `0xd018` Quality (likely) | `0xd18f` PresetImageQuality (likely) |
 | IMAGE QUALITY SETTING > RAW RECORDING | `0xd022` RawCompression (likely) | |
-| IMAGE QUALITY SETTING > FILM SIMULATION | `0xd001` FilmSimulation (likely) | `0xd192` PresetFilmSimulation (likely) |
-| IMAGE QUALITY SETTING > MONOCHROMATIC COLOR | `0xd104` MonochromaticColorWC, `0xd031` MonochromaticColorMG (likely) | `0xd193` PresetMonoWC, `0xd194` PresetMonoMG (likely) |
-| IMAGE QUALITY SETTING > GRAIN EFFECT | `0xd023` GrainEffect (likely) | `0xd195` PresetGrainEffect (likely) |
+| IMAGE QUALITY SETTING > SELECT JPEG/HEIF | `0xd1b2` ImageFormat (confirmed) | |
+| IMAGE QUALITY SETTING > FILM SIMULATION | `0xd001` FilmSimulation (confirmed) | `0xd192` PresetFilmSimulation (likely) |
+| IMAGE QUALITY SETTING > MONOCHROMATIC COLOR | `0xd104` MonochromaticColorWC, `0xd031` MonochromaticColorMG (confirmed) | `0xd193` PresetMonoWC, `0xd194` PresetMonoMG (likely) |
+| IMAGE QUALITY SETTING > GRAIN EFFECT | `0xd023` GrainEffect (confirmed) | `0xd195` PresetGrainEffect (likely) |
 | IMAGE QUALITY SETTING > COLOR CHROME EFFECT | `0xd029` ColorChromeEffect (confirmed) | `0xd196` PresetColorChrome (likely) |
-| IMAGE QUALITY SETTING > COLOR CHROME FX BLUE | `0xd030` ColorChromeFXBlue (likely) | `0xd197` PresetColorChromeFxBlue (likely) |
-| IMAGE QUALITY SETTING > SMOOTH SKIN EFFECT | `0xd189` SmoothSkinEffect (likely) | `0xd198` PresetSmoothSkin (likely) |
+| IMAGE QUALITY SETTING > COLOR CHROME FX BLUE | `0xd030` ColorChromeFXBlue (confirmed) | `0xd197` PresetColorChromeFxBlue (likely) |
+| IMAGE QUALITY SETTING > SMOOTH SKIN EFFECT | `0xd189` SmoothSkinEffect (confirmed) | `0xd198` PresetSmoothSkin (likely) |
 | IMAGE QUALITY SETTING > WHITE BALANCE | `0x5005` WhiteBalance (confirmed) | `0xd199` PresetWhiteBalance (likely) |
-| WHITE BALANCE fine-tuning (R/B shift) | `0xd00b` WhitebalanceTune1, `0xd00c` WhitebalanceTune2 (likely) | `0xd19a` PresetWBShiftR, `0xd19b` PresetWBShiftB (likely) |
-| WHITE BALANCE > Color Temperature | `0xd017` ColorTemperature (likely) | `0xd19c` PresetColorTemp (likely) |
+| WHITE BALANCE fine-tuning (R/B shift) | `0xd00b` WhiteBalanceShiftR, `0xd00c` WhiteBalanceShiftB (confirmed) | `0xd19a` PresetWBShiftR, `0xd19b` PresetWBShiftB (likely) |
+| WHITE BALANCE > Color Temperature | `0xd017` ColorTemperature (confirmed) | `0xd19c` PresetColorTemp (likely) |
 | IMAGE QUALITY SETTING > DYNAMIC RANGE | `0xd007` DRangeMode (likely) | `0xd190` PresetDynamicRange (likely) |
 | IMAGE QUALITY SETTING > D RANGE PRIORITY | `0xd02e` DRangePriority (confirmed) | |
-| TONE CURVE > HIGHLIGHTS | `0xd320` HighLightTone (likely) | `0xd19d` PresetHighlightTone (likely) |
+| TONE CURVE > HIGHLIGHTS | `0xd320` HighLightTone (confirmed) | `0xd19d` PresetHighlightTone (likely) |
 | TONE CURVE > SHADOWS | `0xd321` ShadowTone (likely) | `0xd19e` PresetShadowTone (likely) |
-| IMAGE QUALITY SETTING > COLOR | `0xd008` ColorMode (likely) | `0xd19f` PresetColor (likely) |
+| IMAGE QUALITY SETTING > COLOR | `0xd008` Color (confirmed) | `0xd19f` PresetColor (likely) |
 | IMAGE QUALITY SETTING > SHARPNESS | `0x5015` Sharpness (confirmed) | `0xd1a0` PresetSharpness (likely) |
-| IMAGE QUALITY SETTING > HIGH ISO NR | `0xd01c` NoiseReduction (likely) | `0xd1a1` PresetHighIsoNR (likely) |
-| IMAGE QUALITY SETTING > CLARITY | `0xd032` Clarity (likely) | `0xd1a2` PresetClarity (likely) |
+| IMAGE QUALITY SETTING > HIGH ISO NR | `0xd01c` NoiseReduction (confirmed) | `0xd1a1` PresetHighIsoNR (likely) |
+| IMAGE QUALITY SETTING > CLARITY | `0xd032` Clarity (confirmed) | `0xd1a2` PresetClarity (likely) |
 | IMAGE QUALITY SETTING > LONG EXPOSURE NR | `0xd322` LongExposureNR (likely) | `0xd1a3` PresetLongExpNR (likely) |
 | IMAGE QUALITY SETTING > LENS MODULATION OPTIMIZER | `0xd34d` LMOMode (likely) | |
 | IMAGE QUALITY SETTING > COLOR SPACE | `0xd00a` ColorSpace (likely) | `0xd1a4` PresetColorSpace (likely) |
@@ -174,8 +175,8 @@ the catalog's.
 | IMAGE QUALITY SETTING > EDIT/SAVE CUSTOM SETTING | `0xd18c` PresetSlot, `0xd18d` PresetName (confirmed) | |
 | AF/MF SETTING > FOCUS AREA | `0xd347` FocusPoint, `0xd372` FocusArea1, `0xd374` FocusArea3, `0xd395` FocusArea4 (likely) | |
 | AF/MF SETTING > AF-C CUSTOM SETTINGS | `0xd232` AfcCustomSet, `0xd233` AfcCustomValues (likely) | |
-| AF/MF SETTING > NUMBER OF FOCUS POINTS | `0xd025` FocusPoints (likely) | |
-| AF/MF SETTING > PRE-AF | `0xd34b` PreAFMode (likely) | |
+| AF/MF SETTING > NUMBER OF FOCUS POINTS | `0xd025` FocusPoints (confirmed) | |
+| AF/MF SETTING > PRE-AF | `0xd34b` PreAFMode (confirmed) | |
 | AF/MF SETTING > AF ILLUMINATOR | `0xd112` AFIlluminator (likely) | |
 | AF/MF SETTING > FACE/EYE DETECTION SETTING | `0xd020` FaceDetectionMode, `0xd024` SetEyeAFMode (likely) | |
 | AF/MF SETTING > AF+MF | `0xd323` FullTimeManualFocus (likely) | |
@@ -206,7 +207,7 @@ the catalog's.
 | SAVE DATA SETTING > COPYRIGHT INFO | `0xd215` Copyright, `0xd216` Copyright2 (likely), `0xd237` CopyrightAuthor (guess) | |
 | NETWORK/USB SETTING > CONNECTION MODE | `0xd16e` UsbConnectionMode (likely) | |
 
-The X-T5 menu set lists 242 items; 58 rows above cover the ones the catalog names. Items with no
-named code yet include SELECT JPEG/HEIF, SHUTTER TYPE, AF MODE, SUBJECT DETECTION SETTING and the
+The X-T5 menu set lists 242 items; 59 rows above cover the ones the catalog names. Items with no
+named code yet include SHUTTER TYPE, AF MODE, SUBJECT DETECTION SETTING and the
 whole movie menu. `local/camera/x-t5/menu-map.md` (not in git) holds candidate codes for some of
 them.
