@@ -29,3 +29,6 @@ regex = "1.13"
 
 [dev-dependencies]
 tempfile = "3"
+# examples/fxw_refresh.rs: the Fuji X Weekly catalogue refresh.
+ureq = "3.1"
+roxmltree = "0.21"
