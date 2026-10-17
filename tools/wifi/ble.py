@@ -96,9 +96,22 @@ async def _survey(device, read, timeout):
     return out
 
 
+# One loop for every call: bleak's CoreBluetooth manager binds to the loop of the first scan, and
+# a device found there cannot be used from a second asyncio.run (RuntimeError, "attached to a
+# different loop").
+_loop = None
+
+
+def _run(coro):
+    global _loop
+    if _loop is None:
+        _loop = asyncio.new_event_loop()
+    return _loop.run_until_complete(coro)
+
+
 def scan(seconds):
-    return asyncio.run(_scan(seconds))
+    return _run(_scan(seconds))
 
 
 def survey(device, read=True, timeout=20.0):
-    return asyncio.run(_survey(device, read, timeout))
+    return _run(_survey(device, read, timeout))
