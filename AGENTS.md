@@ -25,19 +25,23 @@ what comes next.
   `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort). In a
   browser outside Tauri, `?camera=tether|rawconv|cardreader` previews a camera state and
   `?model=X-H2S` another body.
-- `src-tauri/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
+- `src-tauri/core/` — `ukiyo-core`, the workspace member with no Tauri: `src/api.rs` (`Request`,
+  `Response`, `Error`, `Event`, `call`, `dispatch`) and the modules below. Cargo commands in
+  `src-tauri/` cover both crates.
+- `src-tauri/core/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
   `usb` (nusb), `fake` (fake X-T5; shape in `fake_x-t5.json`), `clock`, `owner` (the one
   connection thread: queue, polling, pause, power-off, reconnect rules), `owner_tests`.
-- `src-tauri/src/recipes/` — the recipe text parser (`mod`, `values`), recipe blocks in post
+- `src-tauri/core/src/recipes/` — the recipe text parser (`mod`, `values`), recipe blocks in post
   HTML (`html`), name and sensor from a post title (`post`), the catalogue formats and the
   de-duplicating merge and popularity (`catalogue`), sensor families (`family`), one adapter
   per recipe site (`sources/`), `tests` on real sample blocks. `docs/recipes.md` covers it and the credits.
-- `src-tauri/examples/recipes_refresh.rs` — reads each source's feed into
+- `src-tauri/core/examples/recipes_refresh.rs` — reads each source's feed into
   `catalog/recipes/sources/<id>.json` and merges them into `catalog/recipes/catalog.json`;
   caches pages in `local/recipe-feeds/<id>/`.
-- `src-tauri/src/catalog.rs` — catalog load, label, save. `src-tauri/src/lab.rs` — the Lab
-  (mirror, session log, export, settings, fake controls). `src-tauri/src/lib.rs` — Tauri commands
-  and `specta_builder`.
+- `src-tauri/core/src/catalog.rs` — catalog load, label, save. `src-tauri/core/src/lab.rs` — the
+  Lab (mirror, session log, export, settings, fake controls). `src-tauri/src/lib.rs` — Tauri
+  commands (each one call into `api::call`), `specta_builder`, the data folder move;
+  `src-tauri/src/events.rs` the four Tauri events.
 - `catalog/recipes/` — the bundled recipe catalogue: `sources/<id>.json` per site, the
   merged `catalog.json`, and `reddit.json` (Reddit counts for the popularity score). Settings and links only, no photos or post text.
 - `catalog/<model>.json` — the shareable property catalog. Dev builds write labels here;
