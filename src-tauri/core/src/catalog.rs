@@ -185,7 +185,7 @@ mod tests {
     use super::*;
 
     fn repo_catalog() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../catalog/x-t5.json")
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog/x-t5.json")
     }
 
     #[test]

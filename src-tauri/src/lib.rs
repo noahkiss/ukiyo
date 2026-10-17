@@ -1,22 +1,25 @@
-pub mod camera;
-pub mod catalog;
-pub mod lab;
-pub mod recipes;
+mod events;
 
-use camera::owner::WriteOutcome;
-use camera::ptp::Value;
-use catalog::{Catalog, LabelPatch};
-use lab::{FakeAction, Lab, LabEvent, Snapshot};
+use events::{CatalogChanged, LabChanges, LabProps, LabStatus};
 use std::sync::Arc;
 use tauri::{Manager, State};
 use tauri_specta::Event as _;
+use ukiyo_core::api::{self, call, Event};
+use ukiyo_core::camera::owner::WriteOutcome;
+use ukiyo_core::camera::ptp::Value;
+use ukiyo_core::catalog::{Catalog, LabelPatch};
+use ukiyo_core::lab::{self, FakeAction, Lab, Snapshot};
+use ukiyo_core::recipes;
+
+// Each command is one call into `ukiyo_core::api::call`; the window's names and types are the
+// api's. Errors reach the window as their message.
 
 type LabState<'a> = State<'a, Arc<Lab>>;
 
 #[tauri::command]
 #[specta::specta]
 fn lab_snapshot(lab: LabState<'_>) -> Snapshot {
-    lab.snapshot()
+    call::lab_snapshot(&lab)
 }
 
 /// Writes one property and returns the read-back. Runs off the main thread.
@@ -24,57 +27,61 @@ fn lab_snapshot(lab: LabState<'_>) -> Snapshot {
 #[specta::specta]
 async fn lab_write(lab: LabState<'_>, code: u16, value: Value) -> Result<WriteOutcome, String> {
     let lab = lab.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || lab.write(code, value)).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || call::lab_write(&lab, code, value)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 #[specta::specta]
 fn lab_pin(lab: LabState<'_>, codes: Vec<u16>) {
-    lab.pin(codes)
+    call::lab_pin(&lab, codes)
 }
 
 #[tauri::command]
 #[specta::specta]
 fn lab_keep_awake(lab: LabState<'_>, on: bool) {
-    lab.keep_awake(on)
+    call::lab_keep_awake(&lab, on)
 }
 
 #[tauri::command]
 #[specta::specta]
 fn lab_connect(lab: LabState<'_>, on: bool) {
-    lab.connect(on)
+    call::lab_connect(&lab, on)
 }
 
 #[tauri::command]
 #[specta::specta]
 async fn lab_export(lab: LabState<'_>) -> Result<String, String> {
     let lab = lab.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || lab.export()).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || call::lab_export(&lab)).await.map_err(|e| e.to_string())?.map_err(message)
 }
 
 #[tauri::command]
 #[specta::specta]
 fn lab_label(lab: LabState<'_>, patch: LabelPatch) -> Result<Catalog, String> {
-    lab.label(patch)
+    call::lab_label(&lab, patch).map_err(message)
 }
 
 #[tauri::command]
 #[specta::specta]
 fn lab_note(lab: LabState<'_>, group: Option<u32>, text: String) {
-    lab.note(group, text)
+    call::lab_note(&lab, group, text)
 }
 
 #[tauri::command]
 #[specta::specta]
 fn lab_fake(lab: LabState<'_>, action: FakeAction) -> Result<(), String> {
-    lab.fake(action)
+    call::lab_fake(&lab, action).map_err(message)
 }
 
 /// Parses pasted recipe text into slot settings, notes and per-field warnings.
 #[tauri::command]
 #[specta::specta]
 fn recipe_parse(text: String) -> recipes::Parsed {
-    recipes::parse_text(&text)
+    call::recipe_parse(&text)
+}
+
+fn message(e: api::Error) -> String {
+    e.message
 }
 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
@@ -93,7 +100,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         ])
         // The bundled recipe catalogue's shape; the window imports the JSON itself.
         .typ::<recipes::catalogue::RecipeCatalog>()
-        .events(tauri_specta::collect_events![lab::LabStatus, lab::LabProps, lab::LabChanges, lab::CatalogChanged])
+        .events(tauri_specta::collect_events![LabStatus, LabProps, LabChanges, CatalogChanged])
         // Wall-clock ms and codes fit a JS number.
         .dangerously_cast_bigints_to_number()
 }
@@ -144,10 +151,10 @@ pub fn run() {
             let handle = app.handle().clone();
             let lab = Lab::start(data_dir, catalog_dir, move |e| {
                 let _ = match e {
-                    LabEvent::Status(x) => x.emit(&handle),
-                    LabEvent::Props(x) => x.emit(&handle),
-                    LabEvent::Changes(x) => x.emit(&handle),
-                    LabEvent::Catalog(x) => x.emit(&handle),
+                    Event::Status(x) => LabStatus(x).emit(&handle),
+                    Event::Props(x) => LabProps(x).emit(&handle),
+                    Event::Changes(x) => LabChanges(x).emit(&handle),
+                    Event::Catalog(x) => CatalogChanged(x).emit(&handle),
                 };
             });
             app.manage(lab);

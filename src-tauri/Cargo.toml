@@ -7,6 +7,11 @@ license = "MIT"
 rust-version = "1.89"
 publish = false
 
+[workspace]
+members = ["core"]
+# Plain `cargo test` and `cargo clippy` in src-tauri cover the core crate too.
+default-members = [".", "core"]
+
 [lib]
 name = "ukiyo_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -15,20 +20,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
+ukiyo-core = { path = "core" }
 tauri = { version = "2.12.1", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-anyhow = "1"
-chrono = "0.4"
 specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "indexmap"] }
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 specta-typescript = "=0.0.12"
-nusb = "0.2.7"
-indexmap = { version = "2", features = ["serde"] }
-regex = "1.13"
 
 [dev-dependencies]
 tempfile = "3"
-# examples/fxw_refresh.rs: the Fuji X Weekly catalogue refresh.
-ureq = "3.1"
-roxmltree = "0.21"

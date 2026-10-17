@@ -1,10 +1,12 @@
-//! The Lab: the app side of the connection owner. It mirrors what the owner reports for
-//! the window, writes the session log, and holds the catalog the person labels into.
+//! The Lab: the front ends' side of the connection owner. It mirrors what the owner reports
+//! for the window, writes the session log, and holds the catalog the person labels into.
+//! Front ends reach it through `api`; its events go out as `api::Event`.
 //!
 //! Files: the catalog lives in the repo's `catalog/` in a dev build (so labels can be
 //! committed), `UKIYO_CATALOG_DIR` when set, else the app data dir. Session logs, dumps and
 //! settings always go to the app data dir.
 
+use crate::api;
 use crate::camera::clock::{Clock, RealClock};
 use crate::camera::fake::{FakeCamera, FakeHandle, FakeMode};
 use crate::camera::owner::{self, ChangeGroup, Config, Event, Link, PropRow, Request, Status, WriteOutcome};
@@ -24,18 +26,6 @@ use std::time::Duration;
 
 /// Change groups kept for the window's feed.
 const FEED: usize = 1000;
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
-pub struct LabStatus(pub Status);
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
-pub struct LabProps(pub Vec<PropRow>);
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
-pub struct LabChanges(pub ChangeGroup);
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
-pub struct CatalogChanged(pub Option<Catalog>);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -112,7 +102,7 @@ pub fn catalog_dir(data_dir: &Path, resources: Option<PathBuf>) -> PathBuf {
         return PathBuf::from(d);
     }
     if cfg!(debug_assertions) {
-        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../catalog");
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog");
         if repo.is_dir() {
             return repo;
         }
@@ -135,7 +125,7 @@ pub fn catalog_dir(data_dir: &Path, resources: Option<PathBuf>) -> PathBuf {
 
 impl Lab {
     /// Starts the camera thread. `emit` sends an event to the window.
-    pub fn start(data_dir: PathBuf, catalog_dir: PathBuf, emit: impl Fn(LabEvent) + Send + Sync + 'static) -> Arc<Lab> {
+    pub fn start(data_dir: PathBuf, catalog_dir: PathBuf, emit: impl Fn(api::Event) + Send + Sync + 'static) -> Arc<Lab> {
         let _ = std::fs::create_dir_all(data_dir.join("sessions"));
         let session_path = data_dir.join("sessions").join(format!("{}.jsonl", stamp()));
         let file = std::fs::OpenOptions::new().create(true).append(true).open(&session_path).ok();
@@ -324,13 +314,6 @@ impl Lab {
     }
 }
 
-pub enum LabEvent {
-    Status(LabStatus),
-    Props(LabProps),
-    Changes(LabChanges),
-    Catalog(CatalogChanged),
-}
-
 fn write_log(log: &Mutex<Option<std::fs::File>>, mut v: serde_json::Value) {
     if let Some(o) = v.as_object_mut() {
         o.insert("t".into(), serde_json::json!(wall_ms()));
@@ -340,7 +323,7 @@ fn write_log(log: &Mutex<Option<std::fs::File>>, mut v: serde_json::Value) {
     }
 }
 
-fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>, catalog_dir: &Path, emit: &dyn Fn(LabEvent)) {
+fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>, catalog_dir: &Path, emit: &dyn Fn(api::Event)) {
     match e {
         Event::Status(s) => {
             let mut m = mirror.lock().unwrap();
@@ -361,15 +344,15 @@ fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>
                 write_log(log, serde_json::json!({ "kind": "status", "status": s }));
             }
             if let Some(c) = catalog {
-                emit(LabEvent::Catalog(CatalogChanged(c)));
+                emit(api::Event::Catalog(c));
             }
-            emit(LabEvent::Status(LabStatus(s)));
+            emit(api::Event::Status(s));
         }
         Event::Props(rows) => {
             let mut m = mirror.lock().unwrap();
             m.rows = rows.iter().map(|r| (r.code, r.clone())).collect();
             drop(m);
-            emit(LabEvent::Props(LabProps(rows)));
+            emit(api::Event::Props(rows));
         }
         Event::Changes(g) => {
             let mut m = mirror.lock().unwrap();
@@ -383,7 +366,7 @@ fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>
             m.groups.truncate(FEED);
             drop(m);
             write_log(log, serde_json::json!({ "kind": "changes", "group": g }));
-            emit(LabEvent::Changes(LabChanges(g)));
+            emit(api::Event::Changes(g));
         }
         Event::Log(line) => write_log(log, serde_json::json!({ "kind": "log", "text": line })),
     }

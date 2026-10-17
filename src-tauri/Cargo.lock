@@ -3868,6 +3868,21 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 name = "ukiyo"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "specta",
+ "specta-typescript",
+ "tauri",
+ "tauri-build",
+ "tauri-specta",
+ "tempfile",
+ "ukiyo-core",
+]
+
+[[package]]
+name = "ukiyo-core"
+version = "0.1.0"
+dependencies = [
  "anyhow",
  "chrono",
  "indexmap 2.14.2",
@@ -3877,10 +3892,6 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
- "specta-typescript",
- "tauri",
- "tauri-build",
- "tauri-specta",
  "tempfile",
  "ureq",
 ]

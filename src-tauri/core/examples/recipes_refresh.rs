@@ -15,8 +15,8 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use ukiyo_lib::recipes::catalogue::{canonical_url, merge, RecipeCatalog, RedditCount, SourceFile, SourceRecipe, SCHEMA};
-use ukiyo_lib::recipes::sources::{self, FeedItem, Fetch, Source};
+use ukiyo_core::recipes::catalogue::{canonical_url, merge, RecipeCatalog, RedditCount, SourceFile, SourceRecipe, SCHEMA};
+use ukiyo_core::recipes::sources::{self, FeedItem, Fetch, Source};
 
 const USER_AGENT: &str = "ukiyo-recipe-catalogue/0.1 (Fujifilm camera app; bundles recipe settings with a link to each post)";
 const GAP: Duration = Duration::from_secs(2);
@@ -35,7 +35,7 @@ struct Args {
 }
 
 fn args() -> Args {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut a = Args { sources: Vec::new(), max_page: None, offline: false, build_only: false, root };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
