@@ -2,11 +2,27 @@
 
 A Mac app for managing a Fujifilm X-series camera over USB: a recipe library that writes the
 C1-C7 custom slots, and camera settings edited from the computer instead of the on-camera menus.
-Stage: protocol discovery. No app code yet.
+Stage: v0 Lab (live property mapper) built; not yet run against hardware. `docs/roadmap.md` has
+what comes next.
 
 ## Layout
 
 - `docs/protocol.md` — what is known about the camera's PTP interface. Update it with every finding.
+- `docs/catalog.md` — the property catalog format.
+- `app/` — the window: React + TypeScript + Vite (pnpm, Node from `.node-version`).
+  `src/App.tsx` state and keys, `src/views/` (StatusBar, PropTable, ChangeFeed, LabelPanel with
+  the write box, FakeBar), `src/lib/decode.ts` value display, `src/bindings.ts` generated (do not
+  edit; `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort).
+- `src-tauri/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
+  `usb` (nusb), `fake` (fake X-T5; shape in `fake_x-t5.json`), `clock`, `owner` (the one
+  connection thread: queue, polling, pause, power-off, reconnect rules), `owner_tests`.
+- `src-tauri/src/catalog.rs` — catalog load, label, save. `src-tauri/src/lab.rs` — the Lab
+  (mirror, session log, export, settings, fake controls). `src-tauri/src/lib.rs` — Tauri commands
+  and `specta_builder`.
+- `catalog/<model>.json` — the shareable property catalog. Dev builds write labels here;
+  `UKIYO_CATALOG_DIR` overrides.
+- `tools/catalog/seed_xt5.py LOCAL_DIR [--force]` — seeds `catalog/x-t5.json` and the fake shape
+  from `local/` dumps.
 - `tools/ptp/` — Python discovery scripts (uv inline deps, pyusb). Run from that directory with
   `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib uv run -q <script>.py`.
   - `read_presets.py` — read C1-C7 (RAW CONV. mode).
@@ -15,9 +31,18 @@ Stage: protocol discovery. No app code yet.
   - `set_prop.py CODE VALUE` — write one uint16 property, with read before and after.
 - `local/` — gitignored. Raw dumps, logs and the working property map. They contain camera and
   lens serial numbers and owner strings.
+- App data (`~/Library/Application Support/app.ukiyo/`): `sessions/*.jsonl`, `dumps/`,
+  `settings.json`.
+
+## Build, test, run
+
+- In `src-tauri/`: `cargo test`, `cargo clippy --all-targets -- -D warnings`.
+- In `app/`: `pnpm build`; run with `pnpm tauri dev` from `app/` (not the repo root).
+  `UKIYO_FAKE_CAMERA=1` uses the fake camera; `UKIYO_FAKE_MODE=rawconv` fakes RAW CONV. mode.
 
 ## Rules for touching the camera
 
 - Read before you write; write only properties whose meaning is confirmed, and read back.
 - One process owns the USB connection.
 - Never reconnect in a tight loop or reset USB on every connect (see protocol.md, power).
+- Never commit current values, serials or owner strings to `catalog/`.
