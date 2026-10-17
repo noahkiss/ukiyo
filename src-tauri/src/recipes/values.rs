@@ -58,37 +58,65 @@ fn tone(value: &str) -> Result<(f64, Option<String>), String> {
     Ok((n, (!rest.is_empty()).then(|| format!("Read {n}; ignored \"{rest}\""))))
 }
 
-/// Off, Weak or Strong. "N/A" means the camera lacks the setting: left unset, no warning.
-fn strength(value: &str) -> Result<Option<String>, String> {
-    let n = norm(&without_parens(value));
-    Ok(Some(
-        match n.as_str() {
-            "off" | "none" | "0" => "Off",
-            "weak" | "low" | "on weak" => "Weak",
-            "strong" | "high" | "on strong" => "Strong",
-            "n a" | "na" | "not available" => return Ok(None),
-            _ => return Err("Not Off, Weak or Strong".into()),
+/// Text after the first of several alternatives: "Off (X-Trans V); Weak (X-Trans IV)",
+/// "Strong — Weak for X-Trans V", "Off or N/A". Returns the first alternative and the rest.
+fn first_alternative(value: &str) -> (String, Option<String>) {
+    let v = ascii_minus(&without_parens(value));
+    for sep in [" - ", ";", " or ", " — "] {
+        if let Some((a, b)) = v.split_once(sep) {
+            return (a.trim().to_string(), Some(b.trim().to_string()));
         }
-        .to_string(),
-    ))
+    }
+    (v, None)
+}
+
+fn strength_word(w: &str) -> Option<&'static str> {
+    Some(match w {
+        "off" | "none" | "0" => "Off",
+        "weak" | "low" => "Weak",
+        "strong" | "high" => "Strong",
+        _ => return None,
+    })
+}
+
+/// Off, Weak or Strong, and a warning when text was ignored. "N/A" means the camera lacks the
+/// setting: unset, no warning. "Off or N/A" is Off. Of alternatives for other cameras
+/// ("Off (X-Trans V); Weak (X-Trans IV)") the first is read and the rest reported.
+fn strength(value: &str) -> Result<(Option<String>, Option<String>), String> {
+    let (first, rest) = first_alternative(value);
+    // "Off or N/A": the alternative only says some cameras lack it.
+    let rest = rest.filter(|r| !matches!(norm(r).as_str(), "n a" | "na" | "not available"));
+    let n = norm(&first).replace("n a", "na");
+    let words: Vec<&str> = n.split_whitespace().filter(|w| !matches!(*w, "on" | "or")).collect();
+    let na = |w: &&str| matches!(*w, "na" | "not" | "available");
+    let found = words.iter().find_map(|w| strength_word(w));
+    let others = words.iter().filter(|w| strength_word(w).is_none() && !na(w)).count();
+    match found {
+        Some(w) if others == 0 => Ok((Some(w.into()), rest.map(|r| format!("Read {w}; ignored \"{r}\"")))),
+        None if others == 0 && !words.is_empty() => Ok((None, None)),
+        _ => Err("Not Off, Weak or Strong".into()),
+    }
 }
 
 /// "Weak, Small", "Strong Large", "Off", "Weak". Grain size, when given, sets the size too.
 fn grain(s: &mut Settings, value: &str) -> Result<(), String> {
-    let n = norm(&without_parens(value));
+    let (first, rest) = first_alternative(value);
+    if let Some(rest) = rest {
+        grain(s, &first)?;
+        return Err(format!("Read {first}; ignored \"{rest}\""));
+    }
+    let n = norm(&first);
     let mut words: Vec<&str> = n.split_whitespace().collect();
     let size = words.iter().position(|w| *w == "small" || *w == "large");
     if let Some(i) = size {
         let w = words.remove(i);
         s.grain_size = Some(if w == "small" { "Small" } else { "Large" }.into());
     }
-    match strength(&words.join(" "))? {
-        Some(g) => {
-            s.grain_effect = Some(g);
-            Ok(())
-        }
-        None => Ok(()),
+    let (g, extra) = strength(&words.join(" "))?;
+    if g.is_some() {
+        s.grain_effect = g;
     }
+    extra.map_or(Ok(()), Err)
 }
 
 fn grain_size(value: &str) -> Result<String, String> {
@@ -107,12 +135,16 @@ fn dynamic_range(s: &mut Settings, value: &str) -> Result<(), String> {
             "dr200" | "200" | "200%" => "DR200",
             "dr400" | "400" | "400%" => "DR400",
             "auto" | "drauto" => "Auto",
-            // "DR-P Strong": D-Range Priority set from the DR line.
-            "drpstrong" | "drpweak" | "drpauto" => {
-                s.d_range_priority = Some(capitalize(&n[3..]));
-                return Ok(());
+            // "DR-P Strong", "D-Range Priority Auto": D-Range Priority set from the DR line.
+            other => {
+                let rest = ["drangepriority", "drp"].iter().find_map(|p| other.strip_prefix(p)).unwrap_or("");
+                let rest = rest.strip_prefix("drp").unwrap_or(rest);
+                if matches!(rest, "strong" | "weak" | "auto") {
+                    s.d_range_priority = Some(capitalize(rest));
+                    return Ok(());
+                }
+                return Err("Not DR100, DR200, DR400 or Auto".into());
             }
-            _ => return Err("Not DR100, DR200, DR400 or Auto".into()),
         }
         .to_string(),
     );
@@ -130,9 +162,9 @@ fn capitalize(s: &str) -> String {
 fn d_range_priority(value: &str) -> Result<String, String> {
     match norm(&without_parens(value)).as_str() {
         "off" => Ok("Off".into()),
-        "weak" | "drp weak" => Ok("Weak".into()),
-        "strong" | "drp strong" => Ok("Strong".into()),
-        "auto" | "drp auto" => Ok("Auto".into()),
+        "weak" | "drp weak" | "dr p weak" => Ok("Weak".into()),
+        "strong" | "drp strong" | "dr p strong" => Ok("Strong".into()),
+        "auto" | "drp auto" | "dr p auto" => Ok("Auto".into()),
         _ => Err("Not Off, Weak, Strong or Auto".into()),
     }
 }
@@ -145,7 +177,7 @@ fn wb_preset(base: &str) -> Option<&'static str> {
         "auto white priority" | "white priority" | "auto white" => "Auto White Priority",
         "auto ambience priority" | "ambience priority" | "auto ambiance priority" | "ambiance priority" => "Auto Ambience Priority",
         "daylight" | "fine" | "daylight fine" | "fine daylight" | "sunny" => "Daylight",
-        "shade" | "shade cloudy" | "cloudy" => "Shade",
+        "shade" | "shade cloudy" | "cloudy" | "cloudy shade" => "Shade",
         "fluorescent 1" | "fluorescent light 1" | "daylight fluorescent" | "fluorescent 1 daylight" => "Fluorescent 1",
         "fluorescent 2" | "fluorescent light 2" | "warm white fluorescent" | "fluorescent 2 warm white" => "Fluorescent 2",
         "fluorescent 3" | "fluorescent light 3" | "cool white fluorescent" | "fluorescent 3 cool white" => "Fluorescent 3",
@@ -222,6 +254,11 @@ fn mono_color(s: &mut Settings, value: &str) -> Result<(), String> {
     let mut pairs: Vec<(String, f64)> = MONO_AFTER.captures_iter(&v).map(|m| (m[1].to_lowercase(), num_of(&m[2]))).collect();
     if pairs.is_empty() {
         pairs = MONO_BEFORE.captures_iter(&v).map(|m| (m[2].to_lowercase(), num_of(&m[1]))).collect();
+    }
+    if pairs.is_empty() && norm(&without_parens(value)) == "off" {
+        s.monochromatic_color_wc = Some(0.0);
+        s.monochromatic_color_mg = Some(0.0);
+        return Ok(());
     }
     if pairs.is_empty() {
         let (n, extra) = tone(value)?;
@@ -303,8 +340,16 @@ pub(crate) fn apply(s: &mut Settings, field: Field, value: &str) -> Result<(), S
         Field::DRangePriority => d_range_priority(value).map(|v| s.d_range_priority = Some(v)),
         Field::Grain => grain(s, value),
         Field::GrainSize => grain_size(value).map(|v| s.grain_size = Some(v)),
-        Field::ColorChrome => strength(value).map(|v| s.color_chrome = v),
-        Field::ColorChromeFxBlue => strength(value).map(|v| s.color_chrome_fx_blue = v),
+        Field::ColorChrome => {
+            let (v, extra) = strength(value)?;
+            s.color_chrome = v;
+            extra.map_or(Ok(()), Err)
+        }
+        Field::ColorChromeFxBlue => {
+            let (v, extra) = strength(value)?;
+            s.color_chrome_fx_blue = v;
+            extra.map_or(Ok(()), Err)
+        }
         Field::WhiteBalance => white_balance(s, value),
         Field::Highlight => set_tone(&mut s.highlight_tone, value),
         Field::Shadow => set_tone(&mut s.shadow_tone, value),

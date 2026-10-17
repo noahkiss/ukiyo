@@ -152,13 +152,15 @@ pub(crate) fn field_for(label: &str) -> Option<Field> {
         "shadow" | "shadows" | "shadow tone" => Field::Shadow,
         "tone curve" => Field::ToneCurve,
         "color" | "colour" | "saturation" | "color saturation" => Field::Color,
-        "sharpness" | "sharpening" => Field::Sharpness,
+        "sharpness" | "sharpening" | "sharpeness" => Field::Sharpness,
         "high iso nr" | "noise reduction" | "nr" | "high iso noise reduction" | "iso nr" => Field::HighIsoNr,
         "clarity" => Field::Clarity,
-        "monochromatic color" | "monochromatic colour" | "monochrome color" | "toning" => Field::MonochromaticColor,
+        "monochromatic color" | "monochromatic colour" | "monochrome color" | "toning" | "monochromatic color toning" | "b w toning" | "tone" => Field::MonochromaticColor,
         "iso" | "exposure compensation" | "exposure comp" | "exposure" | "ev" | "exposure compensation typically" => Field::Note,
         // Movie settings in video recipes.
         "interframe nr" | "interframe noise reduction" => Field::Note,
+        // Shooting notes that are not slot settings.
+        "image quality" | "aspect ratio" | "image size" | "flash" | "filters" | "filter" | "lens" | "lens filter" => Field::Note,
         _ => return None,
     })
 }
@@ -174,8 +176,39 @@ pub(crate) fn split_line(line: &str) -> Option<(&str, &str)> {
     Some((label, value.trim()))
 }
 
+/// Splits a block that holds several recipes where a second film simulation starts: a
+/// "Film Simulation:" line or a bare simulation name, once the current part already has one.
+pub fn split_recipes(text: &str) -> Vec<String> {
+    let mut parts: Vec<Vec<&str>> = vec![Vec::new()];
+    let mut has_sim = false;
+    for line in text.lines() {
+        let t = line.trim();
+        let starts = match split_line(t) {
+            Some((l, _)) => field_for(l) == Some(Field::FilmSimulation),
+            None => values::film_sim(t).is_some(),
+        };
+        if starts && has_sim {
+            parts.push(Vec::new());
+            has_sim = false;
+        }
+        has_sim |= starts;
+        parts.last_mut().unwrap().push(line);
+    }
+    parts.into_iter().map(|p| p.join("\n")).filter(|p| !p.trim().is_empty()).collect()
+}
+
+/// A line with no colon that starts with a slot label: "Dynamic Range DR400", "Color +4".
+fn colonless(line: &str) -> Option<(String, String)> {
+    let words: Vec<&str> = line.split_whitespace().collect();
+    (1..words.len().min(5)).rev().find_map(|k| {
+        let label = words[..k].join(" ");
+        field_for(&label).filter(|f| *f != Field::Note).map(|_| (label, words[k..].join(" ")))
+    })
+}
+
 /// Parses a recipe block: one setting per line. Blank lines are skipped. An unlabelled line
-/// that names a film simulation sets it, which is how older posts open the block.
+/// that names a film simulation sets it, which is how older posts open the block. A label
+/// joining two settings ("Highlight & Shadow: +2") sets both.
 pub fn parse_text(text: &str) -> Parsed {
     let mut out = Parsed::default();
     let mut seen: Vec<Field> = Vec::new();
@@ -184,31 +217,47 @@ pub fn parse_text(text: &str) -> Parsed {
         if line.is_empty() {
             continue;
         }
-        let Some((label, value)) = split_line(line) else {
-            match values::film_sim(line) {
-                Some(sim) if out.settings.film_simulation.is_none() => {
-                    out.settings.film_simulation = Some(sim);
-                    seen.push(Field::FilmSimulation);
+        let (label, value) = match split_line(line) {
+            Some((l, v)) => (l.to_string(), v.to_string()),
+            None => match colonless(line) {
+                Some(lv) => lv,
+                None => {
+                    match values::film_sim(line) {
+                        Some(sim) if out.settings.film_simulation.is_none() => {
+                            out.settings.film_simulation = Some(sim);
+                            seen.push(Field::FilmSimulation);
+                        }
+                        _ => out.warnings.push(Warning { kind: WarningKind::Unlabelled, label: String::new(), value: line.to_string(), message: "Not a setting".into() }),
+                    }
+                    continue;
                 }
-                _ => out.warnings.push(Warning { kind: WarningKind::Unlabelled, label: String::new(), value: line.to_string(), message: "Not a setting".into() }),
+            },
+        };
+        let fields: Vec<Field> = match field_for(&label) {
+            Some(f) => vec![f],
+            None => {
+                let parts: Vec<Option<Field>> = label.split(" & ").map(field_for).collect();
+                if parts.len() > 1 && parts.iter().all(Option::is_some) {
+                    parts.into_iter().flatten().collect()
+                } else {
+                    out.warnings.push(Warning { kind: WarningKind::UnknownLabel, label, value, message: "Unknown setting".into() });
+                    continue;
+                }
             }
-            continue;
         };
-        let Some(field) = field_for(label) else {
-            out.warnings.push(Warning { kind: WarningKind::UnknownLabel, label: label.into(), value: value.into(), message: "Unknown setting".into() });
-            continue;
-        };
-        if field == Field::Note {
-            out.notes.push(Note { label: label.into(), value: value.into() });
-            continue;
-        }
-        if seen.contains(&field) {
-            out.warnings.push(Warning { kind: WarningKind::Duplicate, label: label.into(), value: value.into(), message: "Given twice; the first value is kept".into() });
-            continue;
-        }
-        seen.push(field);
-        if let Err(message) = values::apply(&mut out.settings, field, value) {
-            out.warnings.push(Warning { kind: WarningKind::BadValue, label: label.into(), value: value.into(), message });
+        for field in fields {
+            if field == Field::Note {
+                out.notes.push(Note { label: label.clone(), value: value.clone() });
+                continue;
+            }
+            if seen.contains(&field) {
+                out.warnings.push(Warning { kind: WarningKind::Duplicate, label: label.clone(), value: value.clone(), message: "Given twice; the first value is kept".into() });
+                continue;
+            }
+            seen.push(field);
+            if let Err(message) = values::apply(&mut out.settings, field, &value) {
+                out.warnings.push(Warning { kind: WarningKind::BadValue, label: label.clone(), value: value.clone(), message });
+            }
         }
     }
     out

@@ -57,7 +57,15 @@ pub fn fxw_source() -> Source {
 
 /// The recipes in one post. Empty for a post with no settings block, such as a roundup.
 pub fn from_post(title: &str, url: &str, date: &str, tags: &[String], post_html: &str) -> Vec<CatalogueRecipe> {
-    let blocks = html::blocks(post_html);
+    // One entry per recipe: a block holding several is split at each film simulation.
+    let blocks: Vec<html::Block> = html::blocks(post_html)
+        .into_iter()
+        .flat_map(|b| {
+            let parts = super::split_recipes(&b.text);
+            let n = parts.len();
+            parts.into_iter().enumerate().map(move |(i, text)| html::Block { text, heading: if i == 0 || n == 1 { b.heading.clone() } else { None } })
+        })
+        .collect();
     let base_name = post::recipe_name(title);
     let base_id = post::slug(url);
     let sensor = post::sensor(title, tags);

@@ -61,7 +61,7 @@ fn old_text_with_blank_lines() {
 
 #[test]
 fn odd_lines_warn_per_field() {
-    let p = parse_text("Film Simulation: Acros+R\nGrain Effect: Medium\nWhite Balance: Kinda warm, +2 Red & -3 Blue\nHighlight: +1 to +2\nLens: XF 35mm\nShadow: -1\nShadow: -2\nsome stray words\nMonochromatic Color: WC +3 & MG -1\nTone Curve: H +1.5 & S −0.5");
+    let p = parse_text("Film Simulation: Acros+R\nGrain Effect: Medium\nWhite Balance: Kinda warm, +2 Red & -3 Blue\nHighlight: +1 to +2\nMood: Rainy\nShadow: -1\nShadow: -2\nsome stray words\nMonochromatic Color: WC +3 & MG -1\nTone Curve: H +1.5 & S −0.5");
     let s = &p.settings;
     assert_eq!(s.film_simulation.as_deref(), Some("Acros + R filter"));
     assert_eq!(s.grain_effect, None);
@@ -76,7 +76,7 @@ fn odd_lines_warn_per_field() {
             (WarningKind::BadValue, "Grain Effect"),
             (WarningKind::BadValue, "White Balance"),
             (WarningKind::BadValue, "Highlight"),
-            (WarningKind::UnknownLabel, "Lens"),
+            (WarningKind::UnknownLabel, "Mood"),
             (WarningKind::Duplicate, "Shadow"),
             (WarningKind::Unlabelled, ""),
             (WarningKind::BadValue, "Tone Curve"),
@@ -178,4 +178,27 @@ fn sensors_from_titles_and_tags() {
 #[test]
 fn slugs() {
     assert_eq!(slug("https://fujixweekly.com/2022/04/11/fujifilm-x-trans-iii-kodacolor-vr/"), "fujifilm-x-trans-iii-kodacolor-vr");
+}
+
+#[test]
+fn variants_seen_in_the_full_feed() {
+    let p = parse_text("Color Chrome Effect: Off or N/A\nColor Chrome FX Blue: Off (X-Trans V); Weak (X-Trans IV)\nGrain Effect: Weak, Small — Weak for X-T3/X-T30\nDynamic Range: D-Range Priority (DR-P) Auto\nWhite Balance: Cloudy/Shade, -3 Red & +7 Blue\nSharpeness: -2\nHighlight & Shadow: +2\nColor +4\nMonochromatic Color (Toning): WC 0 & MG 0 (Off)\nAspect Ratio: 1:1");
+    let s = &p.settings;
+    assert_eq!(s.color_chrome.as_deref(), Some("Off"));
+    assert_eq!(s.color_chrome_fx_blue.as_deref(), Some("Off"));
+    assert_eq!((s.grain_effect.as_deref(), s.grain_size.as_deref()), (Some("Weak"), Some("Small")));
+    assert_eq!((s.dynamic_range.as_ref(), s.d_range_priority.as_deref()), (None, Some("Auto")));
+    assert_eq!(s.white_balance.as_deref(), Some("Shade"));
+    assert_eq!((s.sharpness, s.highlight_tone, s.shadow_tone, s.color), (Some(-2.0), Some(2.0), Some(2.0), Some(4.0)));
+    assert_eq!((s.monochromatic_color_wc, s.monochromatic_color_mg), (Some(0.0), Some(0.0)));
+    assert_eq!(p.notes.len(), 1);
+    let labels: Vec<&str> = p.warnings.iter().map(|w| w.label.as_str()).collect();
+    assert_eq!(labels, vec!["Color Chrome FX Blue", "Grain Effect"], "{:?}", p.warnings);
+}
+
+#[test]
+fn a_block_with_two_recipes_splits() {
+    let parts = split_recipes("Exposure 1\nAcros\nDynamic Range: DR200\nHighlight: +1\nExposure 2\nVelvia\nDynamic Range: DR100\nHighlight: -1");
+    assert_eq!(parts.len(), 2);
+    assert_eq!(parse_text(&parts[1]).settings.film_simulation.as_deref(), Some("Velvia"));
 }
