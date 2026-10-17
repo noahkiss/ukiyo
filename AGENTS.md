@@ -50,6 +50,10 @@ what comes next.
   `UKIYO_CATALOG_DIR` overrides.
 - `tools/catalog/seed_xt5.py LOCAL_DIR [--force]` — seeds `catalog/x-t5.json` and the fake shape
   from `local/` dumps.
+- `tools/art/app_icon_layers.py` and `app_icon_alternates.py` build the Liquid Glass `.icon`
+  sources from the finals; `tools/art/build_app_icon.sh` compiles `src-tauri/icons/AppIcon.icon`
+  into `Assets.car`, `icon.icns` and the PNG fallbacks (all committed). Rerun it after any `.icon`
+  change.
 - `tools/art/camera_art.py [SRC_ROOT]` — builds the Hub camera art (`app/src/assets/camera/`)
   from the generated drawings in `image-output.local/` (not in git). `uv run -q camera_art.py`.
 - `tools/ptp/` — Python discovery scripts (uv inline deps, pyusb). Run from that directory with
