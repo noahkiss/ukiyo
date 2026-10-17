@@ -9,6 +9,9 @@ what comes next.
 
 - `docs/protocol.md` — what is known about the camera's PTP interface. Update it with every finding.
 - `docs/catalog.md` — the property catalog format.
+- `docs/menus.md` — menu sets compared across bodies; X-T5 menu items mapped to catalog codes.
+  `docs/fuji-vendor-ptp.md` and `docs/mapping-sources.md` — what open sources and Fuji's own tools
+  say about vendor codes.
 - `docs/agent-interface.md` — the planned `ukiyo` CLI and MCP server: owner hand-off, tools, safety.
 - `app/` — the window: React + TypeScript + Vite (pnpm, Node from `.node-version`).
   `src/App.tsx` the shell and hash routes (`#/hub`, `#/settings/appearance`), `src/shell/`
@@ -55,6 +58,9 @@ what comes next.
   `UKIYO_UPDATE_LINK_HOSTS=1 cargo test link_hosts`.
 - `catalog/recipes/` — the bundled recipe catalogue: `sources/<id>.json` per site, the
   merged `catalog.json`, and `reddit.json` (Reddit counts for the popularity score). Settings and links only, no photos or post text.
+- `catalog/menus/<model>.json` — each body's menus, options, ranges and defaults from the owner's
+  manual; format in `docs/catalog.md` (Menu sets). `tools/catalog/menus_fetch.py [SLUG ...]
+  [--offline]` rebuilds them from fujifilm-dsc.com (caches in `local/manuals/`; needs pdftotext).
 - `catalog/<model>.json` — the shareable property catalog. Dev builds write labels here;
   `UKIYO_CATALOG_DIR` overrides.
 - `tools/catalog/seed_xt5.py LOCAL_DIR [--force]` — seeds `catalog/x-t5.json` and the fake shape
