@@ -1,7 +1,8 @@
 # The recipe catalogue
 
 ukiyo bundles film simulation recipes from several recipe sites as presets: Recipes >
-Library > Catalogue, and Import > Search the catalogue. Nothing is fetched at runtime.
+Library > Catalogue, and Import > Search the catalogue. The catalogue is never fetched at
+runtime; only Import > Paste a link (`recipe_parse {url}`) reads the one post it is given.
 
 ## Credit
 
@@ -178,3 +179,28 @@ catalogue and the app's paste-text import (`recipe_parse`) use the same code.
 - The sensor comes from the title ("X-Trans V", "Fifth-Generation"), then the tags, then
   the first camera model named. For film.recipes, it falls back to the first camera the
   post mentions.
+
+## Import from a link
+
+`recipe_parse {url}` (Import > Paste a link, `ukiyo recipes import --url`) reads one page.
+On fujixweekly.com and film.recipes the site's adapter reads it, so name, sensor and author
+come out as in the catalogue. On any other host the parser looks for recipe blocks inside
+the page's `<article>`, or the whole page when it has none; the name comes from the page
+title. Further recipes in the post come back as `others`. Nothing is stored until the
+person saves it.
+
+## Your recipes
+
+Saved recipes live in the data folder, `library/recipes/<slug>.json` (docs/agent-interface.md,
+"The recipes as built"). A copy of a catalogue recipe keeps its credit and post link in
+`source`. `ukiyo recipes edit NAME Highlight=+1.5` changes one setting with the parser's
+labels and values.
+
+## Into a slot
+
+A slot plan writes the recipe in the slot's encoding (`recipes::slot`, docs/protocol.md
+"Recipe slots"). Absent settings take the camera default, as in the de-duplication above,
+so a slot never keeps half of the recipe it held before. Settings that do not apply are left
+out: dynamic range and the tones under D-range priority, Color under a monochrome film
+simulation, Monochromatic Color under a colour one. A slot read decodes the fields back into
+recipe settings and names the library recipes it matches.

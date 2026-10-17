@@ -2,7 +2,8 @@
 
 A design for the `ukiyo` command line tool and its MCP server. Stage 1 (the core crate and
 `api`), stage 2 (the shared owner, `ukiyo serve`), stage 3 (the read-only CLI), stage 4
-(plans and gated writes) and stage 5 (the MCP server) are built; the rest is not (section 8). The
+(plans and gated writes), stage 5 (the MCP server), stage 6 (the library) and stage 7
+(recipes) are built; stage 8 (packaging) is not (section 8). The
 bm task is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool
 surface, search then read, and plan then apply for every camera write.
 
@@ -215,10 +216,11 @@ ukiyo settings [QUERY] [--menu PATH] [--code C]... [--favourites] [--unnamed] [-
               fav add|rm NAME...
 ukiyo presets ls | show ID | save NAME [--from-snapshot ID | NAME...] | apply ID | rm ID
 ukiyo snapshots ls | save [NAME] | diff A [B] | restore ID | rm ID
-ukiyo recipes ls [QUERY] [--catalogue] [--sensor S] [--sim F]
+ukiyo recipes ls [QUERY] [--sensor S] [--sim F]       the library
+              search [QUERY] [--sensor S] [--sim F] [--limit N]   the bundled catalogue
               show ID | edit ID FIELD=VALUE... | rm ID
-              import (--text FILE|- | --url URL | cat:ID) [--save]
-              slots                            read C1-C7 (RAW CONV. mode)
+              import (--text FILE|- | --url URL | cat:ID) [--name N] [--save]
+              read [SLOT] [--compare ID]       read C1-C7 (RAW CONV. mode)
               write SLOT ID                    write a recipe to a slot, through a plan
 ukiyo owner   get | set FIELD=VALUE...         copyright, author, prefix, device-name
 ukiyo catalog show [CODE] [--model M] | label CODE [--name N] [--menu M] [--value K=LABEL]...
@@ -625,9 +627,6 @@ the surface guard in `mcp_tools.rs` diffs the listing against
   walkthrough?, mode? }`, and the same in the text. An unknown tool is JSON-RPC error
   -32602; bad arguments are `bad_request`.
 - `fake_camera` is listed when the server's own environment has `UKIYO_FAKE_CAMERA=1`.
-- **Left for later stages.** Each input below is not in the schema yet, so an agent cannot
-  call it and get `not_built`: `camera_plan` `recipe` with `slot`, and `library_*` kind
-  `recipe` and `catalogue` (stage 7).
 - **`camera_watch`:** without `since`, it returns only groups that arrive during the call.
   It returns at most 50 groups; `has_more` and `cursor` page through the rest. A cursor past
   the newest group means `serve` restarted: the result has `reset: true` and starts from
@@ -686,6 +685,78 @@ the `library_*` handlers in `cli/src/mcp.rs`, and the window's Hub and Settings 
 - **Preferences migration:** at its first start, the app sends the old local-storage
   `ukiyo.appearance` values to `prefs_set`, then removes the key.
 
+### The recipes as built (stage 7)
+
+`core/src/recipes/` (`slot` the slot fields and their encoding, `fetch` a post by URL,
+`bundle` the catalogue compiled in), `core/src/library/recipes.rs`, the slot parts of
+`lab.rs` and `plan.rs`, `cli/src/recipes.rs`, the recipe handlers in `cli/src/mcp.rs`, and
+the window's Recipes page (`app/src/lib/recipes.ts`, `app/src/views/PlanCard.tsx`).
+
+- **Library recipes:** `library/recipes/<slug>.json`, id `recipe:<slug>`: `name`,
+  `settings` (the parser's, in menu units), `notes`, `sensor`, `source` (`from: cat:<id>`,
+  `url`, `credit`), `comment`. They trash and restore like presets. A save never refuses a
+  setting a slot cannot hold; it returns a warning for it, and a slot plan of that recipe
+  fails with `value_out_of_range`.
+- **The catalogue** (`catalog/recipes/catalog.json`, about 1 MB) is compiled into the core,
+  so the CLI, MCP and `serve` search it with no file to find. `library_search {kind:
+  catalogue}` sorts by popularity; `sensor` and `film_sim` filter both recipes and the
+  catalogue.
+- **`recipe_parse {url}`** fetches one page (20 s limit, 8 MB, a User-Agent naming ukiyo).
+  A page on a catalogue site goes through that site's adapter; any other host gets the generic
+  reading: the recipe blocks inside its `<article>`, or the whole page. Further recipes in the
+  post come back as `others`. The window runs it in its own process, off the main thread.
+- **Slot reads:** `library_read {id: slot:C3}` or `{id: slots}` (CLI `recipes read [SLOT]`)
+  go through `serve`. The owner selects each slot through D18C, reads D18D and D18E-D1A4,
+  and restores D18C in one request, so the poll never sees another slot selected. The result
+  is the slot's name, its settings in recipe form, warnings for values no setting means,
+  each raw field, and `matches`: library recipes with the same normalised settings.
+  `compare_to` with a recipe id gives a field-by-field `recipediff`. Outside RAW CONV. mode
+  it fails with `needs_rawconv`.
+- **Slot write plans:** `camera_plan {recipe, slot}` (CLI `recipes write SLOT ID`) encodes
+  the recipe (`recipes::slot::encode`), reads the slot for every step's `before`, and gates
+  each field. A slot gets the whole recipe or nothing: with any field blocked, every step is
+  blocked. Absent settings take the camera default. Fields that do not apply are left out:
+  dynamic range and the tones while D-range priority is on, Color under a monochrome film
+  simulation, Monochromatic Color under a colour one. D18E, D18F, D1A3 and D1A4 are never
+  written; D1A5 belongs to the live block and is never touched. The name goes last, cut to
+  25 characters. Apply reads the slot again for the stale check, then one owner request
+  selects the slot, writes and reads back each step, stops at the first failure, and restores
+  D18C. The undo plan is a slot plan back to the values before (grain 6, a default slot's
+  OFF, is written as 1).
+- **Gated and dependent settings** (task-o8vkpf69) are catalog data, not code:
+  `requires` and `resets` per code (docs/catalog.md). Every plan, live or slot, is ordered by
+  `plan::sequence`: a write that needs another code at some value comes after that code's
+  write when the plan sets such a value, and before it otherwise; a code the camera resets
+  with another write comes after it. When a prerequisite does not hold at a write's turn,
+  the plan sets it for that write (`purpose: prerequisite`), puts it back at the end
+  (`restore`), and also puts back anything the prerequisite made the camera reset. Each step
+  lists `resets`, what the camera changes by itself. On the X-T5:
+
+  | Rule | Codes | Seen |
+  |---|---|---|
+  | Monochromatic Color needs a monochrome film simulation (temporarily MONOCHROME) | D104, D031 on D001 | 0x201C on the X-T5 |
+  | A monochrome film simulation sets Color to 0 | D001 resets D008 | ACROS on the X-T5; assumed for the others |
+  | HEIF sets Clarity to 0 | D1B2 = 18 resets D032 | the X-T5 |
+  | The slot's Monochromatic Color needs a monochrome slot film simulation | D193, D194 on D192 | ptp-recipes, X-H2 |
+  | The slot's dynamic range and tones need D-range priority off | D190, D19D, D19E on D191 = 0 | ptp-recipes, X-H2 |
+
+  The undo plan is planned the same way, toward the values before the plan, so it carries its
+  own prerequisites. The stale check compares each code with its value before the plan.
+- **The window:** the Recipes page reads the library (`library_search`, `library_read`),
+  reads all seven slots when the camera arrives in RAW CONV. mode or on "Read all slots",
+  saves through `recipe_save`, imports a link through `recipe_parse {url}`, and shows a slot
+  plan in a plan card before "Write to camera". The card offers to plan again with
+  unconfirmed settings included, since no slot field is confirmed yet. An edited, imported or
+  slot-read recipe is saved to the library before it is planned. The browser preview keeps
+  the fixtures.
+- **Fake camera:** in RAW CONV. mode the fake keeps seven slots (C1 and C2 hold made-up
+  recipes), and answers 0x201C as above, plus a slot grain write of 6. In tether mode a
+  monochrome film simulation sets Color to 0 and opens Monochromatic Color's range; HEIF
+  sets Clarity to 0.
+- **Left for later:** confirming the slot fields on the X-T5 (until then slot plans need
+  `allow_unconfirmed`), the slot name's real length limit, slot sets, recipes from a photo,
+  and running the Recipes page against the camera.
+
 
 
 | bm proposal | This design | Reason (mcp-tool-design) |
@@ -719,7 +790,7 @@ The core enforces every rule here. The front ends only show them.
 - The Lab's write box in the window is the one place that writes unconfirmed codes without a
   flag. That is the mapping tool; agents use the flag instead.
 - Recipe slot fields (D18E-D1A5) are not yet confirmed by a write. Until they are, slot writes
-  need `allow_unconfirmed`.
+  need `allow_unconfirmed`. A slot plan with any field blocked writes nothing.
 
 ### Plan, then apply
 
@@ -731,9 +802,13 @@ The core enforces every rule here. The front ends only show them.
   that cannot take writes now (`not_connected`, `menu_open` ...) keeps the plan for a retry;
   a stale plan is dropped.
 - `--dry-run` stops after the plan. A TTY prompt or `--yes` is needed to apply.
-- Steps run in plan order. A slot write is: select the slot (D18C), write the fields and name
-  (D18D), restore D18C. Apply stops at the first failure and returns an undo plan. The undo
-  plan restores every step the camera answered OK, a read-back mismatch included.
+- Steps run in plan order, which follows the catalog's `requires` and `resets`: a
+  prerequisite first, set for the time of a write and put back after; a setting the camera
+  resets after the write that resets it ("The recipes as built", section 4). A slot write is:
+  select the slot (D18C), write the fields and name (D18D), restore D18C, in one owner
+  request. Apply stops at the first failure and returns an undo plan. The undo plan puts back
+  every code a step wrote that the camera answered OK, a read-back mismatch included, and is
+  ordered the same way.
 - A write the camera answers 0x2019 (busy) is sent again on the same session after 100, 200,
   400, 800 and 1600 ms (3.1 s in all), then fails with `busy`. After a half-press release the
   X-T5 answers writes busy for about 0.2 s (docs/protocol.md). The owner never reconnects to
@@ -807,12 +882,12 @@ the Connect page's guide in the window.
 | Recipes | Recipe detail | `recipes show` | `library_read` |
 | Recipes | Editor: edit fields | `recipes edit` | `library_save {kind: recipe, item}` |
 | Recipes | Delete a recipe | `recipes rm` | `library_delete` |
-| Recipes | Read C1-C7 | `recipes slots` | `library_read {id: slot:Cn}` |
-| Recipes | Slot state (matches, edited, new) | `recipes slots` | `library_read {id: slot:Cn, compare_to}` |
+| Recipes | Read C1-C7 | `recipes read [SLOT]` | `library_read {id: slot:Cn}` or `{id: slots}` |
+| Recipes | Slot state (matches, edited, new) | `recipes read SLOT --compare ID` | `library_read {id: slot:Cn, compare_to}` |
 | Recipes | Write a recipe to a slot | `recipes write` | `camera_plan {recipe, slot}` + `camera_apply` |
 | Recipes | Import: paste text | `recipes import --text` | `recipe_parse {text}` + `library_save` |
 | Recipes | Import: paste a link | `recipes import --url` | `recipe_parse {url}` + `library_save` |
-| Recipes | Import: search the catalogue | `recipes ls --catalogue` | `library_search {kind: catalogue}` |
+| Recipes | Import: search the catalogue | `recipes search` | `library_search {kind: catalogue}` |
 | Recipes | Import: add from the catalogue | `recipes import cat:<id> --save` | `library_save {kind: recipe, from}` |
 | Settings | Menu tree | `settings --menus` | `settings_read {view: menus}` |
 | Settings | Search by name and meaning | `settings QUERY` | `settings_read {query}` |
@@ -889,9 +964,11 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    `presets`, `snapshots`, `settings fav`, `prefs`. MCP: `library_search`, `library_read`,
    `library_save`, `library_delete`. The Settings and Hub pages switch from fixtures. Done
    2026-10-17: section 4, "The library as built". Left for later: the lens name in history
-   and `status`, and recipes in the library (stage 7).
+   and `status`.
 7. **Recipes.** The user recipe library, catalogue search, `recipe_parse` with URLs, slot reads,
-   and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`.
+   and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`. Done
+   2026-10-17, with gated and dependent settings in every plan (task-o8vkpf69): section 4,
+   "The recipes as built". Left for later: listed there.
 8. **Packaging,** on the pattern of [QuadCam](https://github.com/noahkiss/quadcam) (its cask in the owner's tap):
    - `ukiyo-cli` is an `externalBin` in `Contents/MacOS/`, beside the app's own binary
      (`ukiyo`). The app may then spawn it as `serve` instead of itself; either works.

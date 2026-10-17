@@ -53,6 +53,11 @@ Each property has only the fields it needs:
 | `source` | Where the entry came from: `PTP` (the standard), `libgphoto2`, `filmkit`, `menu map` (a reading of the manual against the dumps), `protocol.md`, `lab session`. The Lab appends `+ lab session` when it edits an entry from another source. |
 | `modes` | Where the code reads: `stills`, `movie` (tether mode with the STILL/MOVIE switch set), `rawconv` (USB RAW CONV./BACKUP RESTORE). |
 | `notes` | Anything else: quirks, dependencies, open questions. |
+| `requires` | Write conditions: `[{ "code": "0xd001", "values": ["6", "12"], "temp": "6" }]`. The camera takes a write of this code only while `code` holds one of `values`. A plan sets `temp` (else the first value) for the time of the write, then puts the old value back. |
+| `resets` | Camera rules: `[{ "when": ["18"], "code": "0xd032", "to": "0" }]`. Writing one of `when` (any value when absent) sets `code` to `to`. A plan writes `code` after this one, and puts it back when only a temporary step changed it. |
+
+`requires` and `resets` order every plan (`plan::sequence`, docs/agent-interface.md, "The
+recipes as built"). They are model facts, so other bodies' catalogs carry their own.
 
 An entry with no `name` is unnamed: the Lab lists it under the Unnamed filter.
 

@@ -19,9 +19,10 @@ on-camera menus.
 Ukiyo is pre-release. There is no signed build or installer yet; build it from source.
 
 - Built: the USB connection core, the Lab, the CLI with gated setting writes, the MCP
-  server, and the library: presets, snapshots, favourite settings and camera history, in the
-  app, the CLI and MCP. The Python tools in `tools/ptp/` read C1-C7.
-- In progress: the recipe library, C1-C7 reads and writes in the app, and packaging.
+  server, the library (presets, snapshots, favourite settings, camera history), and recipes:
+  your recipe library, catalogue search, import from text or a link, and C1-C7 reads and
+  writes, in the app, the CLI and MCP. Slot writes are not yet tried on a camera.
+- In progress: packaging.
   `docs/roadmap.md` lists what comes next.
 
 Ukiyo writes only properties whose meaning is confirmed, and reads each one back after the
@@ -44,7 +45,7 @@ SET UP > CONNECTION SETTING > CONNECTION MODE on the X-T4 and older.
 | Mode | What Ukiyo can do |
 |---|---|
 | USB TETHER SHOOTING FIXED | Read and change settings, the Hub, the Lab. The camera keeps working. |
-| USB RAW CONV./BACKUP RESTORE | Read and write recipe slots C1-C7 (in progress). The camera is locked until you unplug it. |
+| USB RAW CONV./BACKUP RESTORE | Read and write recipe slots C1-C7. The camera is locked until you unplug it. |
 | STILL/MOVIE switch at MOVIE (in tether mode) | Movie settings. Stills settings need the switch at STILL. |
 
 `ukiyo help modes` prints the steps. `docs/protocol.md` has the detail.

@@ -128,6 +128,26 @@ Write D18C (slot 1-7) to select a slot, then read D18D (name, PTP string) and D1
 (github.com/eggricesoy/filmkit, MIT): film sim enum, tones ×10, Color Chrome 1-indexed
 (1 off, 2 weak, 3 strong), WB 0x8007 = Kelvin.
 
+What fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0) reports from an X-H2, and Ukiyo's
+slot codec (`src-tauri/core/src/recipes/slot.rs`) follows. None of it is yet seen on the X-T5:
+
+- RAW CONV. mode sends no descriptors, so each field's datatype comes from the codec: uint16
+  except the signed dials (D193, D194, D19A, D19B, D19D-D1A0, D1A2: int16). D18D is a PTP
+  string.
+- D190 dynamic range: 0 AUTO, 100, 200, 400. D191 D-range priority: 0 OFF, 1 WEAK, 2 STRONG,
+  32768 AUTO. While D191 is on, D190 reads 65535 and writes to D190, D19D and D19E answer
+  0x201C.
+- D193 and D194 (Monochromatic Color) answer 0x201C under a colour film simulation in D192;
+  whole steps only (×10, -180 to 180).
+- D195 grain: 1 OFF, 2-5 weak/strong × small/large; a default slot reads 6 for OFF, and a
+  write of 6 is refused.
+- D1A1 High ISO NR uses the same non-linear values as D01C.
+- D1A5 belongs to the live block, not the slot: never write it as slot data.
+- -32768 in a signed field is an unset sentinel.
+
+The owner does a slot read or write as one request (select, read or write with read-back,
+restore D18C), so the poll never reads one slot's fields while another is selected.
+
 ## Hardware controls (tether mode)
 
 | Control | Property | Values |
