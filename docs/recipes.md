@@ -5,19 +5,20 @@ Library > Catalogue, and Import > Search the catalogue. Nothing is fetched at ru
 
 ## Credit
 
-Each recipe is © its author and credits its first publisher, with a link to the post.
+Each recipe is © its creator and credits its first publisher, with a link to the post.
 
-| Source | Author | Credit |
+| Source | Creator | Credit |
 |---|---|---|
 | [Fuji X Weekly](https://fujixweekly.com) | Ritchie Roesch | Recipes © Ritchie Roesch, Fuji X Weekly |
 | [film.recipes](https://film.recipes) | Justin Gould | Recipes © Justin Gould, film.recipes |
+| [Fujifilm Film Simulation Recipes Database](https://docs.google.com/spreadsheets/d/11PvZ7rOnwmbz5VylVIvzOuWwEa83c0DweAlBwJ2pZJc) | Many; its Creator column | Recipes © their creators; compiled by Henri-Pierre Chavaz |
 
-ukiyo bundles only each recipe's settings, name, post title, date, author, sensor
+ukiyo bundles only each recipe's settings, name, post title, date, creator, sensor
 generation and link. It bundles no photos, no post text, no comments and no author bios.
 
-Henri-Pierre Chavaz's recipe database (a Google Sheet) is not used: his site's legal page
-reserves all rights and forbids downloading or reusing its documents without written
-permission.
+The database is a compilation (`compilation: true`): each of its recipes credits the
+creator in its Creator column, shown as "From <creator>, via H-P Chavaz recipe database".
+A row's link is the creator's original post when the sheet gives one, else the sheet.
 
 ## Files
 
@@ -61,6 +62,13 @@ credit; the others go under `alsoPublishedBy`. Video recipes merge only with vid
 recipes. A recipe with no film simulation is left out of `catalog.json` (it stays in its
 source file).
 
+A compilation's publication is the credit only when no other source has the recipe; the
+creator's own post wins even when the sheet gives an earlier date. A compilation row that
+links to a post another source read is folded into that post's closest recipe when it is at
+most three fields apart (`LINK_MATCH_MAX_DIFF`): the sheet's transcription differs, or the
+post was revised. The post's settings stand, and the row lists the fields it gives
+differently (`differs`). An unknown date sorts last.
+
 Recipes whose settings differ in one field stay separate. The build summary lists them as
 near-duplicates, with the field.
 
@@ -76,16 +84,17 @@ cargo run --example recipes_refresh -- --build-only       # merge the source fil
 ```
 
 The tool reads each site's WordPress feed (`/feed/?paged=N`, 10 posts a page) until it
-ends, at least 2 s between requests, with a User-Agent that names ukiyo. It caches each page
+ends, or the database's Recipes tab as one CSV download, at least 2 s between requests, with a User-Agent that names ukiyo. It caches each page
 in `local/recipe-feeds/<id>/`; delete that folder to read a feed again. A 429, a 5xx or
 any other failure stops that source and leaves its file as it was. It prints, per source,
 the counts and the most common warnings, then the merge counts and the near-duplicates.
 
 ## Adding a source
 
-Add `src-tauri/src/recipes/sources/<id>.rs` with a `SOURCE`: its `SourceInfo`, its feed URL
-per page, and a function from a feed item to recipes. Most adapters call `post_recipes`,
-which finds the blocks and runs the shared parser. List it in `sources::all`. Sources earlier
+Add `src-tauri/src/recipes/sources/<id>.rs` with a `SOURCE`: its `SourceInfo` and how to
+fetch it, `Fetch::Feed` (the feed URL per page, and a function from a feed item to recipes)
+or `Fetch::Csv` (one URL, and a function from the file to recipes). Feed adapters call
+`post_recipes`, which finds the blocks and runs the shared parser. List it in `sources::all`. Sources earlier
 in that list win credit ties on the same date.
 
 ## The parser
@@ -106,6 +115,8 @@ catalogue and the app's paste-text import (`recipe_parse`) use the same code.
   then the shift: "5200K, +2 Red & -4 Blue".
 - Alternatives for other cameras ("Off (X-Trans V); Weak (X-Trans IV)") read the first
   value and warn about the rest. "N/A" leaves a setting unset with no warning.
+- Bare values name their setting: "DR400", "5200K", "R+2 B-4". A shift may have its own
+  line ("WB Shift: 1 Red, -9 Blue", "Shift: R:4 B:-5").
 - The sensor comes from the title ("X-Trans V", "Fifth-Generation"), then the tags, then
   the first camera model named. For film.recipes, it falls back to the first camera the
   post mentions.

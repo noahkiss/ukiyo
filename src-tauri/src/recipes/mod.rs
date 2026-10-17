@@ -8,13 +8,15 @@ pub mod catalogue;
 pub mod html;
 pub mod post;
 pub mod sources;
-mod values;
+pub(crate) mod values;
 
 #[cfg(test)]
 mod tests;
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::sync::LazyLock;
 
 /// The settings a custom slot holds. Field names follow FilmKit. `None`: the text does not
 /// give the setting (older posts lack Color Chrome, FX Blue and Clarity, for example).
@@ -121,6 +123,8 @@ pub(crate) enum Field {
     ColorChrome,
     ColorChromeFxBlue,
     WhiteBalance,
+    /// The red and blue shift on a line of its own.
+    WbShift,
     Highlight,
     Shadow,
     ToneCurve,
@@ -149,24 +153,25 @@ pub(crate) fn field_for(label: &str) -> Option<Field> {
     Some(match l {
         "film simulation" | "film sim" | "simulation" | "film simulation mode" => Field::FilmSimulation,
         "dynamic range" | "dr" | "d range" => Field::DynamicRange,
-        "d range priority" | "dynamic range priority" | "dr priority" | "dr p" | "wide dynamic range" | "wide d range" => Field::DRangePriority,
+        "d range priority" | "dynamic range priority" | "dr priority" | "dr p" | "priority" | "wide dynamic range" | "wide d range" => Field::DRangePriority,
         "grain effect" | "grain" | "grain effect roughness" | "grain roughness" => Field::Grain,
         "grain size" | "grain effect size" => Field::GrainSize,
-        "color chrome effect" | "color chrome" | "colour chrome effect" | "colour chrome" | "color chrome effect strength" | "col chr effect" | "col chr" | "cc effect" => Field::ColorChrome,
-        "color chrome fx blue" | "color chrome effect blue" | "color chrome blue" | "colour chrome fx blue" | "colour chrome effect blue" | "color chrome fx blue effect" | "cc fx blue" | "col chr blue" | "col chr fx blue" => Field::ColorChromeFxBlue,
-        "white balance" | "wb" | "white balance shift" | "color temperature" | "colour temperature" | "color temp" | "colour temp" | "kelvin" => Field::WhiteBalance,
-        "highlight" | "highlights" | "highlight tone" => Field::Highlight,
-        "shadow" | "shadows" | "shadow tone" => Field::Shadow,
+        "color chrome effect" | "color chrome" | "colour chrome effect" | "colour chrome" | "color chrome effect strength" | "col chr effect" | "col chr" | "cc effect" | "chrome fx" | "chrome color fx" | "color chrome fx" | "ccr" | "cc" => Field::ColorChrome,
+        "color chrome fx blue" | "color chrome effect blue" | "color chrome blue" | "colour chrome fx blue" | "colour chrome effect blue" | "color chrome fx blue effect" | "cc fx blue" | "colour chrome blue" | "colour chrome blue effect" | "color chrome blue effect" | "col chr blue" | "col chr fx blue" | "chrome fx blue" | "ccb" => Field::ColorChromeFxBlue,
+        "wb shift" | "white balance shift" | "wb color shift" | "wb colour shift" | "shift" | "color shift" | "wb shift r b" | "wb shift r" | "wb offset" | "auto wb shift" | "awb shift" | "wb shift rb" => Field::WbShift,
+        "white balance" | "wb" | "color temperature" | "colour temperature" | "color temp" | "colour temp" | "kelvin" => Field::WhiteBalance,
+        "highlight" | "highlights" | "highlight tone" | "hightlight" | "hightlight tone" | "highlights tone" | "h tone" | "highlight tones" => Field::Highlight,
+        "shadow" | "shadows" | "shadow tone" | "shadows tone" | "s tone" | "shading tone" | "shadow tones" => Field::Shadow,
         "tone curve" => Field::ToneCurve,
         "color" | "colour" | "saturation" | "color saturation" => Field::Color,
-        "sharpness" | "sharpening" | "sharpeness" => Field::Sharpness,
-        "high iso nr" | "noise reduction" | "nr" | "high iso noise reduction" | "iso nr" | "iso n r" | "high iso n r" => Field::HighIsoNr,
+        "sharpness" | "sharpening" | "sharpeness" | "sharp" => Field::Sharpness,
+        "high iso nr" | "noise reduction" | "nr" | "high iso noise reduction" | "iso nr" | "iso n r" | "high iso n r" | "iso noise reduction" | "noise" | "noise red" | "noise redution" => Field::HighIsoNr,
         "clarity" => Field::Clarity,
-        "monochromatic color" | "monochromatic colour" | "monochrome color" | "mono colour" | "mono color" | "toning" | "monochromatic color toning" | "b w toning" | "tone" => Field::MonochromaticColor,
+        "monochromatic color" | "monochromatic colour" | "monochrome color" | "mono colour" | "mono color" | "mono shift" | "monochrome shift" | "toning" | "monochromatic color toning" | "b w toning" | "tone" => Field::MonochromaticColor,
         "wc" | "mono wc" | "monochrome wc" | "warm cool" | "monochromatic color wc" | "mono warm cool" => Field::MonoWc,
         "mg" | "mono mg" | "monochrome mg" | "magenta green" | "monochromatic color mg" | "mono magenta green" => Field::MonoMg,
         "smooth skin effect" | "smooth skin" => Field::SmoothSkin,
-        "iso" | "exposure compensation" | "exposure comp" | "exposure" | "ev" | "ev comp" | "exposure compensation typically" => Field::Note,
+        "iso" | "exposure compensation" | "exposure comp" | "exposure" | "ev" | "ev comp" | "exposure compensation typically" | "ev suggestion" | "ev compensation" | "exp comp" | "push pull process" | "push pull" | "push pull exposure" | "aperture" => Field::Note,
         // Movie settings in video recipes.
         "interframe nr" | "interframe noise reduction" => Field::Note,
         // Shooting notes that are not slot settings.
@@ -207,13 +212,50 @@ pub fn split_recipes(text: &str) -> Vec<String> {
     parts.into_iter().map(|p| p.join("\n")).filter(|p| !p.trim().is_empty()).collect()
 }
 
-/// A line with no colon that starts with a slot label: "Dynamic Range DR400", "Color +4".
+static BARE_DR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^dr[- ]?(100|200|400|auto)$").unwrap());
+static BARE_KELVIN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^\d{4,5}\s*k$").unwrap());
+static BARE_SHIFT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^r\s*[+-]?\d+\s*[,&]?\s*b\s*[+-]?\d+$").unwrap());
+
+/// A line with no colon: a label then its value ("Dynamic Range DR400", "Color +4"), or a
+/// bare value that names its setting ("DR400", "5200K", "R+2 B-4").
 fn colonless(line: &str) -> Option<(String, String)> {
-    let words: Vec<&str> = line.split_whitespace().collect();
+    let t = line.trim();
+    if BARE_DR.is_match(t) {
+        return Some(("Dynamic Range".into(), t.into()));
+    }
+    if BARE_KELVIN.is_match(t) {
+        return Some(("White Balance".into(), t.into()));
+    }
+    if BARE_SHIFT.is_match(t) {
+        return Some(("WB Shift".into(), t.into()));
+    }
+    let words: Vec<&str> = t.split_whitespace().collect();
     (1..words.len().min(5)).rev().find_map(|k| {
         let label = words[..k].join(" ");
-        field_for(&label).filter(|f| *f != Field::Note).map(|_| (label, words[k..].join(" ")))
+        field_for(&label).map(|_| (label, words[k..].join(" ")))
     })
+}
+
+/// A line holding several settings with no colons, "0EV, Dynamic Range DR100, Grain Effect
+/// Weak", as one line each; any other line as it is.
+fn one_line_settings(line: &str) -> Vec<&str> {
+    let parts: Vec<&str> = line.split(", ").collect();
+    if !line.contains(':') && parts.len() >= 3 && parts.iter().filter(|p| colonless(p).is_some()).count() * 2 > parts.len() {
+        parts
+    } else {
+        vec![line]
+    }
+}
+
+/// The longest note or warning value kept. Longer text is a comment, not a setting, and is
+/// cut so no prose is stored.
+const VALUE_MAX: usize = 100;
+
+fn clip(s: &str) -> String {
+    match s.char_indices().nth(VALUE_MAX) {
+        Some((i, _)) => format!("{}…", &s[..i]),
+        None => s.to_string(),
+    }
 }
 
 /// Parses a recipe block: one setting per line. Blank lines are skipped. An unlabelled line
@@ -222,7 +264,7 @@ fn colonless(line: &str) -> Option<(String, String)> {
 pub fn parse_text(text: &str) -> Parsed {
     let mut out = Parsed::default();
     let mut seen: Vec<Field> = Vec::new();
-    for raw in text.lines() {
+    for raw in text.lines().flat_map(one_line_settings) {
         let line = raw.trim().trim_matches('\u{a0}').trim();
         if line.is_empty() {
             continue;
@@ -269,6 +311,12 @@ pub fn parse_text(text: &str) -> Parsed {
                 out.warnings.push(Warning { kind: WarningKind::BadValue, label: label.clone(), value: value.clone(), message });
             }
         }
+    }
+    for n in &mut out.notes {
+        n.value = clip(&n.value);
+    }
+    for w in &mut out.warnings {
+        w.value = clip(&w.value);
     }
     out
 }

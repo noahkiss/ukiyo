@@ -30,10 +30,17 @@ export type CatalogEntry = {
 
 export const catalog = JSON.parse(raw) as RecipeCatalog_Deserialize;
 
-const sourceNames = new Map(catalog.sources.map((s) => [s.id, s.name]));
+const sourcesById = new Map(catalog.sources.map((s) => [s.id, s]));
 
 /** A source's display name: "Fuji X Weekly", "film.recipes". */
-export const sourceName = (id: string) => sourceNames.get(id) ?? id;
+export const sourceName = (id: string) => sourcesById.get(id)?.name ?? id;
+
+/** Who published it: the site, or for a compilation the creator and where it was found. */
+export function publisher(p: Publication): string {
+  const s = sourcesById.get(p.source);
+  if (s?.compilation) return `${p.author ?? "an unknown creator"}, via ${s.name}`;
+  return s?.name ?? p.source;
+}
 
 /** Swatch colours per film simulation family; the catalogue has no photos. */
 const PALETTES: Array<[RegExp, string[]]> = [
@@ -96,7 +103,7 @@ export function toParsed(name: string, s: Settings_Deserialize, notes: Note[] = 
 }
 
 function entry(r: CatalogRecipe_Deserialize): CatalogEntry {
-  const parsed = toParsed(r.name, r.settings, r.notes ?? [], r.warnings ?? [], { label: sourceName(r.credit.source), url: r.credit.url });
+  const parsed = toParsed(r.name, r.settings, r.notes ?? [], r.warnings ?? [], { label: publisher(r.credit), url: r.credit.url });
   return { id: `cat:${r.id}`, name: r.name, credit: r.credit, also: r.alsoPublishedBy ?? [], sensor: r.sensor ?? null, video: r.video ?? false, parsed, tones: simTones(parsed.sim) };
 }
 
@@ -136,4 +143,4 @@ export function filterEntries(entries: CatalogEntry[], f: CatalogFilter): Catalo
   });
 }
 
-export const fmtDate = (iso: string) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+export const fmtDate = (iso: string) => (iso ? new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "date unknown");

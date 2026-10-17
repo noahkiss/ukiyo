@@ -3,6 +3,7 @@
 
 pub mod filmrecipes;
 pub mod fujixweekly;
+pub mod hpchavaz;
 
 use super::catalogue::{SourceInfo, SourceRecipe};
 use super::{html, parse_text, post, split_recipes};
@@ -21,16 +22,24 @@ pub struct FeedItem {
     pub html: String,
 }
 
+/// How the refresh tool reads a source.
+pub enum Fetch {
+    /// A WordPress feed: the URL for page `n` (1-based), and the recipes in one item.
+    Feed { page: fn(u32) -> String, recipes: fn(&FeedItem) -> Vec<SourceRecipe> },
+    /// One CSV download, and the recipes in it.
+    Csv { url: &'static str, recipes: fn(&str) -> Vec<SourceRecipe> },
+}
+
 /// A site the refresh tool can read.
 pub struct Source {
     pub info: fn() -> SourceInfo,
-    /// The feed URL for page `n` (1-based).
-    pub feed_page: fn(u32) -> String,
-    pub recipes: fn(&FeedItem) -> Vec<SourceRecipe>,
+    pub fetch: Fetch,
 }
 
+/// Every source, in credit order: on a tie in date, the earlier source keeps the credit, so
+/// the original sites come before a compilation.
 pub fn all() -> Vec<Source> {
-    vec![fujixweekly::SOURCE, filmrecipes::SOURCE]
+    vec![fujixweekly::SOURCE, filmrecipes::SOURCE, hpchavaz::SOURCE]
 }
 
 /// `/feed/` for page 1, `/feed/?paged=N` after.

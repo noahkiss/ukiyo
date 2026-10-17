@@ -3,7 +3,7 @@ import { commands } from "../bindings";
 import { fxwPasteResult } from "../fixtures/fxw";
 import { FILM_SIMS, TONE_RANGES, WB_SHIFT_RANGE, wbOnBody, type Recipe, type Slot } from "../fixtures/recipes";
 import { inTauri } from "../lib/camera";
-import { catalogEntries, catalogSensors, catalogSims, catalogSources, filterEntries, fmtDate, isMono, simTones, sourceName, toParsed, type CatalogEntry, type ParsedRecipe } from "../lib/catalog";
+import { catalogEntries, catalogSensors, catalogSims, catalogSources, filterEntries, fmtDate, isMono, publisher, simTones, toParsed, type CatalogEntry, type ParsedRecipe } from "../lib/catalog";
 import { CloseIcon, SearchIcon } from "../shell/icons";
 
 type Tab = "search" | "link" | "text";
@@ -44,7 +44,7 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
     if (!candidate) ref.current?.querySelector<HTMLElement>(".sheet-body input, .sheet-body textarea")?.focus();
   }, [tab, candidate]);
 
-  const fromResult = (r: CatalogEntry): Candidate => ({ parsed: r.parsed, source: { label: sourceName(r.credit.source), url: r.credit.url }, tones: r.tones });
+  const fromResult = (r: CatalogEntry): Candidate => ({ parsed: r.parsed, source: { label: publisher(r.credit), url: r.credit.url }, tones: r.tones });
 
   return (
     <dialog ref={ref} className="sheet" aria-labelledby="import-title" onClose={onClose} onCancel={onClose} data-component="recipe-import">
@@ -111,7 +111,7 @@ function SearchTab({ onPick }: { onPick: (r: CatalogEntry) => void }) {
             <span className="stack result-text">
               <span className="strong">{r.name}</span>
               <span className="small muted">
-                From {sourceName(r.credit.source)} · {fmtDate(r.credit.date)} · {r.parsed.sim}
+                From {publisher(r.credit)} · {fmtDate(r.credit.date)} · {r.parsed.sim}
                 {r.video && " · Video"}
               </span>
             </span>

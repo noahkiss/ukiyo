@@ -250,6 +250,11 @@ export type Publication_Deserialize = {
 	url: string,
 	date: string,
 	author?: string | null,
+	/**
+	 *  For a compilation row matched to the post it links to: the settings it gives
+	 *  differently from that post. The post's own settings are the recipe's.
+	 */
+	differs?: string[],
 };
 
 /**  One publication of a recipe: who, where, when. */
@@ -260,6 +265,11 @@ export type Publication_Serialize = {
 	url: string,
 	date: string,
 	author?: string | null,
+	/**
+	 *  For a compilation row matched to the post it links to: the settings it gives
+	 *  differently from that post. The post's own settings are the recipe's.
+	 */
+	differs?: string[],
 };
 
 /**  `catalog/recipes/catalog.json`. */
@@ -396,6 +406,11 @@ export type SourceInfo = {
 	name: string,
 	homepage: string,
 	credit: string,
+	/**
+	 *  A compilation of other people's recipes: each recipe credits its `author`, and the
+	 *  source is shown as where it was found.
+	 */
+	compilation?: boolean,
 };
 
 export type Status = {

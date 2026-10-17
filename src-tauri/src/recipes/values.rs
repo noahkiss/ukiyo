@@ -9,6 +9,10 @@ static NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([+-]?)\s*(\d+(?
 static PAREN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\([^)]*\)").unwrap());
 static KELVIN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)(\d{4,5})\s*k\b").unwrap());
 static SHIFT_R: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)([+-]?\s*\d+)\s*(?:red|r)\b").unwrap());
+/// "R:4 B:-5", "R +2, B -4": the letter first.
+static SHIFT_R_FIRST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(?:red|r)\s*[:=]?\s*([+-]?\s*\d+)").unwrap());
+static SHIFT_B_FIRST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(?:blue|b)\s*[:=]?\s*([+-]?\s*\d+)").unwrap());
+static LETTER_COLON: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(?:red|blue|r|b)\s*[:=]").unwrap());
 static SHIFT_B: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)([+-]?\s*\d+)\s*(?:blue|b)\b").unwrap());
 /// "+1 Highlight & -1 Shadow" or "H+1, S-1": a sign-bearing number next to H or S.
 static CURVE_AFTER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(h|s)(?:ighlights?|hadows?)?\s*[:=]?\s*([+-]?\s*\d+(?:\.\d+)?)").unwrap());
@@ -47,6 +51,7 @@ fn num_of(captured: &str) -> f64 {
 /// alongside the number it follows.
 fn tone(value: &str) -> Result<(f64, Option<String>), String> {
     let v = ascii_minus(&without_parens(value));
+    let v = v.trim_start_matches([':', ' ']).to_string();
     let Some(m) = NUMBER.captures(&v) else {
         return Err("Not a number".into());
     };
@@ -100,6 +105,14 @@ fn strength(value: &str) -> Result<(Option<String>, Option<String>), String> {
 
 /// "Weak, Small", "Strong Large", "Off", "Weak". Grain size, when given, sets the size too.
 fn grain(s: &mut Settings, value: &str) -> Result<(), String> {
+    // "Weak - Small", "Strong and Large": one strength and one size are not alternatives.
+    let whole = norm(&without_parens(value));
+    let words: Vec<&str> = whole.split_whitespace().filter(|w| *w != "and").collect();
+    if words.len() == 2 && strength_word(words[0]).is_some() && matches!(words[1], "small" | "large") {
+        s.grain_effect = strength_word(words[0]).map(str::to_string);
+        s.grain_size = Some(capitalize(words[1]));
+        return Ok(());
+    }
     let (first, rest) = first_alternative(value);
     if let Some(rest) = rest {
         grain(s, &first)?;
@@ -120,7 +133,8 @@ fn grain(s: &mut Settings, value: &str) -> Result<(), String> {
 }
 
 fn grain_size(value: &str) -> Result<String, String> {
-    match norm(&without_parens(value)).as_str() {
+    let n = norm(&without_parens(value));
+    match n.rsplit(' ').next().unwrap_or(&n) {
         "small" => Ok("Small".into()),
         "large" => Ok("Large".into()),
         _ => Err("Not Small or Large".into()),
@@ -128,7 +142,9 @@ fn grain_size(value: &str) -> Result<String, String> {
 }
 
 fn dynamic_range(s: &mut Settings, value: &str) -> Result<(), String> {
-    let n = norm(&without_parens(value)).replace(' ', "");
+    let n = norm(&without_parens(value));
+    // "400% D-Range": the value, then the setting's name again.
+    let n = n.strip_suffix(" d range").unwrap_or(&n).replace(' ', "");
     s.dynamic_range = Some(
         match n.as_str() {
             "dr100" | "100" | "100%" => "DR100",
@@ -173,7 +189,7 @@ fn d_range_priority(value: &str) -> Result<String, String> {
 fn wb_preset(base: &str) -> Option<&'static str> {
     let n = norm(base);
     Some(match n.as_str() {
-        "auto" | "awb" => "Auto",
+        "auto" | "awb" | "auto wb" => "Auto",
         "auto white priority" | "white priority" | "auto white" => "Auto White Priority",
         "auto ambience priority" | "ambience priority" | "auto ambiance priority" | "ambiance priority" => "Auto Ambience Priority",
         "daylight" | "fine" | "daylight fine" | "fine daylight" | "sunny" => "Daylight",
@@ -218,6 +234,30 @@ fn white_balance(s: &mut Settings, value: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(capitalize(&problems.join("; ")))
+    }
+}
+
+/// A shift line on its own: "1 Red, -9 Blue", "R:4 B:-5", "+2R & -4B".
+fn wb_shift(s: &mut Settings, value: &str) -> Result<(), String> {
+    let v = ascii_minus(value);
+    // A value that opens with the letter puts each number after its letter.
+    let letter_first = v.trim_start().chars().next().is_some_and(|c| c.is_ascii_alphabetic()) || LETTER_COLON.is_match(&v);
+    let (re_r, re_b, alt_r, alt_b) = if letter_first { (&*SHIFT_R_FIRST, &*SHIFT_B_FIRST, &*SHIFT_R, &*SHIFT_B) } else { (&*SHIFT_R, &*SHIFT_B, &*SHIFT_R_FIRST, &*SHIFT_B_FIRST) };
+    let r = re_r.captures(&v).or_else(|| alt_r.captures(&v)).map(|m| num_of(&m[1]) as i32);
+    let b = re_b.captures(&v).or_else(|| alt_b.captures(&v)).map(|m| num_of(&m[1]) as i32);
+    // "WB Shift R: 2 B:-3": the label holds the R, the value starts with its number.
+    let r = r.or_else(|| NUMBER.captures(v.trim()).filter(|_| b.is_some()).map(|m| signed_num(&m[1], &m[2]) as i32));
+    match (r, b) {
+        (None, None) => Err("No red or blue shift".into()),
+        (r, b) => {
+            s.wb_shift_r = r.or(s.wb_shift_r);
+            s.wb_shift_b = b.or(s.wb_shift_b);
+            if r.is_some() && b.is_some() {
+                Ok(())
+            } else {
+                Err("Only one of the red and blue shifts given".into())
+            }
+        }
     }
 }
 
@@ -310,7 +350,7 @@ pub(crate) fn film_sim(phrase: &str) -> Option<String> {
             "velvia" | "velvia vivid" | "vivid" => "Velvia",
             "astia" | "astia soft" | "soft" => "Astia",
             "classic chrome" => "Classic Chrome",
-            "pro neg hi" | "proneg hi" => "Pro Neg. Hi",
+            "pro neg hi" | "proneg hi" | "pro neg high" | "proneg high" => "Pro Neg. Hi",
             "pro neg std" | "proneg std" => "Pro Neg. Std",
             "classic neg" => "Classic Negative",
             "nostalgic neg" => "Nostalgic Neg.",
@@ -324,8 +364,18 @@ pub(crate) fn film_sim(phrase: &str) -> Option<String> {
     )
 }
 
-/// Reads `value` into `field`. The caller has already handled notes.
+/// "N/A", "-", "/": the setting does not apply to the camera the recipe was written for.
+fn not_applicable(value: &str) -> bool {
+    let n = norm(value);
+    !value.trim().is_empty() && (n.is_empty() || matches!(n.as_str(), "n a" | "na" | "not available" | "none given"))
+}
+
+/// Reads `value` into `field`. The caller has already handled notes. A not-applicable value
+/// leaves the field unset, with no warning.
 pub(crate) fn apply(s: &mut Settings, field: Field, value: &str) -> Result<(), String> {
+    if not_applicable(value) {
+        return Ok(());
+    }
     let set_tone = |slot: &mut Option<f64>, value: &str| -> Result<(), String> {
         let (n, extra) = tone(value)?;
         *slot = Some(n);
@@ -354,6 +404,7 @@ pub(crate) fn apply(s: &mut Settings, field: Field, value: &str) -> Result<(), S
             extra.map_or(Ok(()), Err)
         }
         Field::WhiteBalance => white_balance(s, value),
+        Field::WbShift => wb_shift(s, value),
         Field::Highlight => set_tone(&mut s.highlight_tone, value),
         Field::Shadow => set_tone(&mut s.shadow_tone, value),
         Field::ToneCurve => tone_curve(s, value),

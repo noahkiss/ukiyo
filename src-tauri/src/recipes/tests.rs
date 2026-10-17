@@ -96,6 +96,7 @@ fn film_simulation_spellings() {
     for (text, want) in [
         ("PRO Neg. Std", "Pro Neg. Std"),
         ("Pro Neg Hi", "Pro Neg. Hi"),
+        ("Pro Neg. High", "Pro Neg. Hi"),
         ("Classic Neg.", "Classic Negative"),
         ("Nostalgic Negative", "Nostalgic Neg."),
         ("Acros + G", "Acros + G filter"),
@@ -237,7 +238,7 @@ fn film_recipes_settings_table() {
 }
 
 fn src(id: &str, recipes: Vec<catalogue::SourceRecipe>) -> catalogue::SourceFile {
-    catalogue::SourceFile { schema: 1, source: catalogue::SourceInfo { id: id.into(), name: id.into(), homepage: String::new(), credit: String::new() }, fetched_at: "2026-10-17".into(), recipes }
+    catalogue::SourceFile { schema: 1, source: catalogue::SourceInfo { id: id.into(), name: id.into(), homepage: String::new(), credit: String::new(), compilation: id == "compiled" }, fetched_at: "2026-10-17".into(), recipes }
 }
 
 fn rec(id: &str, date: &str, text: &str) -> catalogue::SourceRecipe {
@@ -259,4 +260,49 @@ fn merge_keeps_the_earliest_credit_and_flags_near_duplicates() {
     assert_eq!((report.merged, report.merged_across_sources), (1, 1));
     assert_eq!(report.near_duplicates.len(), 1);
     assert_eq!(report.near_duplicates[0].field, "WB shift red");
+}
+
+#[test]
+fn compilation_variants() {
+    let p = parse_text("Classic Negative\nDR400\n5200K\nR+2 B-4\nSharp -2\nH-Tone +1\nS-Tone -1\nGrain: Weak - Small\nColor: N/A\nchrome fx Strong\nNoise: -4\nWB Shift R: 2 B:-3\nExposure Compensation +1/3");
+    let s = &p.settings;
+    let labels: Vec<&str> = p.warnings.iter().map(|w| w.label.as_str()).collect();
+    assert_eq!(labels, vec!["WB Shift R"], "the second shift line is a duplicate: {:?}", p.warnings);
+    assert_eq!((s.dynamic_range.as_deref(), s.white_balance.as_deref(), s.color_temp), (Some("DR400"), Some("Kelvin"), Some(5200)));
+    assert_eq!((s.wb_shift_r, s.wb_shift_b), (Some(2), Some(-4)));
+    assert_eq!((s.sharpness, s.highlight_tone, s.shadow_tone, s.high_iso_nr, s.color), (Some(-2.0), Some(1.0), Some(-1.0), Some(-4.0), None));
+    assert_eq!((s.grain_effect.as_deref(), s.grain_size.as_deref(), s.color_chrome.as_deref()), (Some("Weak"), Some("Small"), Some("Strong")));
+    assert_eq!(p.notes.len(), 1);
+    let p = parse_text("WB Shift R: 2 B:-3");
+    assert_eq!((p.settings.wb_shift_r, p.settings.wb_shift_b, p.warnings.len()), (Some(2), Some(-3), 0));
+}
+
+#[test]
+fn compilation_rows_yield_to_the_post_they_link_to() {
+    let post = rec("gold", "2022-01-10", "Film Simulation: Classic Chrome\nDynamic Range: DR200\nHighlight: -1");
+    // Same settings, dated a day earlier: the creator's own post still keeps the credit.
+    let mut early = rec("row-early", "2022-01-09", "Classic Chrome\nDR200\nHighlight: -1");
+    early.url = "https://example.org/x".into();
+    // Transcribed differently, but it links to the post.
+    let mut typo = rec("row-typo", "2022-01-10", "Classic Chrome\nDR400\nHighlight: -1");
+    typo.url = "http://www.example.com/gold/".into();
+    let (cat, report) = catalogue::merge(&[src("site", vec![post]), src("compiled", vec![early, typo])], "2026-10-17");
+    assert_eq!(cat.recipes.len(), 1);
+    let r = &cat.recipes[0];
+    assert_eq!(r.credit.source, "site");
+    assert_eq!(r.settings.dynamic_range.as_deref(), Some("DR200"));
+    assert_eq!(r.also_published_by.len(), 2);
+    assert_eq!(r.also_published_by.iter().find(|p| p.name == "row-typo").unwrap().differs, vec!["dynamic range".to_string()]);
+    assert_eq!(report.matched_by_link, 1);
+}
+
+#[test]
+fn settings_on_one_line_and_long_comments() {
+    let p = parse_text("0EV, Dynamic Range DR100, Film Simulation Acros+R, Grain Effect Strong, WB Shift R0 B0, Highlight Tone +3, Sharpness +4");
+    let s = &p.settings;
+    assert_eq!((s.film_simulation.as_deref(), s.dynamic_range.as_deref(), s.grain_effect.as_deref()), (Some("Acros + R filter"), Some("DR100"), Some("Strong")));
+    assert_eq!((s.wb_shift_r, s.wb_shift_b, s.highlight_tone, s.sharpness), (Some(0), Some(0), Some(3.0), Some(4.0)));
+    let long = "a comment that goes on ".repeat(10);
+    let p = parse_text(&format!("White Balance: Auto\nISO: {long}"));
+    assert!(p.notes[0].value.chars().count() <= 101);
 }

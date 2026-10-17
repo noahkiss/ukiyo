@@ -1,10 +1,10 @@
 //! Fuji X Weekly (fujixweekly.com): recipe blocks as `<p>` paragraphs of `Label: value` lines.
 
-use super::{post_recipes, wp_feed, FeedItem, Source};
+use super::{post_recipes, wp_feed, FeedItem, Fetch, Source};
 use crate::recipes::catalogue::{SourceInfo, SourceRecipe};
 use crate::recipes::post;
 
-pub const SOURCE: Source = Source { info, feed_page, recipes };
+pub const SOURCE: Source = Source { info, fetch: Fetch::Feed { page: feed_page, recipes } };
 
 fn info() -> SourceInfo {
     SourceInfo {
@@ -12,6 +12,7 @@ fn info() -> SourceInfo {
         name: "Fuji X Weekly".into(),
         homepage: "https://fujixweekly.com".into(),
         credit: "Recipes © Ritchie Roesch, Fuji X Weekly (fujixweekly.com)".into(),
+        compilation: false,
     }
 }
 

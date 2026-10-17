@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { FILM_SIMS, recipes as recipeFixture, slots as slotFixture, TONE_RANGES, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
 import { useCamera } from "../lib/camera";
-import { catalogEntries, entryRecipe, filterEntries, fmtDate, sourceName, type CatalogEntry } from "../lib/catalog";
+import { catalogEntries, entryRecipe, filterEntries, fmtDate, publisher, type CatalogEntry } from "../lib/catalog";
 import { href } from "../lib/router";
 import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
@@ -261,8 +261,8 @@ function CatalogCard({ e, on, onSelect }: { e: CatalogEntry; on: boolean; onSele
       </button>
       <span className="recipe-credit tiny muted">
         <span>
-          From {sourceName(e.credit.source)} · {fmtDate(e.credit.date)}
-          {e.also.length > 0 && <span title={`Also published by ${e.also.map((p) => `${sourceName(p.source)} (${p.name}, ${fmtDate(p.date)})`).join("; ")}`}> · +{e.also.length}</span>}
+          From {publisher(e.credit)} · {fmtDate(e.credit.date)}
+          {e.also.length > 0 && <span title={`Also published by ${e.also.map((p) => `${publisher(p)} (${p.name}, ${fmtDate(p.date)})`).join("; ")}`}> · +{e.also.length}</span>}
         </span>
         <a href={e.credit.url} target="_blank" rel="noreferrer">
           Post

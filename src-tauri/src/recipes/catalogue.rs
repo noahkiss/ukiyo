@@ -10,6 +10,9 @@ use std::collections::BTreeMap;
 
 pub const SCHEMA: u32 = 1;
 
+/// The most fields a compilation row may differ from the post it links to and still fold in.
+pub const LINK_MATCH_MAX_DIFF: usize = 3;
+
 /// A site that publishes recipes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub struct SourceInfo {
@@ -18,6 +21,10 @@ pub struct SourceInfo {
     pub name: String,
     pub homepage: String,
     pub credit: String,
+    /// A compilation of other people's recipes: each recipe credits its `author`, and the
+    /// source is shown as where it was found.
+    #[serde(default)]
+    pub compilation: bool,
 }
 
 /// A recipe as one source published it.
@@ -30,7 +37,7 @@ pub struct SourceRecipe {
     pub name: String,
     pub title: String,
     pub url: String,
-    /// The post date, YYYY-MM-DD.
+    /// The post date, YYYY-MM-DD; empty when unknown.
     pub date: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
@@ -69,6 +76,10 @@ pub struct Publication {
     pub date: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+    /// For a compilation row matched to the post it links to: the settings it gives
+    /// differently from that post. The post's own settings are the recipe's.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub differs: Vec<String>,
 }
 
 /// One distinct recipe: settings published once or more.
@@ -171,6 +182,8 @@ pub struct MergeReport {
     /// Entries published more than once, and by more than one source.
     pub merged: usize,
     pub merged_across_sources: usize,
+    /// Compilation rows whose settings differ from the post they link to, folded into it.
+    pub matched_by_link: usize,
     /// Publications with no film simulation are left out: a slot cannot be set from them.
     /// They stay in their source file, with their warnings.
     pub left_out_without_sim: usize,
@@ -179,7 +192,8 @@ pub struct MergeReport {
 
 /// Folds the sources into the catalogue. Equal settings hashes are one recipe; the earliest
 /// publication is the credit (ties go to the earlier source in `sources`), the rest are
-/// "also published by". Video recipes only merge with video recipes. Publications with no
+/// "also published by". A compilation's publication is the credit only when no other
+/// source has the recipe. Video recipes only merge with video recipes. Publications with no
 /// film simulation are left out.
 pub fn merge(sources: &[SourceFile], built_at: &str) -> (RecipeCatalog, MergeReport) {
     let mut report = MergeReport::default();
@@ -195,12 +209,63 @@ pub fn merge(sources: &[SourceFile], built_at: &str) -> (RecipeCatalog, MergeRep
             groups.entry(key).or_default().push((si, r));
         }
     }
+
+    // A compilation row that links to a post another source read is that post's recipe, even
+    // when its settings were transcribed differently: fold it into the closest recipe there,
+    // when that is at most LINK_MATCH_MAX_DIFF fields apart.
+    let link = |u: &str| u.trim_end_matches('/').replace("://www.", "://").replace("http://", "https://");
+    let compiled = |si: usize| sources[si].source.compilation;
+    let mut by_url: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (key, pubs) in &groups {
+        for (si, r) in pubs {
+            if !compiled(*si) {
+                by_url.entry(link(&r.url)).or_default().push(key.clone());
+            }
+        }
+    }
+    let mut differs: BTreeMap<(usize, String), Vec<String>> = BTreeMap::new();
+    let orphan_keys: Vec<String> = groups.iter().filter(|(_, p)| p.iter().all(|(si, _)| compiled(*si))).map(|(k, _)| k.clone()).collect();
+    for key in orphan_keys {
+        let pubs = groups.remove(&key).unwrap_or_default();
+        for (si, r) in pubs {
+            let mine = normalised(&r.settings);
+            let target = by_url.get(&link(&r.url)).and_then(|keys| {
+                keys.iter()
+                    .map(|k| {
+                        let theirs = normalised(&groups[k][0].1.settings);
+                        let d: Vec<String> = mine.iter().zip(&theirs).filter(|(a, b)| a.1 != b.1).map(|(a, _)| a.0.to_string()).collect();
+                        (d.len(), k.clone(), d)
+                    })
+                    .min()
+            });
+            match target {
+                // More than three fields apart is likely another recipe in the same post.
+                Some((n, k, d)) if n <= LINK_MATCH_MAX_DIFF => {
+                    report.matched_by_link += 1;
+                    differs.insert((si, r.id.clone()), d);
+                    groups.get_mut(&k).unwrap().push((si, r));
+                }
+                _ => groups.entry(key.clone()).or_default().push((si, r)),
+            }
+        }
+    }
+
     let mut recipes: Vec<CatalogRecipe> = groups
         .into_values()
         .map(|mut pubs| {
-            pubs.sort_by(|(sa, a), (sb, b)| a.date.cmp(&b.date).then(sa.cmp(sb)).then(a.id.cmp(&b.id)));
+            // An unknown date sorts last: it cannot claim to be first.
+            let when = |r: &SourceRecipe| if r.date.is_empty() { "9999".to_string() } else { r.date.clone() };
+            // A compilation's row credits the same creator; the creator's own post comes first.
+            pubs.sort_by(|(sa, a), (sb, b)| compiled(*sa).cmp(&compiled(*sb)).then(when(a).cmp(&when(b))).then(sa.cmp(sb)).then(a.id.cmp(&b.id)));
             let (psi, primary) = pubs[0];
-            let publication = |si: usize, r: &SourceRecipe| Publication { source: sources[si].source.id.clone(), name: r.name.clone(), url: r.url.clone(), date: r.date.clone(), author: r.author.clone() };
+            let publication = |si: usize, r: &SourceRecipe| Publication {
+                source: sources[si].source.id.clone(),
+                name: r.name.clone(),
+                url: r.url.clone(),
+                date: r.date.clone(),
+                author: r.author.clone(),
+                differs: differs.get(&(si, r.id.clone())).cloned().unwrap_or_default(),
+            };
             if pubs.len() > 1 {
                 report.merged += 1;
                 if pubs.iter().any(|(si, _)| *si != psi) {

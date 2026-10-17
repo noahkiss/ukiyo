@@ -1,13 +1,13 @@
 //! film.recipes (Justin Gould): one settings table per post, under a heading such as
 //! "Kodak Gold II Film Recipe Settings".
 
-use super::{post_recipes, wp_feed, FeedItem, Source};
+use super::{post_recipes, wp_feed, FeedItem, Fetch, Source};
 use crate::recipes::catalogue::{SourceInfo, SourceRecipe};
 use crate::recipes::{html, post};
 use regex::Regex;
 use std::sync::LazyLock;
 
-pub const SOURCE: Source = Source { info, feed_page, recipes };
+pub const SOURCE: Source = Source { info, fetch: Fetch::Feed { page: feed_page, recipes } };
 
 static SETTINGS_HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\s*(?:film\s+)?recipe\s+settings\s*$").unwrap());
 
@@ -17,6 +17,7 @@ fn info() -> SourceInfo {
         name: "film.recipes".into(),
         homepage: "https://film.recipes".into(),
         credit: "Recipes © Justin Gould, film.recipes".into(),
+        compilation: false,
     }
 }
 
