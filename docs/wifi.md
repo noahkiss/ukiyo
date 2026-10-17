@@ -56,6 +56,10 @@ From lf `discovery.c`:
    `CAMERANAME: <model>`, `DSCPORT: <port>`.
 3. The client answers `HTTP/1.1 200 OK` and connects to the camera on that port.
 
+Observed on our X-T5 (fw 4.31, 2026-10-17): discovery found the camera in 6.9 s. Its message
+starts `NOTIFY * HTTP/1.1` and offers DSCPORT 15740, the standard PTP/IP port. The connect to
+15740 is not tested yet.
+
 After the init, wireless tether is plain USB-tether PTP: OpenSession, GetDeviceInfo, and
 D16E (USB mode) (lf `fuji_usb.c`).
 

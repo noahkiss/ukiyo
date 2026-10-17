@@ -15,6 +15,10 @@ uv run -q run_wifi_tests.py
 macOS dialog. Done means you did the step; Skip leaves it out; Stop ends the run. Stop still
 rejoins the original Wi-Fi and writes the summary.
 
+Run it from Terminal.app or another app that has Local Network permission. Inside zellij,
+macOS blocks outgoing LAN connections without a prompt, so discovery works but the connect to the
+camera fails with "No route to host". The pre-flight check stops the run when it sees this.
+
 Allow these macOS prompts for your terminal app when they appear:
 
 - Bluetooth (the Bluetooth step).
