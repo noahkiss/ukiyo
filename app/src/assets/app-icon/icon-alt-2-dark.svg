@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="168" viewBox="0 8 168 168">
+  <rect x="8" y="16" width="152" height="152" rx="34" fill="#1C1A17" stroke="#6E675D" stroke-width="1.5"/>
+  <g transform="translate(14 22) scale(0.84)"><path d="M28 100 q14 -16 28 0 t28 0 t28 0 t28 0 M28 118 q14 -16 28 0 t28 0 t28 0 t28 0" fill="none" stroke="#EEE8DD" stroke-width="3" stroke-linecap="round"/><circle cx="84" cy="58" r="20" fill="#D41422"/></g>
+  <text x="84" y="152" text-anchor="middle" font-family="IBM Plex Mono, Menlo, monospace" font-size="12" fill="#6E675D">alt-2</text>
+</svg>

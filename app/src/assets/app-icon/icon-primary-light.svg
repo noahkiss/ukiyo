@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="168" viewBox="0 8 168 168">
+  <rect x="8" y="16" width="152" height="152" rx="34" fill="#FBF8F2" stroke="#8A8276" stroke-width="1.5"/>
+  <g transform="translate(14 22) scale(0.84)"><circle cx="84" cy="70" r="34" fill="#C8101E"/><path d="M34 120 L72 92 L84 100 L94 94 L134 120" fill="none" stroke="#1B1815" stroke-width="3" stroke-linejoin="round"/></g>
+  <text x="84" y="152" text-anchor="middle" font-family="IBM Plex Mono, Menlo, monospace" font-size="12" fill="#8A8276">primary</text>
+</svg>

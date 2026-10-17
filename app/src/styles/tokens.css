@@ -1,0 +1,111 @@
+/* Design tokens from the design canvas style sheet. Light is cream paper, dark is sumi.
+   The theme follows the system appearance; `data-theme` on <html> overrides it. */
+
+:root {
+  color-scheme: light;
+  --bg: #f4eee2;
+  --side: #ece4d4;
+  --card: #fbf8f2;
+  --raised: #ffffff;
+  --chip: #e9e0cf;
+  --track: #e6ddcc;
+  --ink: #1b1815;
+  --muted: #5f584e;
+  --line: #dcd2c1;
+  --line-strong: #c9bda8;
+  --slot: #8a8276;
+  --red-fill: #c8101e;
+  --red-text: #b00e1b;
+  --red-hover: #7e0a14;
+  --on-red: #ffffff;
+  --red-soft: #f7dcd7;
+  --red-soft-text: #8e0b16;
+  --sun: #c8101e;
+  --halo: rgba(200, 16, 30, 0.18);
+  --hit: #fbeae6;
+  --flash: #f3c4bb;
+  --ok: #2e7d4f;
+  --off: #8a8276;
+  --switch-off: #b9ae9c;
+  --warn-soft: #f3e6ca;
+  --warn-text: #6b4300;
+  --shadow: 0 12px 40px rgba(27, 24, 21, 0.16);
+
+  /* Fixed in both themes: the sidebar colours, for previews of light and dark art. */
+  --preview-light: #ece4d4;
+  --preview-dark: #0e0d0b;
+
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-title: "Shippori Mincho", "Hiragino Mincho ProN", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  --radius-s: 4px;
+  --radius: 8px;
+  --radius-m: 10px;
+  --radius-l: 12px;
+  --control-h: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141210;
+    --side: #0e0d0b;
+    --card: #1c1a17;
+    --raised: #25221f;
+    --chip: #2a2622;
+    --track: #2e2a25;
+    --ink: #eee8dd;
+    --muted: #a9a094;
+    --line: #322e29;
+    --line-strong: #443f38;
+    --slot: #6e675d;
+    --red-fill: #d41422;
+    --red-text: #ff6a6f;
+    --red-hover: #ff9c9c;
+    --on-red: #ffffff;
+    --red-soft: #3b1b1b;
+    --red-soft-text: #ff9c9c;
+    --sun: #b3121e;
+    --halo: rgba(212, 20, 34, 0.28);
+    --hit: #2a1a18;
+    --flash: #5a2621;
+    --ok: #5dbb7e;
+    --off: #6e675d;
+    --switch-off: #4a453e;
+    --warn-soft: #33281a;
+    --warn-text: #ebc183;
+    --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141210;
+  --side: #0e0d0b;
+  --card: #1c1a17;
+  --raised: #25221f;
+  --chip: #2a2622;
+  --track: #2e2a25;
+  --ink: #eee8dd;
+  --muted: #a9a094;
+  --line: #322e29;
+  --line-strong: #443f38;
+  --slot: #6e675d;
+  --red-fill: #d41422;
+  --red-text: #ff6a6f;
+  --red-hover: #ff9c9c;
+  --on-red: #ffffff;
+  --red-soft: #3b1b1b;
+  --red-soft-text: #ff9c9c;
+  --sun: #b3121e;
+  --halo: rgba(212, 20, 34, 0.28);
+  --hit: #2a1a18;
+  --flash: #5a2621;
+  --ok: #5dbb7e;
+  --off: #6e675d;
+  --switch-off: #4a453e;
+  --warn-soft: #33281a;
+  --warn-text: #ebc183;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}

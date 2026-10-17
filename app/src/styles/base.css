@@ -1,0 +1,470 @@
+/* Base elements and the shared controls from the style sheet. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.4 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--red-text);
+}
+
+a:hover {
+  color: var(--red-hover);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--red-fill);
+  outline-offset: 2px;
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 13px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.title-font {
+  font-family: var(--font-title);
+  font-weight: 700;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--control-h);
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  font: 500 15px var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--raised);
+  border-color: var(--slot);
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.btn.primary {
+  border: 0;
+  padding: 0 20px;
+  background: var(--red-fill);
+  color: var(--on-red);
+  font-weight: 600;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--red-text);
+}
+
+.btn.text {
+  border: 0;
+  padding: 0 14px;
+  background: transparent;
+  color: var(--red-text);
+}
+
+.btn.text:hover:not(:disabled) {
+  background: var(--red-soft);
+  color: var(--red-soft-text);
+}
+
+.btn.small {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.btn.raised {
+  background: var(--raised);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--chip);
+  color: var(--ink);
+}
+
+/* Chips and badges */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: var(--chip);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--off);
+}
+
+.dot.ok {
+  background: var(--ok);
+}
+
+.dot.warn {
+  background: var(--warn-text);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-s);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--chip);
+  color: var(--ink);
+}
+
+.badge.changed {
+  background: var(--red-soft);
+  color: var(--red-soft-text);
+}
+
+.badge.ink {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.badge.warn {
+  background: var(--warn-soft);
+  color: var(--warn-text);
+}
+
+.badge.dashed {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--line-strong);
+}
+
+/* Segmented control */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 9px;
+  background: var(--chip);
+}
+
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 14px var(--font-ui);
+  cursor: pointer;
+}
+
+.seg button[aria-pressed="true"] {
+  background: var(--raised);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.seg button:hover:not([aria-pressed="true"]) {
+  color: var(--ink);
+}
+
+.seg.compact {
+  padding: 2px;
+  border-radius: 8px;
+}
+
+.seg.compact button {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.seg .n {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* Fields */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.field > legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.input,
+.field input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.field textarea,
+.field select {
+  height: var(--control-h);
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--ink);
+  font: 400 15px var(--font-ui);
+}
+
+.field textarea {
+  height: auto;
+  padding: 10px 12px;
+  font-size: 14px;
+  resize: vertical;
+}
+
+select.input,
+.select {
+  height: 40px;
+  min-width: 180px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--ink);
+  font: 500 14px var(--font-ui);
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--control-h);
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--muted);
+}
+
+.search-box input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: 400 15px var(--font-ui);
+}
+
+.search-box:focus-within {
+  border-color: var(--ink);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--red-fill);
+}
+
+/* On/off switch: <button role="switch" aria-checked> */
+.toggle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: var(--switch-off);
+  cursor: pointer;
+}
+
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: left 0.15s ease;
+}
+
+.toggle[aria-checked="true"] {
+  background: var(--red-fill);
+}
+
+.toggle[aria-checked="true"]::after {
+  left: 23px;
+}
+
+/* Cards and banners */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+
+.banner.warn {
+  background: var(--warn-soft);
+  color: var(--warn-text);
+}
+
+.banner.warn a {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+
+.banner > span {
+  flex: 1 1 260px;
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rows > * {
+  border-top: 1px solid var(--line);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  max-width: calc(100vw - 32px);
+  font-size: 14px;
+  z-index: 20;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
