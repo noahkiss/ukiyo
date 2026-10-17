@@ -4,8 +4,7 @@ import { usePrefs } from "../lib/prefs";
 import { href } from "../lib/router";
 import { PageHead } from "../shell/PageHead";
 import { WarnIcon } from "../shell/icons";
-import xt5Light from "../assets/camera/xt5-three-quarter.png";
-import xt5Dark from "../assets/camera/xt5-three-quarter-dark.png";
+import { cameraArt } from "../assets/camera";
 
 const MODES = [
   { id: "tether", name: "USB TETHER SHOOTING FIXED", tag: "Hub, Settings, Lab", text: "Read and change settings. The camera keeps working." },
@@ -20,6 +19,8 @@ export function Connect() {
   const state = cameraState(status);
   const model = status?.model ?? "The camera";
   const current = state === "connected" ? status?.mode : null;
+  // No camera yet: the X-T5, as before. A connected model gets its own drawing.
+  const art = cameraArt(status?.model ?? "X-T5");
 
   return (
     <div className="page connect" data-component="connect" data-state={state}>
@@ -37,7 +38,7 @@ export function Connect() {
       <div className="flex-row stretch">
         <div className="card connect-art">
           <div className="sun" />
-          <img src={theme === "dark" ? xt5Dark : xt5Light} alt="Ink drawing of an X-T5 camera body" />
+          <img src={theme === "dark" ? art.dark : art.light} alt={art.alt} />
         </div>
 
         <ol className="steps">

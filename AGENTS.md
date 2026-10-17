@@ -18,9 +18,11 @@ what comes next.
   and app icon choices in local storage, `decode.ts` value display), `src/fixtures/` sample data
   for pages without a backend (see its README), `src/styles/` (`tokens.css` light and dark
   tokens, then base, shell, pages, lab), `src/assets/` (bundled OFL fonts with licences, camera
-  art, brand marks and app icons as light and dark webp). `src/bindings.ts` generated (do not edit;
+  art, brand marks and app icons as light and dark webp; `camera/index.ts` maps a model to its
+  art, with a generic body for unknown models). `src/bindings.ts` generated (do not edit;
   `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort). In a
-  browser outside Tauri, `?camera=tether|rawconv|cardreader` previews a camera state.
+  browser outside Tauri, `?camera=tether|rawconv|cardreader` previews a camera state and
+  `?model=X-H2S` another body.
 - `src-tauri/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
   `usb` (nusb), `fake` (fake X-T5; shape in `fake_x-t5.json`), `clock`, `owner` (the one
   connection thread: queue, polling, pause, power-off, reconnect rules), `owner_tests`.
@@ -31,6 +33,8 @@ what comes next.
   `UKIYO_CATALOG_DIR` overrides.
 - `tools/catalog/seed_xt5.py LOCAL_DIR [--force]` — seeds `catalog/x-t5.json` and the fake shape
   from `local/` dumps.
+- `tools/art/camera_art.py [SRC_ROOT]` — builds the Hub camera art (`app/src/assets/camera/`)
+  from the generated drawings in `image-output.local/` (not in git). `uv run -q camera_art.py`.
 - `tools/ptp/` — Python discovery scripts (uv inline deps, pyusb). Run from that directory with
   `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib uv run -q <script>.py`.
   - `read_presets.py` — read C1-C7 (RAW CONV. mode).
