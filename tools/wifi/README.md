@@ -31,7 +31,7 @@ About 30-45 minutes. The camera needs a charged battery and a card with a few re
 |---|---|---|---|
 | Pre-flight | Type the Wi-Fi name if macOS hides it | Records the network, other routes, internet | 1 min |
 | Bluetooth | Bluetooth ON; close XApp; optional PAIRING REGISTRATION screen, then BACK | Scans, lists GATT services, reads safe values | 3-5 min |
-| Wireless tether | Note CONNECTION MODE; set ACCESS POINT SETTING; AUTO POWER OFF 1 MIN; select WIRELESS TETHER SHOOTING FIXED | Discovers the camera, runs the PTP suite below | 15-25 min |
+| Wireless tether | Note CONNECTION MODE; set ACCESS POINT SETTING; AUTO POWER OFF to OFF; select WIRELESS TETHER SHOOTING FIXED; AUTO POWER OFF 1 MIN for the last test | Discovers the camera, runs the PTP suite below | 15-25 min |
 | Smartphone | Start XApp Remote on the phone; optional: type the camera network's password | Scans for the camera's network; read-only probe if it can join | 3-5 min |
 | End | Set CONNECTION MODE and AUTO POWER OFF back | Rejoins the original Wi-Fi, checks the internet, shows the summary | 2 min |
 
