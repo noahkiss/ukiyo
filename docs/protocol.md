@@ -53,7 +53,8 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
 - What does reset it (2026-10-17, D381 at 15 s, one action every 5 s): changing D381 to another
   value and back, and a half-press (D208 = 0x0200 + InitiateCapture, then D208 = 0x0004 +
   InitiateCapture; the lens refocuses). GetDeviceInfo, GetStorageIDs and rewriting D381 with its
-  own value do not. A write just after the half-press release answered 0x2019 once; retry it.
+  own value do not. After a half-press release, reads answer at once but writes answer 0x2019
+  for 0.13-0.22 s (five trials); queue writes and retry with a ~100-250 ms backoff.
 - PC priority (D207 = 2) does not keep it awake either (slept at 15 s). `docs/fuji-vendor-ptp.md`
   found no keep-alive operation in any source, Fuji's SDK included.
 - D212 (the change-event list) read count 0 at rest, even while D22F changed. Not yet read
