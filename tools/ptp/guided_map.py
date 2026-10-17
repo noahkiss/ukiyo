@@ -43,7 +43,9 @@ Output, in local/mapping/ (gitignored, it holds this camera's values):
   <date>-<name>-summary.md      the summary table
   <date>-<name>-proposed.json   RFC 6902 JSON Patch against catalog/<model>.json, for review
 
-Writes: only AUTO POWER OFF (D381). Every 10 s it goes to OFF (3) and back to the owner's value,
+Writes: only AUTO POWER OFF (D381). Every 10 s it goes to a neighbouring timeout (5 min, or 2 min
+when the owner's is 5 min) and back to the owner's value, so a crash between the two writes never
+leaves the camera at OFF. This
 which resets the power-off timer (docs/protocol.md, "Camera state and power"). A finally block
 restores it, retrying 0x2019 and 0xA001 with a 250 ms backoff. If the owner's value is already
 OFF, nothing is written.
@@ -71,7 +73,8 @@ OUT_DIR = REPO / "local" / "mapping"
 
 OK, BUSY, NOT_SUPPORTED, MENU = 0x2001, 0x2019, 0x200A, 0xA001
 SCREEN, STILL_MOVIE, AUTO_POWER_OFF = 0xD22E, 0xD307, 0xD381
-APO_AWAKE = 3  # AUTO POWER OFF: OFF
+APO_OFF = 3  # AUTO POWER OFF: OFF
+APO_5MIN, APO_2MIN = 1, 2
 KEEPALIVE_S = 10
 BASELINE_S = 5
 MENU_PATIENCE_S = 5
@@ -272,7 +275,7 @@ class Dialogs:
 
 
 class KeepAwake:
-    """Resets the auto power off timer: D381 to OFF and back to the owner's value, every 10 s."""
+    """Resets the auto power off timer: D381 to a neighbouring timeout and back, every 10 s."""
 
     def __init__(self, cam):
         self.cam = cam
@@ -282,6 +285,7 @@ class KeepAwake:
         self.dirty = False
         self.last = time.monotonic()
         self.toggles = 0
+        self.other = APO_2MIN if self.owner == APO_5MIN else APO_5MIN
 
     def write(self, value, patience):
         """Write D381 and read it back, retrying busy (0x2019) and menu (0xA001) every 250 ms."""
@@ -299,10 +303,10 @@ class KeepAwake:
     def tick(self):
         if self.dirty:
             self.restore(10)
-        if self.owner == APO_AWAKE or time.monotonic() - self.last < KEEPALIVE_S:
+        if self.owner == APO_OFF or time.monotonic() - self.last < KEEPALIVE_S:
             return
         self.last = time.monotonic()
-        if self.cam.write_u16(AUTO_POWER_OFF, APO_AWAKE) != OK:
+        if self.cam.write_u16(AUTO_POWER_OFF, self.other) != OK:
             # A menu is open (the owner's presses keep it awake) or the camera is busy: try in 1 s.
             self.last = time.monotonic() - KEEPALIVE_S + 1
             return
@@ -316,7 +320,7 @@ class KeepAwake:
         if self.write(self.owner, patience):
             self.dirty = False
             return True
-        print("! AUTO POWER OFF still at OFF; retrying (close any menu)", file=sys.stderr)
+        print("! AUTO POWER OFF not back to your value yet; retrying (close any menu)", file=sys.stderr)
         return False
 
 
@@ -506,7 +510,7 @@ class Session:
             "screen shows, then click Done. Skip a step you cannot do; Stop ends the session.\n"
             "- While a menu is open the camera answers no reads, so the script waits for the "
             "shooting screen.\n"
-            "- The script keeps the camera awake by switching AUTO POWER OFF to OFF and back every "
+            "- The script keeps the camera awake by switching AUTO POWER OFF to another timeout and back every "
             "10 seconds, and puts your value back at the end.")
         if self.ui.ask(intro, ["Stop", "Start"]) != "Start":
             return
@@ -515,7 +519,7 @@ class Session:
             sys.exit("The STILL/MOVIE switch is on MOVIE; set it to STILL and run again.")
         self.keep = KeepAwake(self.cam)
         print(f"AUTO POWER OFF is {self.show(AUTO_POWER_OFF, self.keep.owner)}"
-              + ("; no keep-alive needed" if self.keep.owner == APO_AWAKE else "; keep-alive every 10 s"))
+              + ("; no keep-alive needed" if self.keep.owner == APO_OFF else "; keep-alive every 10 s"))
         self.log = open(OUT_DIR / f"{stem}.jsonl", "a")
         try:
             self.start = self.baseline()
