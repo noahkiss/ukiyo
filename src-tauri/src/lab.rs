@@ -388,3 +388,50 @@ fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>
         Event::Log(line) => write_log(log, serde_json::json!({ "kind": "log", "text": line })),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The whole Lab on the fake camera, in real time: connect, label, export, shut down.
+    #[test]
+    fn lab_on_the_fake_camera() {
+        std::env::set_var("UKIYO_FAKE_CAMERA", "1");
+        let data = tempfile::tempdir().unwrap();
+        let cats = tempfile::tempdir().unwrap();
+        let lab = Lab::start(data.path().into(), cats.path().into(), |_| {});
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while lab.snapshot().status.link != Link::Connected || lab.snapshot().rows.is_empty() {
+            assert!(std::time::Instant::now() < deadline, "fake camera never connected");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let snap = lab.snapshot();
+        assert!(snap.fake);
+        assert_eq!(snap.status.model.as_deref(), Some("X-T5"));
+
+        let cat = lab
+            .label(LabelPatch {
+                code: 0xD1B2,
+                name: Some("JpegHeif".into()),
+                values: vec![("7".into(), "JPEG".into())],
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(cat.properties["0xd1b2"].name.as_deref(), Some("JpegHeif"));
+        let saved = Catalog::load(&cats.path().join("x-t5.json")).unwrap();
+        assert_eq!(saved.properties["0xd1b2"].values["7"], "JPEG");
+        assert_eq!(saved.firmware, ["9.99"]);
+
+        let out = lab.write(0xD023, Value::Int(2));
+        assert!(out.ok, "{out:?}");
+        let path = lab.export().unwrap();
+        let dump: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(dump["model"], "X-T5");
+
+        lab.shutdown();
+        let log = std::fs::read_to_string(snap.session_path.unwrap()).unwrap();
+        for kind in ["\"start\"", "\"status\"", "\"label\"", "\"write\"", "\"export\"", "\"stop\""] {
+            assert!(log.contains(kind), "session log lacks {kind}");
+        }
+    }
+}
