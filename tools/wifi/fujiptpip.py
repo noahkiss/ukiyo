@@ -7,6 +7,8 @@ Only the first packet is PTP/IP. After it, every packet is a USB-style container
 u32 length, u16 type (1 command, 2 data, 3 response, 4 event), u16 code, u32 transaction id,
 then parameters or payload.
 """
+import errno
+import os
 import socket
 import struct
 import time
@@ -216,6 +218,20 @@ def parse_init_ack(payload):
     return {"conn": conn, "guid": payload[4:20].hex(), "name": name}
 
 
+# The X-T5 refuses an init whose GUID it does not expect (INIT_FAIL 0x201D). Capture One 16.5 sends
+# these 12 bytes, then the camera's IPv4 address as a little-endian u32 (observed 2026-10-17);
+# libfuji uses the same 12 bytes with a zero last word.
+FUJI_GUID_PREFIX = bytes.fromhex("ada5485d87b27f0bd3d5ded0")
+
+
+def fuji_guid(host):
+    try:
+        tail = socket.inet_aton(host)[::-1]
+    except OSError:
+        tail = b"\x00" * 4
+    return FUJI_GUID_PREFIX + tail
+
+
 def build_init(name, guid):
     """The fixed 82-byte Fuji init command request."""
     body = struct.pack("<I", FUJI_INIT_VERSION) + guid
@@ -266,8 +282,73 @@ def recv_packet(sock):
     return head + recv_exact(sock, length - 4)
 
 
+class NcSock:
+    """A TCP connection through /usr/bin/nc, with the socket calls this module uses.
+
+    macOS Local Network privacy can deny a Python process outgoing LAN connections
+    (EHOSTUNREACH) with no prompt, while Apple's own nc is allowed. Talking to nc over pipes
+    keeps the PTP code unchanged."""
+
+    def __init__(self, host, port, timeout):
+        import subprocess
+        self.timeout = timeout
+        self.p = subprocess.Popen(["/usr/bin/nc", "-v", "-G", str(max(int(timeout), 1)), host, str(port)],
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  bufsize=0)
+        line = self._stderr_line(timeout + 2)
+        if "succeeded" not in line:
+            self.close()
+            raise OSError(f"nc: {line.strip() or 'no answer'}")
+
+    def _stderr_line(self, timeout):
+        import select
+        buf = b""
+        end = time.monotonic() + timeout
+        while not buf.endswith(b"\n") and time.monotonic() < end:
+            r, _, _ = select.select([self.p.stderr], [], [], max(end - time.monotonic(), 0))
+            if not r:
+                break
+            c = os.read(self.p.stderr.fileno(), 1)
+            if not c:
+                break
+            buf += c
+        return buf.decode("utf-8", "replace")
+
+    def settimeout(self, t):
+        self.timeout = t
+
+    def setsockopt(self, *a):
+        pass
+
+    def sendall(self, data):
+        try:
+            self.p.stdin.write(data)
+        except BrokenPipeError as e:
+            raise OSError("nc closed") from e
+
+    def recv(self, n):
+        import select
+        r, _, _ = select.select([self.p.stdout], [], [], self.timeout)
+        if not r:
+            raise socket.timeout("timed out")
+        return os.read(self.p.stdout.fileno(), n)
+
+    def close(self):
+        for f in (self.p.stdin, self.p.stdout, self.p.stderr):
+            try:
+                f.close()
+            except OSError:
+                pass
+        try:
+            self.p.terminate()
+            self.p.wait(2)
+        except Exception:  # noqa: BLE001 - best effort
+            self.p.kill()
+
+
 def connect(host, port, timeout, attempts=3, spacing=2.0, log=None):
-    """TCP connect with a few spaced attempts. Never a tight loop."""
+    """TCP connect with a few spaced attempts. Never a tight loop. Falls back to nc when macOS
+    denies this process the local network (EHOSTUNREACH at once)."""
     last = None
     for i in range(attempts):
         if i:
@@ -280,6 +361,16 @@ def connect(host, port, timeout, attempts=3, spacing=2.0, log=None):
             last = e
             if log:
                 log("tcp_connect_fail", host=host, port=port, attempt=i + 1, error=str(e))
+            if e.errno == errno.EHOSTUNREACH:
+                try:
+                    s = NcSock(host, port, timeout)
+                    if log:
+                        log("nc_relay", host=host, port=port)
+                    return s
+                except OSError as e2:
+                    last = e2
+                    if log:
+                        log("nc_relay_fail", host=host, port=port, error=str(e2))
     raise PTPError(f"connect {host}:{port} failed: {last}")
 
 
@@ -289,7 +380,7 @@ class Session:
     def __init__(self, host, port=CMD_PORT, name="ukiyo-wifi-test", timeout=8.0, log=None, guid=None):
         self.host, self.port, self.name, self.timeout = host, port, name, timeout
         self.log = log or (lambda *a, **k: None)
-        self.guid = guid or uuid.uuid5(uuid.NAMESPACE_DNS, "ukiyo.wifi-test").bytes
+        self.guid = guid or fuji_guid(host)
         self.sock = None
         self.tid = 0
         self.open = False
@@ -313,6 +404,22 @@ class Session:
                 time.sleep(0.1)  # libfuji: Fuji cameras need >= 50 ms before OpenSession
                 return ack
             self.log("init_fail", attempt=i + 1, ms=round(ms, 1), type=ptype, raw=raw.hex())
+            reason = struct.unpack_from("<I", raw, 8)[0] if len(raw) >= 12 else None
+            if reason == 0x2019:
+                # Busy: Capture One resends the init on the same socket, and the camera then accepts.
+                # Closing instead makes the camera stop listening.
+                for _ in range(4):
+                    time.sleep(1.0)
+                    self.sock.sendall(build_init(self.name, self.guid))
+                    raw = recv_packet(self.sock)
+                    length, ptype = struct.unpack_from("<II", raw, 0)
+                    if ptype == INIT_CMD_ACK:
+                        ack = parse_init_ack(raw[8:])
+                        self.log("init_ack", attempt=i + 1, resent=True, length=length, conn=ack["conn"],
+                                 camera_name=ack["name"])
+                        time.sleep(0.1)
+                        return ack
+                    self.log("init_fail", attempt=i + 1, resent=True, type=ptype, raw=raw.hex())
             self.sock.close()
             self.sock = None
         raise PTPError("camera refused the init request (INIT_FAIL) on every attempt")
@@ -435,12 +542,26 @@ def discover_tether(local_ip, broadcasts, wait_s, log, pcss_port=PCSS_PORT, teth
             except socket.timeout:
                 continue
             conn.settimeout(5.0)
+            raw = b""
             try:
-                text = conn.recv(2048).decode("utf-8", "replace")
-                inv = parse_invite(text)
-                conn.sendall(b"HTTP/1.1 200 OK\r\n")
+                # Read until the blank line that ends the message: one recv can return nothing yet.
+                t_end = time.monotonic() + 5.0
+                while b"\r\n\r\n" not in raw and time.monotonic() < t_end:
+                    try:
+                        chunk = conn.recv(2048)
+                    except socket.timeout:
+                        break
+                    if not chunk:
+                        break
+                    raw += chunk
+                inv = parse_invite(raw.decode("utf-8", "replace"))
+                if "DSCPORT" in inv:
+                    conn.sendall(b"HTTP/1.1 200 OK\r\n")
             finally:
                 conn.close()
+            if "DSCPORT" not in inv:
+                log("tether_invite_incomplete", from_ip=addr[0], bytes=len(raw), first_line=inv["first_line"])
+                continue
             ip = inv.get("DSC") or addr[0]
             port = int(inv.get("DSCPORT") or CMD_PORT)
             log("tether_invite", from_ip=addr[0], dsc_ip=ip, port=port, camera=inv.get("CAMERANAME", ""),

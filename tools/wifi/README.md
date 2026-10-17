@@ -15,9 +15,9 @@ uv run -q run_wifi_tests.py
 macOS dialog. Done means you did the step; Skip leaves it out; Stop ends the run. Stop still
 rejoins the original Wi-Fi and writes the summary.
 
-Run it from Terminal.app or another app that has Local Network permission. Inside zellij,
-macOS blocks outgoing LAN connections without a prompt, so discovery works but the connect to the
-camera fails with "No route to host". The pre-flight check stops the run when it sees this.
+macOS can deny Python outgoing LAN connections ("No route to host") with no prompt, inside
+zellij and outside. `fujiptpip.connect` then falls back to Apple's `/usr/bin/nc` over pipes,
+which macOS allows.
 
 Allow these macOS prompts for your terminal app when they appear:
 
@@ -95,6 +95,7 @@ uses no Bluetooth. Options for a dry run:
 | File | Role |
 |---|---|
 | `run_wifi_tests.py` | The entry point: flow, dialogs, logging, redaction, summary |
+| `tether_probe.py` | Read-only wireless tether probe with no dialogs: discovery, the Fuji init, DeviceInfo, a few reads, storage. `uv run -q tether_probe.py [--wait S]` |
 | `fujiptpip.py` | Fuji PTP over TCP: framing, datasets, session, wireless tether discovery |
 | `macnet.py` | Wi-Fi state, join, rejoin, internet check, notifications |
 | `ble.py` | Read-only Bluetooth survey (bleak) |

@@ -56,9 +56,26 @@ From lf `discovery.c`:
    `CAMERANAME: <model>`, `DSCPORT: <port>`.
 3. The client answers `HTTP/1.1 200 OK` and connects to the camera on that port.
 
-Observed on our X-T5 (fw 4.31, 2026-10-17): discovery found the camera in 6.9 s. Its message
-starts `NOTIFY * HTTP/1.1` and offers DSCPORT 15740, the standard PTP/IP port. The connect to
-15740 is not tested yet.
+Observed on our X-T5 (fw 4.31, 2026-10-17; `tools/wifi/tether_probe.py`, and a packet capture of
+Capture One 16.5):
+
+- Discovery found the camera in 5-7 s. Its message starts `NOTIFY * HTTP/1.1` and offers
+  DSCPORT 15740, the standard PTP/IP port. One TCP connection carries everything; Capture One
+  opened no event or live view socket.
+- The init is the Fuji 82-byte request (version 0x8F53E4F2). The camera checks the GUID: it must
+  be `ada5485d87b27f0bd3d5ded0` followed by the camera's IPv4 address as a little-endian u32.
+  libfuji uses the same 12 bytes with a zero tail. Any other GUID, and the standard PTP/IP init,
+  get INIT_FAIL with reason 0x201D (invalid parameter) at once.
+- The first correct init gets INIT_FAIL 0x2019 (busy). Resend it on the same socket after about
+  1 s; the camera then acks. Closing the socket instead makes the camera stop listening until
+  CONNECTION MODE is set again.
+- Then plain PTP: OpenSession, GetDeviceInfo (FUJIFILM, X-T5, 4.31, 23 operations, 264
+  properties, the USB tether set), D16E reads 5 (tether). No on-camera prompt appeared.
+- Storage is the tether buffer, not the card: two storages, "Still" and "Live", with all-ones
+  capacity and free space, and zero objects. **Wireless tether gives no access to the card's
+  photos**, so image transfer needs the smartphone mode or USB.
+- Capture One writes D38C = 1 about every 1.5 s for the whole session (gphoto2 calls D38C "PC
+  Mode"). Whether that holds the session or the camera awake is untested.
 
 After the init, wireless tether is plain USB-tether PTP: OpenSession, GetDeviceInfo, and
 D16E (USB mode) (lf `fuji_usb.c`).
@@ -114,9 +131,8 @@ connected, and a read-only probe (no DF01 write) if the owner can supply the net
 
 ## Open questions
 
-1. Does the X-T5 in wireless tether mode list the card's photos, or only the SDRAM buffer that
-   tethered capture fills? If only the buffer, image transfer must use the smartphone mode.
-2. Does the X-T5 answer GetDeviceInfo over Wi-Fi, or send it empty like the X-T4?
+1. Answered 2026-10-17: wireless tether lists only the tether buffer, not the card.
+2. Answered 2026-10-17: GetDeviceInfo answers in full over wireless tether.
 3. Which of the 264 USB tether properties answer over Wi-Fi, and are they writable?
 4. Does a Wi-Fi session hold the camera awake, unlike USB?
 5. What transfer rate does each band give (WIRELESS COM. FREQUENCY SETTING: 2.4 GHz vs 5 GHz)?
