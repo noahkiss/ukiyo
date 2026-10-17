@@ -638,3 +638,67 @@ fn a_write_busy_for_too_long_fails_as_busy() {
     assert_eq!(r.owner.status().link, Link::Connected);
     assert_eq!(out.readback, Some(Value::Int(1)), "read back anyway");
 }
+
+fn slot_op(r: &mut Rig, op: SlotOp) -> SlotOutcome {
+    let (tx, rx) = channel();
+    r.tx.send(Request::Slot { op, actor: Some("cli".into()), reply: tx }).unwrap();
+    r.owner.step();
+    rx.recv().unwrap()
+}
+
+#[test]
+fn slot_reads_select_each_slot_and_restore_the_selector() {
+    use crate::recipes::slot;
+    let mut r = rig_with(FakeMode::RawConv, |c| c.with(|s| s.props.get_mut(&SLOT_SELECT).unwrap().value = Value::Int(4)));
+    r.connect();
+    let t0 = r.now();
+    let out = slot_op(&mut r, SlotOp::Read { slots: vec![1, 2], fields: vec![(slot::NAME, slot::STRING), (slot::FILM_SIM, slot::UINT16), (slot::HIGHLIGHT, slot::INT16)] });
+    assert_eq!((out.refused.as_deref(), out.selected, out.restored), (None, Some(4), true), "{out:?}");
+    assert_eq!(out.reads[0].fields[0].1, Some(Value::Str("FAKE CHROME".into())));
+    assert_eq!(out.reads[0].fields[2].1, Some(Value::Int(-10)), "int16 decodes signed");
+    assert_eq!(out.reads[1].fields[1].1, Some(Value::Int(14)));
+    let selects = r.ops_since(t0).iter().filter(|o| o.code == ptp::OP_SET_PROP_VALUE && o.param == Some(SLOT_SELECT as u32)).count();
+    assert_eq!(selects, 3, "select C1, select C2, restore");
+    assert_eq!(r.cam.value(SLOT_SELECT), Some(Value::Int(4)));
+}
+
+#[test]
+fn slot_writes_read_back_and_stop_at_the_first_refusal() {
+    use crate::recipes::slot;
+    let mut r = rig_with(FakeMode::RawConv, |_| {});
+    r.connect();
+    // C3 holds PROVIA: Monochromatic Color is refused (0x201C) until a monochrome simulation.
+    let out = slot_op(&mut r, SlotOp::Write { slot: 3, writes: vec![(slot::GRAIN, slot::UINT16, Value::Int(3)), (slot::MONO_WC, slot::INT16, Value::Int(30)), (slot::COLOR, slot::INT16, Value::Int(10))] });
+    assert!(out.restored);
+    assert_eq!(out.writes.len(), 2, "stops at the refused write: {out:?}");
+    assert!(out.writes[0].ok && out.writes[0].readback == Some(Value::Int(3)));
+    assert_eq!(out.writes[0].before, Some(Value::Int(6)));
+    assert_eq!(out.writes[1].rc, Some(0x201C));
+    assert_eq!(r.cam.slot_value(3, slot::GRAIN), Some(Value::Int(3)));
+    assert_eq!(r.cam.slot_value(1, slot::GRAIN), Some(Value::Int(2)), "other slots untouched");
+    let out = slot_op(&mut r, SlotOp::Write { slot: 3, writes: vec![(slot::FILM_SIM, slot::UINT16, Value::Int(12)), (slot::MONO_WC, slot::INT16, Value::Int(30))] });
+    assert!(out.writes.iter().all(|w| w.ok), "{out:?}");
+    assert_eq!(r.cam.slot_value(3, slot::MONO_WC), Some(Value::Int(30)));
+}
+
+#[test]
+fn slot_requests_need_raw_conv_mode() {
+    let mut r = rig();
+    r.connect();
+    let out = slot_op(&mut r, SlotOp::Read { slots: vec![1], fields: vec![] });
+    assert_eq!(out.refused.as_deref(), Some(refusal::NOT_RAWCONV));
+}
+
+#[test]
+fn the_fake_refuses_mono_color_under_a_colour_simulation_and_acros_resets_color() {
+    let mut r = rig();
+    r.connect();
+    r.cam.set(0xD001, Value::Int(1));
+    r.cam.set(0xD008, Value::Int(20));
+    assert_eq!(r.write(0xD104, 0).rc, Some(0x201C));
+    assert!(r.write(0xD001, 12).ok);
+    assert_eq!(r.cam.value(0xD008), Some(Value::Int(0)), "ACROS sets Color to 0");
+    assert!(r.write(0xD104, 30).ok, "a monochrome simulation takes Monochromatic Color");
+    assert!(r.write(0xD1B2, 18).ok);
+    assert_eq!(r.cam.value(0xD032), Some(Value::Int(0)), "HEIF sets Clarity to 0");
+}

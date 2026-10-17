@@ -104,7 +104,7 @@ fn two_serves_one_wins() {
 fn write_via_plan(c: &Client, code: &str, value: &str) -> crate::plan::Applied {
     let mut set = indexmap::IndexMap::new();
     set.insert(code.to_string(), value.to_string());
-    let Response::PlanCreate(p) = c.call(Request::PlanCreate { set, allow_unconfirmed: true, from: None }).unwrap() else { panic!() };
+    let Response::PlanCreate(p) = c.call(Request::PlanCreate { set, allow_unconfirmed: true, from: None, slot: None }).unwrap() else { panic!() };
     let Response::PlanApply(out) = c.call(Request::PlanApply { plan_id: p.plan_id.clone() }).unwrap() else { panic!() };
     *out
 }

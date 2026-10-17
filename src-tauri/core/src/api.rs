@@ -52,8 +52,14 @@ pub enum Request {
     LabNote { group: Option<u32>, text: String },
     /// Drives the fake camera (`UKIYO_FAKE_CAMERA=1` only).
     LabFake { action: FakeAction },
-    /// Parses pasted recipe text into slot settings, notes and per-field warnings.
-    RecipeParse { text: String },
+    /// Parses recipe text, or the recipe post at a URL, into slot settings, notes and
+    /// per-field warnings. Exactly one of `text` and `url`. Stores nothing.
+    RecipeParse {
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
+        url: Option<String>,
+    },
     /// Builds a plan against the live camera: names or codes to labels or raw values.
     /// Writes nothing.
     PlanCreate {
@@ -61,9 +67,13 @@ pub enum Request {
         set: IndexMap<String, String>,
         #[serde(default)]
         allow_unconfirmed: bool,
-        /// A library item to plan instead of `set`: `preset:<slug>` or `snapshot:<slug>`.
+        /// A library item to plan instead of `set`: `preset:<slug>`, `snapshot:<slug>`, or a
+        /// recipe (`recipe:<slug>`, `cat:<id>`) with `slot`.
         #[serde(default)]
         from: Option<String>,
+        /// The custom slot a recipe goes to: `C1` to `C7`.
+        #[serde(default)]
+        slot: Option<String>,
     },
     /// A stored plan, with its time left.
     PlanShow { plan_id: String },
@@ -353,8 +363,40 @@ pub mod call {
         lab.fake(action).map_err(|message| Error::new(ErrorCode::NoFakeCamera, message))
     }
 
-    pub fn recipe_parse(text: &str) -> Parsed {
-        recipes::parse_text(text)
+    /// Text is parsed at once; a URL is fetched first (at most 20 s), so call it off the
+    /// main thread.
+    pub fn recipe_parse(text: Option<&str>, url: Option<&str>) -> Result<Parsed, Error> {
+        match (text.filter(|t| !t.trim().is_empty()), url.filter(|u| !u.trim().is_empty())) {
+            (Some(t), None) => Ok(recipes::parse_text(t)),
+            (None, Some(u)) => recipes::fetch::parse_url(u).map_err(|e| match e {
+                recipes::fetch::FetchError::BadUrl(m) => Error::new(ErrorCode::BadRequest, m),
+                recipes::fetch::FetchError::Failed(m) => Error::new(ErrorCode::Failed, format!("the post could not be read: {m}")).hint("Check the link, or paste the recipe's text instead."),
+            }),
+            _ => Err(Error::new(ErrorCode::BadRequest, "recipe_parse takes exactly one of text and url")),
+        }
+    }
+
+    /// `slot:C1` .. `slot:C7` or `slots`, read from the camera (RAW CONV. mode). With
+    /// `compare_to` (a recipe id), the slot's settings against that recipe.
+    pub fn slot_read(lab: &Lab, actor: &str, id: &str, compare_to: Option<&str>) -> Result<library::Read, Error> {
+        let slots: Vec<u8> = match library::Id::parse(id)? {
+            library::Id::Slot(n) => vec![n],
+            library::Id::Slots => (1..=7).collect(),
+            _ => return Err(Error::new(ErrorCode::NotFound, format!("{id} is not a slot id"))),
+        };
+        let views = lab.read_slots(actor, slots)?;
+        if let Some(b) = compare_to {
+            let v = views.first().ok_or_else(|| Error::new(ErrorCode::Failed, "the slot read returned nothing"))?;
+            let (_, s) = Store::new(lab.data_dir()).recipe_settings(b)?;
+            return Ok(library::Read::RecipeDiff(library::recipes::diff(&v.id, &v.settings, b, &s)));
+        }
+        Ok(library::Read::Slots(views))
+    }
+
+    /// Whether `library_read` must go to the camera.
+    pub fn is_slot_id(id: &str) -> bool {
+        let id = id.trim();
+        id == "slots" || id.starts_with("slot:")
     }
 
     pub fn plan_create(lab: &Lab, input: PlanInput) -> Result<Plan, Error> {
@@ -446,8 +488,8 @@ pub fn dispatch(lab: &Lab, actor: &str, req: Request) -> Result<Response, Error>
             call::lab_fake(lab, action)?;
             Response::LabFake
         }
-        Request::RecipeParse { text } => Response::RecipeParse(Box::new(call::recipe_parse(&text))),
-        Request::PlanCreate { set, allow_unconfirmed, from } => Response::PlanCreate(Box::new(call::plan_create(lab, PlanInput { set, allow_unconfirmed, from })?)),
+        Request::RecipeParse { text, url } => Response::RecipeParse(Box::new(call::recipe_parse(text.as_deref(), url.as_deref())?)),
+        Request::PlanCreate { set, allow_unconfirmed, from, slot } => Response::PlanCreate(Box::new(call::plan_create(lab, PlanInput { set, allow_unconfirmed, from, slot })?)),
         Request::PlanShow { plan_id } => Response::PlanShow(Box::new(call::plan_show(lab, &plan_id)?)),
         Request::PlanApply { plan_id } => Response::PlanApply(Box::new(call::plan_apply(lab, actor, &plan_id)?)),
         Request::PlanDiscard { plan_id } => {
@@ -456,6 +498,7 @@ pub fn dispatch(lab: &Lab, actor: &str, req: Request) -> Result<Response, Error>
         }
         Request::Activity => Response::Activity,
         Request::LibrarySearch(input) => Response::LibrarySearch(call::library_search(lab.data_dir(), &input)),
+        Request::LibraryRead { id, compare_to } if call::is_slot_id(&id) => Response::LibraryRead(Box::new(call::slot_read(lab, actor, &id, compare_to.as_deref())?)),
         Request::LibraryRead { id, compare_to } => Response::LibraryRead(Box::new(call::library_read(lab.data_dir(), &id, compare_to.as_deref())?)),
         Request::LibrarySave(input) => {
             let snap = save_needs_camera(&input).then(|| lab.snapshot());
@@ -526,13 +569,13 @@ mod tests {
             Request::LabLabel { patch: LabelPatch::default() },
             Request::LabNote { group: None, text: String::new() },
             Request::LabFake { action: FakeAction::Nudge },
-            Request::RecipeParse { text: String::new() },
-            Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false, from: None },
+            Request::RecipeParse { text: None, url: None },
+            Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false, from: None, slot: None },
             Request::PlanShow { plan_id: String::new() },
             Request::PlanApply { plan_id: String::new() },
             Request::PlanDiscard { plan_id: String::new() },
             Request::Activity,
-            Request::LibrarySearch(SearchInput { kind: library::SearchKind::Preset, query: None, limit: None }),
+            Request::LibrarySearch(SearchInput::default()),
             Request::LibraryRead { id: "prefs".into(), compare_to: None },
             Request::LibrarySave(SaveInput { kind: library::SaveKind::Prefs, name: None, item: None, from: None }),
             Request::LibraryDelete { id: String::new() },

@@ -120,6 +120,9 @@ pub struct FakeState {
     pub main_menu: bool,
     /// D208 at each InitiateCapture: 0x0200 half-press, 0x0004 release.
     pub gestures: Vec<i64>,
+    /// The C1-C7 custom slots: D18D and D18E-D1A5 per slot. D18C selects which one those
+    /// codes read and write.
+    pub slots: Vec<BTreeMap<u16, Value>>,
     /// The session generation: a transport from an earlier claim is dead.
     generation: u64,
     seed: u64,
@@ -129,8 +132,140 @@ const D22E: u16 = 0xD22E;
 const D307: u16 = 0xD307;
 const D381: u16 = 0xD381;
 const D208: u16 = 0xD208;
+const D18C: u16 = 0xD18C;
+const LIVE_FILM_SIM: u16 = 0xD001;
+const LIVE_COLOR: u16 = 0xD008;
+const LIVE_CLARITY: u16 = 0xD032;
+const FILE_TYPE: u16 = 0xD1B2;
+const LIVE_MONO_WC: u16 = 0xD104;
+const LIVE_MONO_MG: u16 = 0xD031;
+
+/// D18D and D18E-D1A5: the codes that read and write the selected slot.
+fn is_slot_code(code: u16) -> bool {
+    code == 0xD18D || (0xD18E..=0xD1A5).contains(&code)
+}
+
+/// A slot as the fake ships it: made-up values in the slot encoding, the camera's defaults
+/// elsewhere (grain reads 6 for OFF on a default slot, as ptp-recipes reports).
+fn fake_slot(n: usize) -> BTreeMap<u16, Value> {
+    use crate::recipes::slot::*;
+    let mut m: BTreeMap<u16, Value> = [
+        (NAME, Value::Str(String::new())),
+        (0xD18E, Value::Int(7)),
+        (0xD18F, Value::Int(4)),
+        (DRANGE, Value::Int(100)),
+        (DRP, Value::Int(0)),
+        (FILM_SIM, Value::Int(1)),
+        (MONO_WC, Value::Int(0)),
+        (MONO_MG, Value::Int(0)),
+        (GRAIN, Value::Int(6)),
+        (COLOR_CHROME, Value::Int(1)),
+        (FX_BLUE, Value::Int(1)),
+        (SMOOTH_SKIN, Value::Int(1)),
+        (WB, Value::Int(2)),
+        (WB_SHIFT_R, Value::Int(0)),
+        (WB_SHIFT_B, Value::Int(0)),
+        (KELVIN, Value::Int(5600)),
+        (HIGHLIGHT, Value::Int(0)),
+        (SHADOW, Value::Int(0)),
+        (COLOR, Value::Int(0)),
+        (SHARPNESS, Value::Int(0)),
+        (HIGH_ISO_NR, Value::Int(8192)),
+        (CLARITY, Value::Int(0)),
+        (0xD1A3, Value::Int(1)),
+        (0xD1A4, Value::Int(1)),
+        (0xD1A5, Value::Int(16)),
+    ]
+    .into_iter()
+    .collect();
+    // Two slots hold a recipe, so a read has something to show.
+    if n == 0 {
+        for (c, v) in [(FILM_SIM, 11), (GRAIN, 2), (COLOR_CHROME, 2), (HIGHLIGHT, -10), (SHADOW, 10), (COLOR, 20), (WB_SHIFT_R, 2), (WB_SHIFT_B, -4)] {
+            m.insert(c, Value::Int(v));
+        }
+        m.insert(NAME, Value::Str("FAKE CHROME".into()));
+    }
+    if n == 1 {
+        for (c, v) in [(FILM_SIM, 14), (GRAIN, 5), (MONO_WC, 20), (MONO_MG, -10), (DRP, 32768), (DRANGE, 65535)] {
+            m.insert(c, Value::Int(v));
+        }
+        m.insert(NAME, Value::Str("FAKE MONO".into()));
+    }
+    m
+}
+
+/// Film simulations that take Monochromatic Color.
+fn mono_sim(v: &Value) -> bool {
+    matches!(v, Value::Int(n) if crate::recipes::slot::is_mono(*n))
+}
 
 impl FakeState {
+    fn slot_index(&self) -> usize {
+        match self.props.get(&D18C).map(|p| &p.value) {
+            Some(Value::Int(n)) if (1..=7).contains(n) => (*n - 1) as usize,
+            _ => 0,
+        }
+    }
+
+    /// A code's value: the selected slot's for a slot code.
+    fn value_of(&self, code: u16) -> Option<Value> {
+        if is_slot_code(code) {
+            return self.slots.get(self.slot_index()).and_then(|s| s.get(&code).cloned());
+        }
+        self.props.get(&code).map(|p| p.value.clone())
+    }
+
+    /// Why the camera refuses a write of `v` to `code` in this state (0x201C), as the X-T5
+    /// does: Monochromatic Color under a colour film simulation, the slot's dynamic range and
+    /// tones while its D-range priority is on, the slot grain value 6.
+    fn gate(&self, code: u16, v: &Value) -> Option<u16> {
+        use crate::recipes::slot as sl;
+        const INVALID: u16 = 0x201C;
+        let slot = |c: u16| self.slots.get(self.slot_index()).and_then(|s| s.get(&c).cloned());
+        let refused = match code {
+            LIVE_MONO_WC | LIVE_MONO_MG => !self.props.get(&LIVE_FILM_SIM).is_some_and(|p| mono_sim(&p.value)),
+            sl::MONO_WC | sl::MONO_MG => !slot(sl::FILM_SIM).is_some_and(|f| mono_sim(&f)),
+            sl::DRANGE | sl::HIGHLIGHT | sl::SHADOW => slot(sl::DRP).is_some_and(|d| d != Value::Int(0)),
+            sl::GRAIN => *v == Value::Int(6),
+            _ => false,
+        };
+        refused.then_some(INVALID)
+    }
+
+    /// The camera's own rules after a write: choosing a monochrome film simulation sets Color
+    /// to 0 (seen for ACROS) and opens the Monochromatic Color range; HEIF sets Clarity to 0.
+    fn after_write(&mut self, code: u16, v: &Value) {
+        match code {
+            LIVE_FILM_SIM => {
+                let mono = mono_sim(v) || *v == Value::Int(10);
+                if mono {
+                    if let Some(p) = self.props.get_mut(&LIVE_COLOR) {
+                        p.value = Value::Int(0);
+                    }
+                }
+                self.mono_ranges();
+            }
+            FILE_TYPE if *v == Value::Int(18) => {
+                if let Some(p) = self.props.get_mut(&LIVE_CLARITY) {
+                    p.value = Value::Int(0);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Monochromatic Color's range: -180 to 180 under a monochrome film simulation, 0 under
+    /// a colour one, as the descriptor reports.
+    fn mono_ranges(&mut self) {
+        let mono = self.props.get(&LIVE_FILM_SIM).is_some_and(|p| mono_sim(&p.value));
+        let r = if mono { 180 } else { 0 };
+        for c in [LIVE_MONO_WC, LIVE_MONO_MG] {
+            if let Some(p) = self.props.get_mut(&c) {
+                p.form = Form::Range { min: Value::Int(-r), max: Value::Int(r), step: Value::Int(10) };
+            }
+        }
+    }
+
     fn movie(&self) -> bool {
         matches!(self.props.get(&D307).map(|p| &p.value), Some(Value::Int(1)))
     }
@@ -202,7 +337,15 @@ impl FakeCamera {
         if let Some(p) = props.get_mut(&D22E) {
             p.value = Value::Int(1);
         }
-        let state = FakeState {
+        // The slot fields have no descriptor in RAW CONV. mode (the shape says datatype 0);
+        // the fake keeps them in their slot encoding, writable.
+        for (code, p) in props.iter_mut().filter(|(c, _)| is_slot_code(**c) && **c != 0xD18D) {
+            if let Some(t) = crate::recipes::slot::datatype(*code) {
+                p.datatype = t;
+                p.writable = true;
+            }
+        }
+        let mut state = FakeState {
             props,
             mode,
             model: shape.model,
@@ -223,9 +366,11 @@ impl FakeCamera {
             gone_after_writes: None,
             main_menu: false,
             gestures: Vec::new(),
+            slots: (0..7).map(fake_slot).collect(),
             generation: 0,
             seed: 0x9E37_79B9_7F4A_7C15,
         };
+        state.mono_ranges();
         Self {
             handle: FakeHandle { state: Arc::new(Mutex::new(state)), clock },
             op_cost: Duration::from_millis(2),
@@ -307,11 +452,20 @@ impl FakeHandle {
             if let Some(p) = s.props.get_mut(&code) {
                 p.value = v;
             }
+            if code == LIVE_FILM_SIM {
+                s.mono_ranges();
+            }
         })
     }
 
+    /// A code's value now; a slot code's in the selected slot.
     pub fn value(&self, code: u16) -> Option<Value> {
-        self.with(|s| s.props.get(&code).map(|p| p.value.clone()))
+        self.with(|s| s.value_of(code))
+    }
+
+    /// One field of slot `n` (1-7), whichever slot is selected.
+    pub fn slot_value(&self, n: usize, code: u16) -> Option<Value> {
+        self.with(|s| s.slots.get(n - 1).and_then(|m| m.get(&code).cloned()))
     }
 
     /// Auto power off: a second of 0x2019, then the camera leaves the bus.
@@ -523,7 +677,7 @@ impl Transport for FakeTransport {
                             current: p.value.clone(),
                             form: p.form.clone(),
                         })),
-                        ptp::OP_GET_PROP_VALUE => ok(ptp::encode_any(p.datatype, &p.value)),
+                        ptp::OP_GET_PROP_VALUE => ok(ptp::encode_any(p.datatype, &s.value_of(prop).unwrap_or(p.value))),
                         _ => {
                             if !p.writable {
                                 return rc(ptp::RC_ACCESS_DENIED);
@@ -543,13 +697,22 @@ impl Transport for FakeTransport {
                                 s.write_busy -= 1;
                                 return rc(ptp::RC_DEVICE_BUSY);
                             }
+                            if let Some(refused) = s.gate(prop, &v) {
+                                return rc(refused);
+                            }
                             let v = s.write_coerce.get(&prop).cloned().unwrap_or(v);
-                            let slot = &mut s.props.get_mut(&prop).unwrap().value;
-                            // Only a new D381 value restarts the timer; its own value does not.
-                            let restart = prop == D381 && *slot != v;
-                            *slot = v;
-                            if restart {
-                                s.idle_since = now;
+                            if is_slot_code(prop) {
+                                let i = s.slot_index();
+                                s.slots[i].insert(prop, v);
+                            } else {
+                                let slot = &mut s.props.get_mut(&prop).unwrap().value;
+                                // Only a new D381 value restarts the timer; its own value does not.
+                                let restart = prop == D381 && *slot != v;
+                                *slot = v.clone();
+                                if restart {
+                                    s.idle_since = now;
+                                }
+                                s.after_write(prop, &v);
                             }
                             if let Some(n) = s.gone_after_writes.as_mut() {
                                 if *n <= 1 {

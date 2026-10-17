@@ -187,7 +187,24 @@
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 20 = REALA ACE, 12 = ACROS and 17 = CLASSIC Neg. seen on the camera. Choosing ACROS sets Color (0xd008) to 0. 19 and 20 are not in libgphoto2; 19 is inferred from the enum length."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 20 = REALA ACE, 12 = ACROS and 17 = CLASSIC Neg. seen on the camera. Choosing ACROS sets Color (0xd008) to 0. 19 and 20 are not in libgphoto2; 19 is inferred from the enum length.",
+      "resets": [
+        {
+          "when": [
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "code": "0xd008",
+          "to": "0"
+        }
+      ]
     },
     "0xd007": {
       "name": "DRangeMode",
@@ -495,7 +512,23 @@
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: MG -2 reads -20. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. The range collapses to 0 with a colour film simulation."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: MG -2 reads -20. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. The range collapses to 0 with a colour film simulation.",
+      "requires": [
+        {
+          "code": "0xd001",
+          "values": [
+            "6",
+            "7",
+            "8",
+            "9",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "temp": "6"
+        }
+      ]
     },
     "0xd032": {
       "name": "Clarity",
@@ -591,7 +624,23 @@
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: WC +3 reads 30. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. libgphoto2 calls it BlackImageTone."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: WC +3 reads 30. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. libgphoto2 calls it BlackImageTone.",
+      "requires": [
+        {
+          "code": "0xd001",
+          "values": [
+            "6",
+            "7",
+            "8",
+            "9",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "temp": "6"
+        }
+      ]
     },
     "0xd106": {
       "name": "FrameGuideMode",
@@ -954,193 +1003,396 @@
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "The slot name. Plans write it last."
     },
     "0xd18e": {
       "name": "PresetImageSize",
+      "type": "uint16",
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Image size and aspect as one number (1-27, 28-30 INSTAX). Not a recipe setting; slot plans read it and never write it."
     },
     "0xd18f": {
       "name": "PresetImageQuality",
+      "type": "uint16",
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Not a recipe setting; slot plans read it and never write it."
     },
     "0xd190": {
       "name": "PresetDynamicRange",
+      "type": "uint16",
+      "values": {
+        "0": "AUTO",
+        "100": "DR100",
+        "200": "DR200",
+        "400": "DR400"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
+      ],
+      "notes": "Slot twin of 0xd007. While D-Range Priority (0xd191) is on it reads 65535 and writes answer 0x201C. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5.",
+      "requires": [
+        {
+          "code": "0xd191",
+          "values": [
+            "0"
+          ]
+        }
       ]
     },
     "0xd191": {
+      "name": "PresetDRangePriority",
+      "type": "uint16",
+      "values": {
+        "0": "OFF",
+        "1": "WEAK",
+        "2": "STRONG",
+        "32768": "AUTO"
+      },
+      "confidence": "likely",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd02e. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd192": {
       "name": "PresetFilmSimulation",
+      "type": "uint16",
+      "values": {
+        "1": "PROVIA/STANDARD",
+        "2": "Velvia/VIVID",
+        "3": "ASTIA/SOFT",
+        "4": "PRO Neg. Hi",
+        "5": "PRO Neg. Std",
+        "6": "MONOCHROME",
+        "7": "MONOCHROME+Ye",
+        "8": "MONOCHROME+R",
+        "9": "MONOCHROME+G",
+        "10": "SEPIA",
+        "11": "CLASSIC CHROME",
+        "12": "ACROS",
+        "13": "ACROS+Ye",
+        "14": "ACROS+R",
+        "15": "ACROS+G",
+        "16": "ETERNA/CINEMA",
+        "17": "CLASSIC Neg.",
+        "18": "ETERNA BLEACH BYPASS",
+        "19": "NOSTALGIC Neg.",
+        "20": "REALA ACE"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd001. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd193": {
       "name": "PresetMonoWC",
+      "type": "int16",
+      "scale": 10,
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
+      ],
+      "notes": "Slot twin of 0xd104, warm (+) to cool (-): x10, -180 to 180, whole steps only. Writes answer 0x201C under a colour film simulation. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5.",
+      "requires": [
+        {
+          "code": "0xd192",
+          "values": [
+            "6",
+            "7",
+            "8",
+            "9",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "temp": "6"
+        }
       ]
     },
     "0xd194": {
       "name": "PresetMonoMG",
+      "type": "int16",
+      "scale": 10,
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
+      ],
+      "notes": "Slot twin of 0xd031, magenta (+) to green (-): x10, -180 to 180, whole steps only. Writes answer 0x201C under a colour film simulation. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5.",
+      "requires": [
+        {
+          "code": "0xd192",
+          "values": [
+            "6",
+            "7",
+            "8",
+            "9",
+            "12",
+            "13",
+            "14",
+            "15"
+          ],
+          "temp": "6"
+        }
       ]
     },
     "0xd195": {
       "name": "PresetGrainEffect",
+      "type": "uint16",
+      "values": {
+        "1": "OFF",
+        "2": "WEAK SMALL",
+        "3": "STRONG SMALL",
+        "4": "WEAK LARGE",
+        "5": "STRONG LARGE",
+        "6": "OFF"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd023. A default slot reads 6 for OFF; a write of 6 is refused, so plans write 1. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd196": {
       "name": "PresetColorChrome",
+      "type": "uint16",
+      "values": {
+        "1": "OFF",
+        "2": "WEAK",
+        "3": "STRONG"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd029. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd197": {
       "name": "PresetColorChromeFxBlue",
+      "type": "uint16",
+      "values": {
+        "1": "OFF",
+        "2": "WEAK",
+        "3": "STRONG"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd030. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd198": {
       "name": "PresetSmoothSkin",
+      "type": "uint16",
+      "values": {
+        "1": "OFF",
+        "2": "WEAK",
+        "3": "STRONG"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd189. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd199": {
       "name": "PresetWhiteBalance",
+      "type": "uint16",
+      "values": {
+        "2": "AUTO",
+        "4": "DAYLIGHT",
+        "6": "INCANDESCENT",
+        "8": "UNDERWATER",
+        "32769": "FLUORESCENT 1",
+        "32770": "FLUORESCENT 2",
+        "32771": "FLUORESCENT 3",
+        "32774": "SHADE",
+        "32775": "COLOR TEMPERATURE",
+        "32776": "CUSTOM 1",
+        "32777": "CUSTOM 2",
+        "32778": "CUSTOM 3",
+        "32800": "AUTO WHITE PRIORITY",
+        "32801": "AUTO AMBIENCE PRIORITY"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0x5005. With COLOR TEMPERATURE, 0xd19c holds the Kelvin value. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd19a": {
       "name": "PresetWBShiftR",
+      "type": "int16",
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd00b: -9 to 9, one step per unit. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd19b": {
       "name": "PresetWBShiftB",
+      "type": "int16",
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd00c: -9 to 9, one step per unit. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd19c": {
       "name": "PresetColorTemp",
+      "type": "uint16",
+      "unit": "K",
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd017: Kelvin. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd19d": {
       "name": "PresetHighlightTone",
+      "type": "int16",
+      "scale": 10,
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
+      ],
+      "notes": "Slot twin of 0xd320: x10, half steps. Writes answer 0x201C while D-Range Priority (0xd191) is on. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5.",
+      "requires": [
+        {
+          "code": "0xd191",
+          "values": [
+            "0"
+          ]
+        }
       ]
     },
     "0xd19e": {
       "name": "PresetShadowTone",
+      "type": "int16",
+      "scale": 10,
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
+      ],
+      "notes": "Slot twin of 0xd321: x10, half steps. Writes answer 0x201C while D-Range Priority (0xd191) is on. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5.",
+      "requires": [
+        {
+          "code": "0xd191",
+          "values": [
+            "0"
+          ]
+        }
       ]
     },
     "0xd19f": {
       "name": "PresetColor",
+      "type": "int16",
+      "scale": 10,
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd008: x10. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd1a0": {
       "name": "PresetSharpness",
+      "type": "int16",
+      "scale": 10,
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0x5015: x10. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd1a1": {
       "name": "PresetHighIsoNR",
+      "type": "uint16",
+      "values": {
+        "0": "+2",
+        "4096": "+1",
+        "8192": "0",
+        "12288": "-1",
+        "16384": "-2",
+        "20480": "+4",
+        "24576": "+3",
+        "28672": "-3",
+        "32768": "-4"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd01c: not linear. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd1a2": {
       "name": "PresetClarity",
+      "type": "int16",
+      "scale": 10,
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Slot twin of 0xd032: x10. Encoding from fujifilm-ptp-recipes (ILFforever, docs CC BY 4.0), tested on an X-H2; not yet seen on the X-T5."
     },
     "0xd1a3": {
       "name": "PresetLongExpNR",
+      "type": "uint16",
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "FilmKit says long exposure NR; X RAW STUDIO writes its LMO setting here (docs/mapping-sources.md). Not a recipe setting; slot plans never write it."
     },
     "0xd1a4": {
       "name": "PresetColorSpace",
+      "type": "uint16",
+      "values": {
+        "1": "sRGB",
+        "2": "AdobeRGB"
+      },
       "confidence": "likely",
-      "source": "filmkit",
+      "source": "filmkit + ptp-recipes",
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Not a recipe setting; slot plans never write it."
     },
     "0xd1a5": {
       "modes": [
         "rawconv"
-      ]
+      ],
+      "notes": "Not a slot field: ptp-recipes places it in the live block, so a write would change the live settings. Slot plans never write it."
     },
     "0xd1b0": {
       "type": "string",
@@ -1166,7 +1418,16 @@
       "modes": [
         "stills"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Choosing HEIF sets Clarity (0xd032) to 0."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Choosing HEIF sets Clarity (0xd032) to 0.",
+      "resets": [
+        {
+          "when": [
+            "18"
+          ],
+          "code": "0xd032",
+          "to": "0"
+        }
+      ]
     },
     "0xd1b3": {
       "name": "DigitalTeleConv",

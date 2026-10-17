@@ -44,6 +44,35 @@ pub struct Entry {
     pub modes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// The camera takes a write of this code only while another code holds one of some
+    /// values (Monochromatic Color needs a monochrome film simulation). Plans set such a
+    /// prerequisite first, for the time of the write when they must.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<Requirement>,
+    /// Writing this code sets another code on the camera (choosing ACROS sets Color to 0).
+    /// Plans write that other code after this one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resets: Vec<Reset>,
+}
+
+/// One write condition: `code` must hold one of `values` (raw keys, as in `values`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
+pub struct Requirement {
+    pub code: String,
+    pub values: Vec<String>,
+    /// The value a plan sets for the time of the write when none of `values` holds; the first
+    /// of `values` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temp: Option<String>,
+}
+
+/// One camera rule: writing one of `when` (any value when empty) sets `code` to `to`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
+pub struct Reset {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub when: Vec<String>,
+    pub code: String,
+    pub to: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

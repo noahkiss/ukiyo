@@ -34,6 +34,8 @@ pub enum Need {
     Connected,
     /// Connected in USB TETHER SHOOTING FIXED.
     Tether,
+    /// Connected in USB RAW CONV./BACKUP RESTORE: the custom slots.
+    RawConv,
 }
 
 /// A USB mode as `ukiyo help modes` and the errors name it.
@@ -88,6 +90,15 @@ pub fn readiness(s: &Status, rows: usize, need: Need) -> Result<(), Problem> {
             message: format!("Live settings read only in USB TETHER SHOOTING FIXED mode; the camera is in {}.", mode_name(mode)),
             hint: format!("Unplug the cable, set {} to USB TETHER SHOOTING FIXED, plug back in.", s.model.as_deref().and_then(modes::connection_menu).map_or("CONNECTION MODE".into(), |p| p.join(" > "))),
             walkthrough: Some(modes::walkthrough("tether")),
+            mode: Some(mode_id(mode)),
+        });
+    }
+    if need == Need::RawConv && mode != UsbMode::RawConv {
+        return Err(Problem {
+            code: "needs_rawconv",
+            message: format!("Recipe slots read and write only in USB RAW CONV./BACKUP RESTORE mode; the camera is in {}.", mode_name(mode)),
+            hint: "Unplug the cable, set CONNECTION MODE to USB RAW CONV./BACKUP RESTORE, plug back in.".into(),
+            walkthrough: Some(modes::walkthrough("rawconv")),
             mode: Some(mode_id(mode)),
         });
     }

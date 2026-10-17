@@ -36,6 +36,8 @@ pub const RELEASE_HALF_PRESS: i64 = 0x0200;
 pub const RELEASE_S1_OFF: i64 = 0x0004;
 /// D381's OFF value.
 pub const AUTO_POWER_OFF_OFF: i64 = 3;
+/// Selects the custom slot (1-7) that the slot fields read and write (RAW CONV. mode).
+pub const SLOT_SELECT: u16 = 0xD18C;
 
 /// AUTO POWER OFF in seconds for a D381 value; `None` for OFF or a value not known.
 pub fn auto_power_off_secs(v: i64) -> Option<u32> {
@@ -342,6 +344,43 @@ pub mod refusal {
     pub const READ_ONLY: &str = "read-only";
     pub const UNAVAILABLE: &str = "not readable in this mode";
     pub const LOST: &str = "connection lost";
+    /// Slot reads and writes work only in USB RAW CONV./BACKUP RESTORE mode.
+    pub const NOT_RAWCONV: &str = "not in RAW CONV. mode";
+}
+
+/// A custom slot read or write (USB RAW CONV. mode). The owner selects the slot through
+/// D18C, reads or writes the fields, and restores D18C, all in one request, so the poll
+/// never reads one slot's fields while another is selected. RAW CONV. mode sends no
+/// descriptors, so each field comes with its datatype.
+#[derive(Debug, Clone)]
+pub enum SlotOp {
+    /// Each slot (1-7), each field (code, datatype).
+    Read { slots: Vec<u8>, fields: Vec<(u16, u16)> },
+    /// The writes in order (code, datatype, value), each read back; stops at the first that
+    /// fails or reads back another value.
+    Write { slot: u8, writes: Vec<(u16, u16, Value)> },
+}
+
+/// One slot as read: each field's value, or `None` and the response code when refused.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct SlotRead {
+    pub slot: u8,
+    /// The answer to the D18C select, when it was not OK.
+    pub select_rc: Option<u16>,
+    pub fields: Vec<(u16, Option<Value>, Option<u16>)>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct SlotOutcome {
+    /// Why nothing reached the camera (`refusal`), or why it stopped midway.
+    pub refused: Option<String>,
+    /// D18C before the request.
+    pub selected: Option<i64>,
+    /// D18C was written back to `selected`.
+    pub restored: bool,
+    pub reads: Vec<SlotRead>,
+    /// Write: one per write sent, in order. A failed select is the first write's outcome.
+    pub writes: Vec<WriteOutcome>,
 }
 
 /// A dump of every descriptor and value, like `tools/ptp/dump_props.py`.
@@ -358,6 +397,8 @@ pub struct Dump {
 pub enum Request {
     /// `actor` goes on the read-back's change group.
     Write { code: u16, value: Value, actor: Option<String>, reply: Option<Sender<WriteOutcome>> },
+    /// A slot read or write; queued with the writes.
+    Slot { op: SlotOp, actor: Option<String>, reply: Sender<SlotOutcome> },
     SetPinned(Vec<u16>),
     /// The keep-awake setting.
     KeepAwake(bool),
@@ -374,7 +415,7 @@ pub enum Request {
 
 impl Request {
     fn is_write(&self) -> bool {
-        matches!(self, Request::Write { .. })
+        matches!(self, Request::Write { .. } | Request::Slot { .. })
     }
 }
 
@@ -621,6 +662,10 @@ impl Owner {
                     let _ = tx.send(out);
                 }
             }
+            Request::Slot { op, actor, reply } => {
+                let out = self.slot(op, actor);
+                let _ = reply.send(out);
+            }
             Request::SetPinned(codes) => self.pinned = codes.into_iter().collect(),
             Request::KeepAwake(on) => self.status.keep_awake.enabled = on,
             Request::Activity => self.last_activity = Some(self.clock.now()),
@@ -741,6 +786,145 @@ impl Owner {
         ));
         let result = result.unwrap_or(ptp::rc_name(rc)).into();
         WriteOutcome { code, ok: rc == ptp::RC_OK, result, before, readback, rc: Some(rc), attempts, closed_menu }
+    }
+
+    /// GetDevicePropValue in a given datatype: `Ok(Err(rc))` when the camera refused,
+    /// `Err(())` when the connection was lost (already handled).
+    fn get_typed(&mut self, code: u16, datatype: u16) -> Result<Result<Value, u16>, ()> {
+        match self.op(ptp::OP_GET_PROP_VALUE, &[code as u32], None) {
+            Ok(r) if r.rc == ptp::RC_OK => Ok(Ok(ptp::decode_value(datatype, &r.data))),
+            Ok(r) => Ok(Err(r.rc)),
+            Err(e) => {
+                self.lost(e);
+                Err(())
+            }
+        }
+    }
+
+    /// Selects a slot through D18C: the camera's answer, or `Err` when the connection was lost.
+    fn select_slot(&mut self, n: i64) -> Result<u16, ()> {
+        let bytes = ptp::encode(0x0004, &Value::Int(n)).map_err(|_| ())?;
+        self.send_set(SLOT_SELECT, &bytes).map(|(rc, _)| rc).map_err(|_| ())
+    }
+
+    /// One slot request: select, read or write, restore D18C (`SlotOp`).
+    fn slot(&mut self, op: SlotOp, actor: Option<String>) -> SlotOutcome {
+        use refusal::*;
+        let out = SlotOutcome::default();
+        let refuse = |mut out: SlotOutcome, why: &str| {
+            out.refused = Some(why.into());
+            out
+        };
+        let Phase::Connected(s) = &self.phase else { return refuse(out, NOT_CONNECTED) };
+        if !matches!(s.pause, Pause::None) {
+            return refuse(out, PAUSED);
+        }
+        if s.mode != UsbMode::RawConv {
+            return refuse(out, NOT_RAWCONV);
+        }
+        let mut out = out;
+        let selected = match self.get_typed(SLOT_SELECT, 0x0004) {
+            Ok(Ok(Value::Int(n))) => n,
+            Ok(_) => return refuse(out, "the slot selector D18C does not answer"),
+            Err(()) => return refuse(out, LOST),
+        };
+        out.selected = Some(selected);
+        let by = actor.as_deref().map(|a| format!(" by {a}")).unwrap_or_default();
+        let mut written: Vec<u16> = vec![];
+        let mut target = None;
+        match op {
+            SlotOp::Read { slots, fields } => {
+                for n in slots {
+                    let mut r = SlotRead { slot: n, ..Default::default() };
+                    match self.select_slot(i64::from(n)) {
+                        Ok(ptp::RC_OK) => {}
+                        Ok(rc) => {
+                            r.select_rc = Some(rc);
+                            out.reads.push(r);
+                            continue;
+                        }
+                        Err(()) => return refuse(out, LOST),
+                    }
+                    for (code, t) in &fields {
+                        match self.get_typed(*code, *t) {
+                            Ok(Ok(v)) => r.fields.push((*code, Some(v), None)),
+                            Ok(Err(rc)) => r.fields.push((*code, None, Some(rc))),
+                            Err(()) => return refuse(out, LOST),
+                        }
+                    }
+                    out.reads.push(r);
+                }
+                let n: Vec<String> = out.reads.iter().map(|r| format!("C{}", r.slot)).collect();
+                self.log(format!("slot read{by}: {} (D18C was {selected}; restored after)", n.join(" ")));
+            }
+            SlotOp::Write { slot, writes } => {
+                target = Some(slot);
+                match self.select_slot(i64::from(slot)) {
+                    Ok(ptp::RC_OK) => {
+                        for (code, t, v) in writes {
+                            let before = match self.get_typed(code, t) {
+                                Ok(r) => r.ok(),
+                                Err(()) => return refuse(out, LOST),
+                            };
+                            let bytes = match ptp::encode(t, &v) {
+                                Ok(b) => b,
+                                Err(e) => {
+                                    out.writes.push(WriteOutcome { before, ..WriteOutcome::refused(code, e.0) });
+                                    break;
+                                }
+                            };
+                            let (rc, attempts) = match self.send_set(code, &bytes) {
+                                Ok(x) => x,
+                                Err(attempts) => {
+                                    out.writes.push(WriteOutcome { before, attempts, ..WriteOutcome::refused(code, LOST) });
+                                    return refuse(out, LOST);
+                                }
+                            };
+                            let readback = match self.get_typed(code, t) {
+                                Ok(r) => r.ok(),
+                                Err(()) => {
+                                    out.writes.push(WriteOutcome { code, ok: false, result: LOST.into(), before, readback: None, rc: Some(rc), attempts, closed_menu: false });
+                                    return refuse(out, LOST);
+                                }
+                            };
+                            self.log(format!(
+                                "slot C{slot} write {code:#06x}{by} {} -> {}: {} (read back {})",
+                                before.as_ref().map(Value::key).unwrap_or_default(),
+                                v.key(),
+                                ptp::rc_name(rc),
+                                readback.as_ref().map(Value::key).unwrap_or_else(|| "nothing".into())
+                            ));
+                            let good = rc == ptp::RC_OK && readback.as_ref() == Some(&v);
+                            if rc == ptp::RC_OK {
+                                written.push(code);
+                            }
+                            out.writes.push(WriteOutcome { code, ok: rc == ptp::RC_OK, result: ptp::rc_name(rc).into(), before, readback, rc: Some(rc), attempts, closed_menu: false });
+                            if !good {
+                                break;
+                            }
+                        }
+                    }
+                    Ok(rc) => {
+                        let first = writes.first().map(|w| w.0).unwrap_or(SLOT_SELECT);
+                        out.writes.push(WriteOutcome { rc: Some(rc), attempts: 1, ..WriteOutcome::refused(first, format!("selecting C{slot} answered {}", ptp::rc_name(rc))) });
+                    }
+                    Err(()) => return refuse(out, LOST),
+                }
+            }
+        }
+        match self.select_slot(selected) {
+            Ok(ptp::RC_OK) => out.restored = true,
+            Ok(rc) => self.log(format!("slot selector D18C not restored to {selected}: {}", ptp::rc_name(rc))),
+            Err(()) => return refuse(out, LOST),
+        }
+        // A write to the slot the poll reads: read those codes now, as this request's
+        // read-back, so the feed does not report them as changes made on the camera.
+        if target.is_some_and(|t| i64::from(t) == selected) {
+            for code in written {
+                self.read_value(code, ChangeSource::Write, actor.clone());
+            }
+        }
+        out
     }
 
     /// A half-press and release (D208 = 0x0200 + InitiateCapture, hold, D208 = 0x0004 +

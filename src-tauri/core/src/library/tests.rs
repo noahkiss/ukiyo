@@ -21,7 +21,7 @@ fn ids() {
     assert_eq!(Id::parse("favourite:0xD381").unwrap(), Id::Favourite(0xD381));
     assert_eq!(Id::parse("prefs").unwrap(), Id::Prefs);
     assert_eq!(Id::parse("history").unwrap(), Id::History(None));
-    assert!(matches!(Id::parse("cat:abc").unwrap(), Id::Recipe(_)));
+    assert!(matches!(Id::parse("cat:abc").unwrap(), Id::Catalogue(_)));
     assert!(Id::parse("nothing").is_err());
     assert!(Id::parse("preset:").is_err());
     assert_eq!(Id::of_kind(Kind::Snapshot, "Before trip").unwrap(), Id::Item(Kind::Snapshot, "before-trip".into()));
@@ -38,16 +38,16 @@ fn presets_save_replace_trash_and_restore() {
     let p = s.preset("street").unwrap();
     assert_eq!(p.set["0xd023"], "2");
     assert_eq!(p.name, "street");
-    let hits = s.search(&SearchInput { kind: SearchKind::Preset, query: Some("power".into()), limit: None });
+    let hits = s.search(&SearchInput { kind: SearchKind::Preset, query: Some("power".into()), ..Default::default() });
     assert_eq!(hits.total, 1);
     assert!(hits.items[0].summary.starts_with("2 settings"));
-    assert_eq!(s.search(&SearchInput { kind: SearchKind::Trash, query: None, limit: None }).total, 1, "the replaced version");
+    assert_eq!(s.search(&SearchInput { kind: SearchKind::Trash, query: None, ..Default::default() }).total, 1, "the replaced version");
 
     let t = s.delete("test", "preset:street").unwrap();
     assert!(t.trashed_at.is_some());
     assert!(s.preset("street").is_err());
     assert_eq!(s.delete("test", "preset:street").unwrap_err().code, ErrorCode::NotFound);
-    let trash = s.search(&SearchInput { kind: SearchKind::Trash, query: None, limit: None });
+    let trash = s.search(&SearchInput { kind: SearchKind::Trash, query: None, ..Default::default() });
     assert_eq!(trash.total, 2);
     let back = s.save("test", &SaveInput { kind: SaveKind::Preset, name: None, item: None, from: t.trash_id.clone() }, Context::default()).unwrap();
     assert_eq!(back.id, "preset:street");
@@ -134,7 +134,7 @@ fn library_on_the_fake_camera() {
     let new = if old == RawValue::Int(2) { "3" } else { "2" };
     let mut set = IndexMap::new();
     set.insert("0xd023".to_string(), new.to_string());
-    let p = lab.plan(PlanInput { set, allow_unconfirmed: true, from: None }).unwrap();
+    let p = lab.plan(PlanInput { set, allow_unconfirmed: true, from: None, slot: None }).unwrap();
     assert_eq!(lab.apply("test", &p.plan_id).unwrap().applied, 1);
     let snap2 = lab.snapshot();
     s.save("test", &SaveInput { kind: SaveKind::Snapshot, name: Some("After".into()), item: None, from: None }, Context { camera: Some(&snap2), catalog: None }).unwrap();

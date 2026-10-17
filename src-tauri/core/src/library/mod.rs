@@ -19,11 +19,14 @@
 //! call it in their own process, and go through `serve` only to capture a snapshot or apply
 //! an item. The window sends every library call to `serve`, except `prefs_get`.
 //!
-//! Ids: `preset:<slug>`, `snapshot:<slug>`, `favourite:<code>`, `favourites`, `prefs`,
-//! `history`, `history:<camera id>`, `trash:<name>`.
+//! Ids: `preset:<slug>`, `snapshot:<slug>`, `recipe:<slug>`, `favourite:<code>`,
+//! `favourites`, `prefs`, `history`, `history:<camera id>`, `trash:<name>`; read only:
+//! `cat:<id>` (the bundled catalogue), `slot:C1` to `slot:C7` and `slots` (the camera's
+//! custom slots, read through `serve`).
 
 pub mod history;
 pub mod prefs;
+pub mod recipes;
 pub mod snapshot;
 
 use crate::api::{Error, ErrorCode};
@@ -35,6 +38,7 @@ use specta::Type;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+pub use recipes::{Recipe, RecipeDiff, RecipeSource};
 pub use snapshot::{Diff, SavedValue, SettingsSnapshot};
 
 pub const SCHEMA: u32 = 1;
@@ -83,6 +87,7 @@ pub fn slug(name: &str) -> String {
 pub enum Kind {
     Preset,
     Snapshot,
+    Recipe,
 }
 
 impl Kind {
@@ -90,6 +95,7 @@ impl Kind {
         match self {
             Kind::Preset => "presets",
             Kind::Snapshot => "snapshots",
+            Kind::Recipe => "recipes",
         }
     }
 
@@ -97,6 +103,7 @@ impl Kind {
         match self {
             Kind::Preset => "preset",
             Kind::Snapshot => "snapshot",
+            Kind::Recipe => "recipe",
         }
     }
 
@@ -104,6 +111,7 @@ impl Kind {
         match s {
             "preset" => Some(Kind::Preset),
             "snapshot" => Some(Kind::Snapshot),
+            "recipe" => Some(Kind::Recipe),
             _ => None,
         }
     }
@@ -118,27 +126,33 @@ pub enum Id {
     Prefs,
     History(Option<String>),
     Trash(String),
-    /// `cat:`, `recipe:` and `slot:` ids: the recipe library (stage 7).
-    Recipe(String),
+    /// `cat:<id>`: a recipe in the bundled catalogue.
+    Catalogue(String),
+    /// `slot:C1` to `slot:C7`: a custom slot on the camera.
+    Slot(u8),
+    /// `slots`: all seven.
+    Slots,
 }
 
 impl Id {
     pub fn parse(id: &str) -> Result<Id, Error> {
         let id = id.trim();
-        let bad = || Error::new(ErrorCode::NotFound, format!("no such id {id:?}")).hint("Ids: preset:<name>, snapshot:<name>, favourite:<code>, favourites, prefs, history, trash:<name>.");
+        let bad = || Error::new(ErrorCode::NotFound, format!("no such id {id:?}")).hint("Ids: preset:<name>, snapshot:<name>, recipe:<name>, cat:<id>, slot:C1 to slot:C7, slots, favourite:<code>, favourites, prefs, history, trash:<name>.");
         Ok(match id.split_once(':') {
             None => match id {
                 "favourites" => Id::Favourites,
                 "prefs" => Id::Prefs,
                 "history" => Id::History(None),
+                "slots" => Id::Slots,
                 _ => return Err(bad()),
             },
             Some((k, rest)) if !rest.trim().is_empty() => match k {
-                "preset" | "snapshot" => Id::Item(Kind::parse(k).unwrap(), slug(rest)),
+                "preset" | "snapshot" | "recipe" => Id::Item(Kind::parse(k).unwrap(), slug(rest)),
                 "favourite" => Id::Favourite(read::parse_code(rest).ok_or_else(bad)?),
                 "history" => Id::History(Some(rest.to_string())),
                 "trash" => Id::Trash(rest.to_string()),
-                "cat" | "recipe" | "slot" => Id::Recipe(id.to_string()),
+                "cat" => Id::Catalogue(rest.trim().to_string()),
+                "slot" => Id::Slot(crate::recipes::slot::parse_slot(rest).ok_or_else(bad)?),
                 _ => return Err(bad()),
             },
             Some(_) => return Err(bad()),
@@ -161,10 +175,6 @@ impl Id {
 
 pub fn item_id(kind: Kind, slug: &str) -> String {
     format!("{}:{slug}", kind.name())
-}
-
-fn not_built(what: &str) -> Error {
-    Error::new(ErrorCode::NotFound, format!("{what} come with the recipe library, which is not built yet")).hint("docs/agent-interface.md, section 8, stage 7")
 }
 
 /// A preset: settings by name or code, to value labels or raw values. Applying it is a plan
@@ -215,6 +225,15 @@ pub struct Hit {
     pub summary: String,
     /// Wall-clock ms of the last save, or of the trashing for a trashed item.
     pub at: Option<f64>,
+    /// A recipe's creator and publisher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credit: Option<String>,
+    /// A recipe's post.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// A recipe's sensor generation: "X-Trans V".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -225,22 +244,33 @@ pub struct Hits {
 }
 
 /// What `library_search` looks through.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum SearchKind {
+    #[default]
     Preset,
     Snapshot,
     Favourite,
     Trash,
+    /// The library's recipes.
+    Recipe,
+    /// The bundled recipe catalogue, most popular first.
+    Catalogue,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub struct SearchInput {
     pub kind: SearchKind,
     #[serde(default)]
     pub query: Option<String>,
     #[serde(default)]
     pub limit: Option<u32>,
+    /// Recipes: only this sensor generation ("X-Trans V").
+    #[serde(default)]
+    pub sensor: Option<String>,
+    /// Recipes: only film simulations whose name holds this ("classic chrome").
+    #[serde(default)]
+    pub film_sim: Option<String>,
 }
 
 /// One item as `library_read` returns it.
@@ -253,12 +283,19 @@ pub enum Read {
     Prefs(Box<prefs::Prefs>),
     History(Vec<history::HistoryView>),
     Diff(Diff),
+    Recipe(Box<Recipe>),
+    Catalogue(Box<crate::recipes::catalogue::CatalogRecipe>),
+    /// Two recipes, or a slot and a recipe, field by field.
+    RecipeDiff(RecipeDiff),
+    /// Custom slots as the camera holds them.
+    Slots(Vec<crate::recipes::slot::SlotView>),
 }
 
 /// What `library_save` stores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum SaveKind {
+    Recipe,
     Preset,
     Snapshot,
     Favourite,
@@ -519,10 +556,11 @@ impl Store {
                 Ok(Trashed { id, trashed_at: Some(at), trash_id: Some(format!("trash:{name}")) })
             }
             Id::Favourite(code) => self.remove_favourite(actor, code),
-            Id::Recipe(_) => Err(not_built("recipes")),
             other => Err(Error::new(ErrorCode::ReadOnly, format!("{id} cannot be deleted")).hint(match other {
                 Id::Trash(_) => "A trashed item is dropped after 30 days.",
-                _ => "Only presets, snapshots and favourites are deleted.",
+                Id::Catalogue(_) => "The catalogue ships with ukiyo; a copy saved as recipe:<name> can be deleted.",
+                Id::Slot(_) | Id::Slots => "A slot is on the camera: write another recipe to it with a plan.",
+                _ => "Only presets, snapshots, recipes and favourites are deleted.",
             })),
         }
     }
@@ -545,6 +583,9 @@ impl Store {
                     name: item["name"].as_str().unwrap_or(&slug).to_string(),
                     summary: format!("{} {}, restores as {}", kind.name(), item["name"].as_str().unwrap_or(&slug), item_id(kind, &slug)),
                     at: Some(at),
+                    credit: None,
+                    url: None,
+                    sensor: None,
                 })
             })
             .collect();
@@ -578,7 +619,7 @@ impl Store {
                 .map(|p| {
                     let keys: Vec<&str> = p.set.keys().map(String::as_str).collect();
                     let hay = format!("{} {} {}", p.name, keys.join(" "), p.notes.clone().unwrap_or_default());
-                    (Hit { id: p.id.clone(), kind: "preset".into(), name: p.name.clone(), summary: preset_summary(&p), at: Some(p.updated_at) }, hay)
+                    (Hit { id: p.id.clone(), kind: "preset".into(), name: p.name.clone(), summary: preset_summary(&p), at: Some(p.updated_at), credit: None, url: None, sensor: None }, hay)
                 })
                 .collect(),
             SearchKind::Snapshot => self
@@ -586,7 +627,7 @@ impl Store {
                 .into_iter()
                 .map(|s| {
                     let hay = format!("{} {}", s.name, s.model.clone().unwrap_or_default());
-                    (Hit { id: s.id.clone(), kind: "snapshot".into(), name: s.name.clone(), summary: s.summary(), at: Some(s.created_at) }, hay)
+                    (Hit { id: s.id.clone(), kind: "snapshot".into(), name: s.name.clone(), summary: s.summary(), at: Some(s.created_at), credit: None, url: None, sensor: None }, hay)
                 })
                 .collect(),
             SearchKind::Favourite => self
@@ -596,12 +637,23 @@ impl Store {
                 .map(|f| {
                     let name = f.name.clone().unwrap_or_else(|| f.code.clone());
                     let hay = format!("{} {}", f.code, name);
-                    (Hit { id: format!("favourite:{}", f.code), kind: "favourite".into(), summary: format!("{} {name}", f.code), name, at: None }, hay)
+                    (Hit { id: format!("favourite:{}", f.code), kind: "favourite".into(), summary: format!("{} {name}", f.code), name, at: None, credit: None, url: None, sensor: None }, hay)
                 })
                 .collect(),
             SearchKind::Trash => self.trash().into_iter().map(|h| (h.clone(), format!("{} {}", h.name, h.id))).collect(),
+            SearchKind::Recipe => self
+                .recipes()
+                .into_iter()
+                .filter(|r| recipes::matches(&r.name, &r.settings, r.sensor.as_deref(), "", &[], input.sensor.as_deref(), input.film_sim.as_deref()))
+                .map(|r| {
+                    let hay = format!("{} {} {}", r.name, r.settings.film_simulation.clone().unwrap_or_default(), r.source.as_ref().and_then(|s| s.credit.clone()).unwrap_or_default());
+                    (recipes::recipe_hit(&r), hay)
+                })
+                .collect(),
+            SearchKind::Catalogue => recipes::search_catalogue(&words, input.sensor.as_deref(), input.film_sim.as_deref()).into_iter().map(|h| (h, String::new())).collect(),
         };
-        let hits: Vec<Hit> = all.into_iter().filter(|(_, hay)| words.iter().all(|w| hay.to_lowercase().contains(w))).map(|(h, _)| h).collect();
+        let filtered = input.kind == SearchKind::Catalogue;
+        let hits: Vec<Hit> = all.into_iter().filter(|(_, hay)| filtered || words.iter().all(|w| hay.to_lowercase().contains(w))).map(|(h, _)| h).collect();
         let total = hits.len();
         let limit = input.limit.unwrap_or(20).max(1) as usize;
         Hits { has_more: total > limit, total: total as u32, items: hits.into_iter().take(limit).collect() }
@@ -609,6 +661,12 @@ impl Store {
 
     pub fn read(&self, id: &str, compare_to: Option<&str>) -> Result<Read, Error> {
         if let Some(b) = compare_to {
+            let recipe_like = |x: &str| x.starts_with("recipe:") || x.starts_with("cat:");
+            if recipe_like(id) && recipe_like(b) {
+                let (_, sa) = self.recipe_settings(id)?;
+                let (_, sb) = self.recipe_settings(b)?;
+                return Ok(Read::RecipeDiff(recipes::diff(id, &sa, b, &sb)));
+            }
             let (Id::Item(Kind::Snapshot, a), Id::Item(Kind::Snapshot, b)) = (Id::parse(id)?, Id::parse(b)?) else {
                 return Err(Error::new(ErrorCode::NotFound, "compare_to compares two snapshots").hint("For a snapshot against the camera, plan it: camera_plan {snapshot}."));
             };
@@ -617,6 +675,8 @@ impl Store {
         Ok(match Id::parse(id)? {
             Id::Item(Kind::Preset, s) => Read::Preset(self.preset(&s)?),
             Id::Item(Kind::Snapshot, s) => Read::Snapshot(Box::new(self.snapshot(&s)?)),
+            Id::Item(Kind::Recipe, s) => Read::Recipe(Box::new(self.recipe(&s)?)),
+            Id::Catalogue(c) => Read::Catalogue(Box::new(crate::recipes::bundle::recipe(&c).cloned().ok_or_else(|| Error::new(ErrorCode::NotFound, format!("no cat:{c} in the catalogue")).hint("library_search {kind: catalogue} finds one."))?)),
             Id::Favourites | Id::Favourite(_) => Read::Favourites(self.favourites()),
             Id::Prefs => Read::Prefs(Box::new(prefs::load(&self.data_dir))),
             Id::History(key) => {
@@ -633,7 +693,7 @@ impl Store {
                 })
             }
             Id::Trash(_) => return Err(Error::new(ErrorCode::NotFound, "a trashed item is read after it is restored").hint("library_save {from: \"trash:...\"}")),
-            Id::Recipe(_) => return Err(not_built("recipes and slots")),
+            Id::Slot(_) | Id::Slots => return Err(Error::new(ErrorCode::Unavailable, "a slot is read from the camera, through ukiyo serve").hint("ukiyo recipes read C1, or library_read through the MCP server.")),
         })
     }
 
@@ -645,6 +705,7 @@ impl Store {
         }
         let item = input.item.clone().unwrap_or(serde_json::Value::Null);
         match input.kind {
+            SaveKind::Recipe => self.save_recipe_input(actor, input.name.clone(), input.item.clone(), input.from.as_deref()),
             SaveKind::Prefs => {
                 let patch: prefs::PrefsPatch = serde_json::from_value(item).map_err(|e| Error::new(ErrorCode::BadRequest, format!("prefs: {e}")))?;
                 if patch.is_empty() {

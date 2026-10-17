@@ -16,6 +16,7 @@ use crate::camera::fake::{FakeCamera, FakeHandle, FakeMode};
 use crate::camera::owner::{self, ChangeGroup, Config, Event, Link, PropRow, Request, Status, WriteOutcome};
 use crate::camera::ptp::{self, Value};
 use crate::plan::{self, Applied, Plan, PlanInput, Raw, Stored};
+use crate::recipes::slot;
 use crate::camera::transport::Connector;
 use crate::camera::usb::UsbConnector;
 use crate::catalog::{Catalog, LabelPatch};
@@ -147,6 +148,12 @@ impl Lab {
     /// `lock` is the held `owner.lock`: no process opens USB without it. The Lab keeps it until
     /// [`Lab::shutdown`] has closed the session.
     pub fn start(lock: OwnerLock, data_dir: PathBuf, catalog_dir: PathBuf, emit: impl Fn(api::Event) + Send + Sync + 'static) -> Arc<Lab> {
+        Self::start_in(lock, data_dir, catalog_dir, None, emit)
+    }
+
+    /// [`Lab::start`] with the fake camera in `fake_mode`, whatever the environment says: for
+    /// tests that run side by side in one process.
+    pub fn start_in(lock: OwnerLock, data_dir: PathBuf, catalog_dir: PathBuf, fake_mode: Option<FakeMode>, emit: impl Fn(api::Event) + Send + Sync + 'static) -> Arc<Lab> {
         let _ = std::fs::create_dir_all(data_dir.join("sessions"));
         let session_path = data_dir.join("sessions").join(format!("{}.jsonl", stamp()));
         let file = std::fs::OpenOptions::new().create(true).append(true).open(&session_path).ok();
@@ -157,9 +164,11 @@ impl Lab {
         let history = Arc::new(Mutex::new(Recorder::new(&data_dir)));
 
         let clock: Arc<dyn Clock> = Arc::new(RealClock::new());
-        let use_fake = std::env::var("UKIYO_FAKE_CAMERA").is_ok_and(|v| v == "1");
+        let use_fake = fake_mode.is_some() || std::env::var("UKIYO_FAKE_CAMERA").is_ok_and(|v| v == "1");
         let (connector, fake): (Box<dyn Connector>, _) = if use_fake {
-            let mode = if std::env::var("UKIYO_FAKE_MODE").is_ok_and(|v| v == "rawconv") { FakeMode::RawConv } else { FakeMode::Tether };
+            let mode = if let Some(m) = fake_mode {
+                m
+            } else if std::env::var("UKIYO_FAKE_MODE").is_ok_and(|v| v == "rawconv") { FakeMode::RawConv } else { FakeMode::Tether };
             let cam = FakeCamera::x_t5(clock.clone(), mode).with_op_cost(Duration::from_millis(3));
             let h = cam.handle();
             // The fake sleeps after its AUTO POWER OFF time, so keep-awake has work to do.
@@ -317,31 +326,144 @@ impl Lab {
     }
 
     /// Builds and stores a plan against the camera now. Writes nothing.
-    /// With `from`, the plan comes from the library: a preset's `set`, or a snapshot's exact
-    /// values (a restore). `set` must then be empty.
+    /// With `from`, the plan comes from the library: a preset's `set`, a snapshot's exact
+    /// values (a restore), or a recipe (`recipe:<slug>`, `cat:<id>`) into `slot`. `set` must
+    /// then be empty.
     pub fn plan(&self, input: PlanInput) -> Result<Plan, Error> {
         let snap = self.snapshot();
+        let store = crate::library::Store::new(&self.data_dir);
         let (plan, raw) = match input.from.as_deref() {
-            None => plan::build(&snap, &input)?,
+            None => {
+                if input.slot.is_some() {
+                    return Err(Error::new(ErrorCode::BadRequest, "a slot plan writes a recipe: give from (recipe:<name> or cat:<id>) with the slot"));
+                }
+                plan::build(&snap, &input)?
+            }
             Some(from) => {
                 if !input.set.is_empty() {
-                    return Err(Error::new(ErrorCode::BadRequest, "a plan has one source: set, or from (a preset or snapshot), not both"));
+                    return Err(Error::new(ErrorCode::BadRequest, "a plan has one source: set, or from (a preset, snapshot or recipe), not both"));
                 }
-                let store = crate::library::Store::new(&self.data_dir);
+                if from.starts_with("recipe:") || from.starts_with("cat:") {
+                    let slot = input.slot.as_deref().ok_or_else(|| Error::new(ErrorCode::BadRequest, format!("{from} is a recipe: name the slot to write it to (C1 to C7)")))?;
+                    return self.plan_slot(&store, from, slot, input.allow_unconfirmed);
+                }
                 match crate::library::Id::parse(from)? {
                     crate::library::Id::Item(crate::library::Kind::Preset, slug) => {
                         let p = store.preset(&slug)?;
-                        plan::build(&snap, &PlanInput { set: p.set, allow_unconfirmed: input.allow_unconfirmed, from: None })?
+                        plan::build(&snap, &PlanInput { set: p.set, allow_unconfirmed: input.allow_unconfirmed, ..Default::default() })?
                     }
                     crate::library::Id::Item(crate::library::Kind::Snapshot, slug) => {
                         let s = store.snapshot(&slug)?;
                         plan::build_values(&snap, &crate::library::snapshot::as_values(&s), input.allow_unconfirmed)?
                     }
-                    _ => return Err(Error::new(ErrorCode::BadRequest, format!("{from} is not a preset or a snapshot"))),
+                    _ => return Err(Error::new(ErrorCode::BadRequest, format!("{from} is not a preset, snapshot or recipe"))),
                 }
             }
         };
-        Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now() }))
+        Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), slot: None }))
+    }
+
+    // ---- custom slots ----
+
+    /// The camera is connected in RAW CONV. mode and takes requests now.
+    fn rawconv_ready(&self) -> Result<Snapshot, Error> {
+        let snap = self.snapshot();
+        plan::ready(&snap)?;
+        crate::read::readiness(&snap.status, snap.rows.len(), crate::read::Need::RawConv)?;
+        Ok(snap)
+    }
+
+    /// One slot request through the owner.
+    fn slot_request(&self, op: owner::SlotOp, actor: &str) -> Result<owner::SlotOutcome, Error> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.send(Request::Slot { op, actor: Some(actor.into()), reply: tx });
+        let out = rx.recv_timeout(Duration::from_secs(30)).map_err(|_| Error::new(ErrorCode::Failed, "no answer from the camera thread"))?;
+        if let Some(why) = out.refused.as_deref().filter(|_| out.reads.is_empty() && out.writes.is_empty()) {
+            use owner::refusal;
+            return Err(match why {
+                refusal::NOT_RAWCONV => Error::new(ErrorCode::NeedsRawconv, "Recipe slots read and write only in USB RAW CONV./BACKUP RESTORE mode.").hint("Unplug the cable, set CONNECTION MODE to USB RAW CONV./BACKUP RESTORE, plug back in."),
+                refusal::NOT_CONNECTED | refusal::LOST => Error::new(ErrorCode::NotConnected, format!("the camera is not connected ({why})")),
+                refusal::PAUSED => Error::new(ErrorCode::Busy, "the camera is busy").hint("Wait; try again in a few seconds."),
+                other => Error::new(ErrorCode::Failed, other.to_string()),
+            });
+        }
+        Ok(out)
+    }
+
+    /// Every field of slot `n` as the camera holds it now.
+    fn slot_values(&self, actor: &str, n: u8) -> Result<HashMap<u16, Value>, Error> {
+        let fields: Vec<(u16, u16)> = std::iter::once((slot::NAME, slot::STRING)).chain(slot::FIELDS.iter().copied()).collect();
+        let out = self.slot_request(owner::SlotOp::Read { slots: vec![n], fields }, actor)?;
+        let r = out.reads.into_iter().next().ok_or_else(|| Error::new(ErrorCode::Failed, "the slot read returned nothing"))?;
+        if let Some(rc) = r.select_rc {
+            return Err(Error::new(ErrorCode::Failed, format!("selecting {} answered {}", slot::slot_name(n), ptp::rc_name(rc))));
+        }
+        Ok(r.fields.into_iter().filter_map(|(c, v, _)| Some((c, v?))).collect())
+    }
+
+    /// Reads custom slots (1-7) into recipe form. Each read selects the slot through D18C
+    /// and restores D18C after; the session log has both. Needs USB RAW CONV. mode.
+    pub fn read_slots(&self, actor: &str, slots: Vec<u8>) -> Result<Vec<slot::SlotView>, Error> {
+        let snap = self.rawconv_ready()?;
+        let cat = snap.catalog.as_ref();
+        let fields: Vec<(u16, u16)> = std::iter::once((slot::NAME, slot::STRING)).chain(slot::FIELDS.iter().copied()).collect();
+        let out = self.slot_request(owner::SlotOp::Read { slots, fields }, actor)?;
+        let library: Vec<(String, String)> = crate::library::Store::new(&self.data_dir).recipes().into_iter().map(|r| (r.id, crate::recipes::catalogue::settings_hash(&r.settings))).collect();
+        let views = out
+            .reads
+            .into_iter()
+            .map(|r| {
+                let mut v = slot::SlotView { id: format!("slot:{}", slot::slot_name(r.slot)), slot: slot::slot_name(r.slot), ..Default::default() };
+                if let Some(rc) = r.select_rc {
+                    v.error = Some(format!("selecting the slot answered {}", ptp::rc_name(rc)));
+                    return v;
+                }
+                let values: Vec<(u16, Option<Value>)> = r.fields.iter().map(|(c, x, _)| (*c, x.clone())).collect();
+                if let Some((_, Some(Value::Str(n)), _)) = r.fields.iter().find(|(c, _, _)| *c == slot::NAME) {
+                    v.name = n.clone();
+                }
+                let (settings, warnings) = slot::decode(&values);
+                let hash = crate::recipes::catalogue::settings_hash(&settings);
+                v.matches = library.iter().filter(|(_, h)| *h == hash).map(|(id, _)| id.clone()).collect();
+                v.settings = settings;
+                v.warnings = warnings;
+                v.fields = r
+                    .fields
+                    .iter()
+                    .filter(|(c, _, _)| *c != slot::NAME)
+                    .map(|(c, x, _)| slot::SlotField {
+                        code: crate::catalog::key(*c),
+                        name: cat.and_then(|k| k.properties.get(&crate::catalog::key(*c))).and_then(|e| e.name.clone()),
+                        value: match x {
+                            Some(Value::Int(n)) => Some(*n),
+                            _ => None,
+                        },
+                    })
+                    .collect();
+                v
+            })
+            .collect();
+        Ok(views)
+    }
+
+    /// A plan that writes a recipe into slot `slot` (`C1` to `C7`).
+    fn plan_slot(&self, store: &crate::library::Store, recipe: &str, slot_text: &str, allow_unconfirmed: bool) -> Result<Plan, Error> {
+        let n = slot::parse_slot(slot_text).ok_or_else(|| Error::new(ErrorCode::NotFound, format!("no slot {slot_text}: pick C1 to C7")))?;
+        let (name, settings) = store.recipe_settings(recipe)?;
+        let fields = slot::encode(&settings).map_err(|p| {
+            let list: Vec<String> = p.iter().map(|x| x.message.clone()).collect();
+            Error::new(ErrorCode::ValueOutOfRange, format!("{recipe} does not fit a slot: {}", list.join("; "))).hint("Edit the recipe (ukiyo recipes edit, or library_save with item.set), then plan again.")
+        })?;
+        let snap = self.rawconv_ready()?;
+        let current = self.slot_values("plan", n)?;
+        let mut wants: Vec<(u16, Value)> = fields.into_iter().map(|(c, v)| (c, Value::Int(v))).collect();
+        wants.push((slot::NAME, Value::Str(slot::name_for(&name))));
+        let (mut plan, raw) = plan::slot_plan(&snap, n, &current, &wants, allow_unconfirmed);
+        plan.recipe = Some(recipe.to_string());
+        if name.chars().count() > slot::NAME_MAX {
+            plan.warnings.push(format!("The slot name is cut to {} characters: {}", slot::NAME_MAX, slot::name_for(&name)));
+        }
+        Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), slot: Some(n) }))
     }
 
     fn gone(plan_id: &str) -> Error {
@@ -357,6 +479,35 @@ impl Lab {
         self.plans.lock().unwrap().remove(plan_id).filter(|p| !p.expired()).map(|_| ()).ok_or_else(|| Self::gone(plan_id))
     }
 
+    /// The first value each code held before the plan, for the codes it wrote: an undo
+    /// plan's targets.
+    fn undo_targets(raw: &[Raw], ok: &[bool]) -> Vec<(u16, Value)> {
+        let mut out: Vec<(u16, Value)> = vec![];
+        for (r, _) in raw.iter().zip(ok).filter(|(_, ok)| **ok) {
+            if out.iter().any(|(c, _)| *c == r.code) {
+                continue;
+            }
+            if let Some(was) = r.was.clone() {
+                // A slot reads 6 for grain OFF on a default slot, and refuses a write of 6.
+                let was = if r.code == slot::GRAIN && was == Value::Int(6) { Value::Int(1) } else { was };
+                out.push((r.code, was));
+            }
+        }
+        out
+    }
+
+    /// Stores an undo plan, its steps marked `undo`; `None` when it has nothing to write.
+    fn store_undo(&self, mut p: Plan, raw: Vec<Raw>, requires: &plan::Requires, snap: &Snapshot, slot: Option<u8>) -> Option<String> {
+        if p.steps.is_empty() {
+            return None;
+        }
+        for s in &mut p.steps {
+            s.gate = "undo".into();
+        }
+        p.requires = requires.clone();
+        Some(self.store(Stored { plan: p, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), slot }).plan_id)
+    }
+
     /// Applies a stored plan: re-checks it, writes each step in order (the owner reads each
     /// back), and stops at the first failed step. Returns the steps, an undo plan for what
     /// was written, and other codes that changed meanwhile. A plan applies once; a camera
@@ -368,26 +519,25 @@ impl Lab {
             self.plans.lock().unwrap().insert(plan_id.into(), stored);
             return Err(e);
         }
+        if let Some(n) = stored.slot {
+            return self.apply_slot(actor, plan_id, stored, n, snap);
+        }
         if let Some(e) = plan::stale(&snap, &stored) {
             self.log_line(serde_json::json!({ "kind": "apply", "actor": actor, "plan": plan_id, "refused": e.code }));
             return Err(e);
         }
         let since = snap.groups.first().map_or(0, |g| g.id);
         let mut steps = vec![];
-        let mut undo: Vec<Raw> = vec![];
+        let mut ok = vec![];
         let mut not_attempted = 0;
         for (i, r) in stored.raw.iter().enumerate() {
             let out = self.write(r.code, r.after.clone(), actor, plan_id);
             let link = self.mirror.lock().unwrap().status.link;
             let step = plan::applied_step(&snap, r, &out, link);
-            if out.rc == Some(ptp::RC_OK) {
-                if let (Some(before), Some(now)) = (r.before.clone(), out.readback.clone()) {
-                    undo.push(Raw { code: r.code, before: Some(now), after: before });
-                }
-            }
-            let ok = step.ok;
+            ok.push(out.rc == Some(ptp::RC_OK));
+            let good = step.ok;
             steps.push(step);
-            if !ok {
+            if !good {
                 not_attempted = (stored.raw.len() - i - 1) as u32;
                 break;
             }
@@ -395,27 +545,86 @@ impl Lab {
         let after = self.snapshot();
         let planned: Vec<u16> = stored.raw.iter().map(|r| r.code).collect();
         let side_effects = plan::side_effects(after.catalog.as_ref(), &after.groups, since, &planned);
-        let undo_plan_id = (!undo.is_empty()).then(|| {
-            let steps = undo.iter().map(|r| plan::step_view(&after, r.code, r.before.as_ref(), &r.after, "undo")).collect();
-            let p = Plan {
-                plan_id: String::new(),
-                expires_in_s: 0,
-                requires: stored.plan.requires.clone(),
-                steps,
-                skipped: vec![],
-                blocked: vec![],
-                allow_unconfirmed: true,
-            };
-            self.store(Stored { plan: p, raw: undo, mode: after.status.mode, capture: after.status.capture, created: std::time::Instant::now() }).plan_id
-        });
+        // The undo is planned like any plan, toward the values before: prerequisites and
+        // order included.
+        let targets = Self::undo_targets(&stored.raw, &ok);
+        let undo_plan_id = (!targets.is_empty())
+            .then(|| plan::build_values(&after, &targets, true).ok())
+            .flatten()
+            .and_then(|(p, raw)| self.store_undo(p, raw, &stored.plan.requires, &after, None));
         let applied = steps.iter().filter(|s| s.ok).count() as u32;
         let failed = steps.len() as u32 - applied;
-        let out = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects };
+        let out = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects, warnings: vec![] };
         self.log_line(serde_json::json!({
             "kind": "apply", "actor": actor, "plan": plan_id, "applied": out.applied, "failed": out.failed,
             "not_attempted": out.not_attempted, "undo": out.undo_plan_id,
         }));
         Ok(out)
+    }
+
+    /// A slot plan: the slot is read again for the stale check, then one owner request
+    /// selects it, writes every step with its read-back, and restores D18C.
+    fn apply_slot(&self, actor: &str, plan_id: &str, stored: Stored, n: u8, snap: Snapshot) -> Result<Applied, Error> {
+        let refuse = |e: Error| {
+            self.log_line(serde_json::json!({ "kind": "apply", "actor": actor, "plan": plan_id, "refused": e.code }));
+            e
+        };
+        if snap.status.mode != stored.mode {
+            return Err(refuse(Error::new(ErrorCode::PlanStale, "the camera's USB mode changed since the plan").hint("Make a new plan.")));
+        }
+        let current = self.slot_values(actor, n)?;
+        let cat = snap.catalog.as_ref();
+        let moved: Vec<String> = stored
+            .raw
+            .iter()
+            .enumerate()
+            .filter(|(i, r)| !stored.raw[..*i].iter().any(|x| x.code == r.code) && current.get(&r.code) != r.was.as_ref())
+            .map(|(_, r)| {
+                let e = cat.and_then(|c| c.properties.get(&crate::catalog::key(r.code)));
+                format!("{} {} -> {}", crate::read::code_text(r.code), crate::read::display(e, r.was.as_ref()), crate::read::display(e, current.get(&r.code)))
+            })
+            .collect();
+        if !moved.is_empty() {
+            return Err(refuse(Error::new(ErrorCode::PlanStale, format!("{} changed since the plan: {}", slot::slot_name(n), moved.join("; "))).hint("Make a new plan.")));
+        }
+        let writes: Vec<(u16, u16, Value)> = stored.raw.iter().map(|r| (r.code, slot::datatype(r.code).unwrap_or(slot::UINT16), r.after.clone())).collect();
+        let out = self.slot_request(owner::SlotOp::Write { slot: n, writes }, actor)?;
+        let link = self.mirror.lock().unwrap().status.link;
+        let mut steps = vec![];
+        let mut ok = vec![];
+        for (r, w) in stored.raw.iter().zip(&out.writes) {
+            self.log_line(serde_json::json!({ "kind": "write", "actor": actor, "plan": plan_id, "slot": slot::slot_name(n), "outcome": w }));
+            ok.push(w.rc == Some(ptp::RC_OK));
+            steps.push(plan::applied_step(&snap, r, w, link));
+        }
+        let mut warnings = vec![];
+        if !out.restored {
+            warnings.push(format!("The slot selector (D18C) was not put back to C{}: {}", out.selected.unwrap_or(0), out.refused.clone().unwrap_or_else(|| "the camera refused it".into())));
+        }
+        let applied = steps.iter().filter(|s| s.ok).count() as u32;
+        let failed = steps.len() as u32 - applied;
+        let not_attempted = (stored.raw.len() - steps.len()) as u32;
+        let targets = Self::undo_targets(&stored.raw, &ok);
+        let undo_plan_id = if targets.is_empty() {
+            None
+        } else {
+            match self.slot_values(actor, n) {
+                Ok(now) => {
+                    let (p, raw) = plan::slot_plan(&snap, n, &now, &targets, true);
+                    self.store_undo(p, raw, &stored.plan.requires, &snap, Some(n))
+                }
+                Err(e) => {
+                    warnings.push(format!("No undo plan: {}", e.message));
+                    None
+                }
+            }
+        };
+        let a = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects: vec![], warnings };
+        self.log_line(serde_json::json!({
+            "kind": "apply", "actor": actor, "plan": plan_id, "slot": slot::slot_name(n), "applied": a.applied, "failed": a.failed,
+            "not_attempted": a.not_attempted, "undo": a.undo_plan_id,
+        }));
+        Ok(a)
     }
 
     /// Applies a label and saves the catalog file.

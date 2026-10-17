@@ -4,10 +4,13 @@
 //! not the slot's ×10); docs/protocol.md "Recipe slots" has the slot encodings. A label the
 //! parser does not know, or a value it cannot read, becomes a warning on that field.
 
+pub mod bundle;
 pub mod catalogue;
+pub mod fetch;
 pub mod family;
 pub mod html;
 pub mod post;
+pub mod slot;
 pub mod sources;
 pub(crate) mod values;
 
@@ -118,6 +121,64 @@ pub struct Parsed {
     /// The sensor the first value is for, when the text names it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sensor: Option<String>,
+    /// From a post (`recipe_parse {url}`): the recipe's name, as its post names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The post the recipe came from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// Further recipes in the same post (other sensors, or a post that holds several).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub others: Vec<OtherRecipe>,
+}
+
+/// Another recipe found in the same post.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
+pub struct OtherRecipe {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensor: Option<String>,
+    pub settings: Settings,
+    pub notes: Vec<Note>,
+    pub warnings: Vec<Warning>,
+}
+
+/// Sets one setting from a label and a value as a post writes them ("Highlight", "+1.5"):
+/// the editor's way to change a saved recipe. The parser's label variants all work.
+pub fn set_field(s: &mut Settings, label: &str, value: &str) -> Result<(), String> {
+    let field = field_for(label).filter(|f| *f != Field::Note).ok_or_else(|| format!("{label} is not a recipe setting"))?;
+    if values::not_applicable(value) || value.trim().is_empty() {
+        match field {
+            Field::WhiteBalance => {
+                s.white_balance = None;
+                s.color_temp = None;
+            }
+            Field::WbShift => {
+                s.wb_shift_r = None;
+                s.wb_shift_b = None;
+            }
+            Field::Highlight => s.highlight_tone = None,
+            Field::Shadow => s.shadow_tone = None,
+            Field::ToneCurve => {
+                s.highlight_tone = None;
+                s.shadow_tone = None;
+            }
+            Field::Color => s.color = None,
+            Field::Sharpness => s.sharpness = None,
+            Field::HighIsoNr => s.high_iso_nr = None,
+            Field::MonochromaticColor => {
+                s.monochromatic_color_wc = None;
+                s.monochromatic_color_mg = None;
+            }
+            Field::MonoWc => s.monochromatic_color_wc = None,
+            Field::MonoMg => s.monochromatic_color_mg = None,
+            f => values::clear(s, f),
+        }
+        return Ok(());
+    }
+    values::apply(s, field, value)
 }
 
 /// One setting's value for another sensor.
