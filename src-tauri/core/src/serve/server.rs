@@ -216,12 +216,24 @@ impl Server {
     }
 }
 
+/// Accepts clients until `closing`. It polls with a timeout rather than blocking in `accept`:
+/// `shutdown` also wakes it through the socket path, but a path that is gone (a deleted data
+/// folder) must not leave `serve` running, and holding the camera, for ever.
 fn accept_loop(listener: UnixListener, shared: Arc<Shared>) {
-    for stream in listener.incoming() {
+    use std::os::fd::AsRawFd as _;
+    loop {
         if shared.closing.load(Ordering::SeqCst) {
             return;
         }
-        match stream {
+        let mut p = libc::pollfd { fd: listener.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+        // SAFETY: one valid pollfd for the listener, which outlives the call.
+        if unsafe { libc::poll(&mut p, 1, 200) } <= 0 {
+            continue;
+        }
+        if shared.closing.load(Ordering::SeqCst) {
+            return;
+        }
+        match listener.accept().map(|(s, _)| s) {
             Ok(s) => {
                 if let Err(e) = add_client(&shared, s) {
                     eprintln!("ukiyo serve: client not added: {e}");

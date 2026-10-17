@@ -17,6 +17,8 @@ const EXE: &str = env!("CARGO_BIN_EXE_ukiyo-cli");
 struct Env {
     data: tempfile::TempDir,
     cats: tempfile::TempDir,
+    /// `UKIYO_FAKE_MODE` for every command, so a respawned serve fakes the same mode.
+    mode: Option<&'static str>,
 }
 
 impl Env {
@@ -24,7 +26,7 @@ impl Env {
         let cats = tempfile::tempdir().unwrap();
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog/x-t5.json");
         std::fs::copy(repo, cats.path().join("x-t5.json")).unwrap();
-        Env { data: tempfile::tempdir().unwrap(), cats }
+        Env { data: tempfile::tempdir().unwrap(), cats, mode: None }
     }
 
     fn cmd(&self, args: &[&str]) -> Command {
@@ -34,9 +36,13 @@ impl Env {
             .env("UKIYO_FAKE_CAMERA", "1")
             .env("UKIYO_DATA_DIR", self.data.path())
             .env("UKIYO_CATALOG_DIR", self.cats.path())
-            .env("UKIYO_IDLE_EXIT", "3")
+            // Long enough that one test's commands share one serve on a loaded machine.
+            .env("UKIYO_IDLE_EXIT", "8")
             .env_remove("UKIYO_FAKE_MODE")
             .stdin(Stdio::null());
+        if let Some(m) = self.mode {
+            c.env("UKIYO_FAKE_MODE", m);
+        }
         c
     }
 
@@ -61,7 +67,7 @@ impl Env {
 
     /// Waits for the spawned serve to idle out and checks it left nothing behind.
     fn finish(&self, pid: u32) {
-        wait_until("serve idles out", 20, || !alive(pid));
+        wait_until("serve idles out", 30, || !alive(pid));
         assert!(lock::is_free(&paths::lock_path(self.data.path())));
         assert!(!paths::socket_path(self.data.path()).exists());
     }
@@ -153,11 +159,9 @@ fn no_camera_is_exit_3() {
 
 #[test]
 fn wrong_mode_is_exit_4() {
-    let env = Env::new();
-    let mut cmd = env.cmd(&["settings", "--json"]);
-    let out = cmd.env("UKIYO_FAKE_MODE", "rawconv").output().unwrap();
-    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(out.status.code(), Some(4), "{v}");
+    let env = Env { mode: Some("rawconv"), ..Env::new() };
+    let (code, v) = env.json(&["settings"]);
+    assert_eq!(code, 4, "{v}");
     assert_eq!(v["error"]["code"], "needs_tether");
     assert_eq!(v["error"]["mode"], "rawconv");
     assert_eq!(v["error"]["walkthrough"], "ukiyo help modes tether");

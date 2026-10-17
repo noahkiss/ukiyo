@@ -329,3 +329,21 @@ fn the_app_respawns_once_when_serve_dies() {
         assert!(t.join().unwrap());
     }
 }
+
+/// A socket file that disappeared (a deleted data folder) must not keep `serve` alive: the
+/// accept loop polls instead of waiting for the wake-up connect through the path.
+#[test]
+fn shutdown_without_the_socket_file() {
+    let d = dirs();
+    let s = Server::start(opts(&d, Duration::from_secs(30))).unwrap();
+    std::fs::remove_file(crate::paths::socket_path(d.data.path())).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        s.stopper().stop();
+        s.wait();
+        s.shutdown();
+        let _ = tx.send(());
+    });
+    assert!(rx.recv_timeout(Duration::from_secs(10)).is_ok(), "serve stopped although its socket file was gone");
+    assert!(lock::is_free(&crate::paths::lock_path(d.data.path())));
+}

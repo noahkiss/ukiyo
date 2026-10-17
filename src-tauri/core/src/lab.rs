@@ -162,6 +162,8 @@ impl Lab {
             let catalog_dir = catalog_dir.clone();
             Box::new(move |e: Event| on_event(e, &mirror, &log, &catalog_dir, &*emit))
         };
+        // The first line, before the owner thread can log a status.
+        write_log(&log, serde_json::json!({ "kind": "start", "fake": fake.is_some() }));
         let (tx, thread) = owner::spawn(connector, clock, sink, Config::default());
         if settings.keep_awake {
             let _ = tx.send(Request::KeepAwake(true));
@@ -180,7 +182,7 @@ impl Lab {
                 }
             });
         }
-        let lab = Arc::new(Lab {
+        Arc::new(Lab {
             tx: Mutex::new(tx),
             mirror,
             log,
@@ -190,9 +192,7 @@ impl Lab {
             catalog_dir,
             thread: Mutex::new(Some(thread)),
             lock: Mutex::new(Some(lock)),
-        });
-        lab.log_line(serde_json::json!({ "kind": "start", "fake": lab.fake.is_some() }));
-        lab
+        })
     }
 
     fn send(&self, r: Request) {
