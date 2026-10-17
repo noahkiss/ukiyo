@@ -107,8 +107,6 @@ what comes next.
 ## Rules for touching the camera
 
 - Read before you write; write only properties whose meaning is confirmed, and read back.
-- Every camera write from the window, CLI or MCP is a plan (`plan_create`, then `plan_apply`);
-  there is no direct write method.
 - One process owns the USB connection: `ukiyo serve`, which holds `owner.lock`. Quit any Ukiyo.app
   built before stage 2 (17e2c0c) first; it opens USB without the lock.
 - Never reconnect in a tight loop or reset USB on every connect (see protocol.md, power).
