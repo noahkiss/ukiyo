@@ -79,6 +79,9 @@ what comes next.
   - `dump_props.py OUT.json` — every property descriptor or value.
   - `watch_props.py PROPS.json NAMES.json LOG` — poll and log changes.
   - `set_prop.py CODE VALUE` — write one uint16 property, with read before and after.
+  - `guided_map.py STEPS [--dry-run DUMP.json]` — guided mapping session: a dialog names one
+    change per step (`steps/<name>.json`); the script diffs every property, keeps the camera awake
+    with the D381 toggle, and writes a log, summary and proposed catalog patch to `local/mapping/`.
 - `tools/ios-ptp-probe/` — iOS/iPadOS test app (XcodeGen, ImageCaptureCore): can a phone read
   and write the camera's PTP properties over USB-C? Signing from gitignored `Local.xcconfig`; see
   its README.
