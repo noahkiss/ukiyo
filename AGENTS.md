@@ -57,7 +57,7 @@ what comes next.
   its README.
 - `local/` — gitignored. Raw dumps, logs and the working property map. They contain camera and
   lens serial numbers and owner strings.
-- App data (`~/Library/Application Support/app.ukiyo/`): `sessions/*.jsonl`, `dumps/`,
+- App data (`~/Library/Application Support/com.nkmkdigital.ukiyo/`): `sessions/*.jsonl`, `dumps/`,
   `settings.json`.
 
 ## Build, test, run
