@@ -206,7 +206,8 @@ Ranked by labels gained per hour.
    live codes, run `exiftool -a -u -H -n -FujiFilm:all` on the file, change the setting, repeat.
    Order: LMO, shutter type, flicker reduction, IS mode, drive CL/CH, AF area, sports finder,
    digital tele-conv, D Range Priority AUTO, then one pass over Color and Sharpness to check the
-   film-sim offset claim.
+   film-sim offset claim. `tools/catalog/makernote_diff.py` pairs the photos with a guided
+   session's steps; the procedure is in bm task-jkxs1fd0.
 3. **Slot field check** (owner, 15 min). In RAW CONV. mode, change one slot's LONG EXPOSURE NR
    and then its LMO on the camera; read D1A3 each time.
 4. **SDK-hint checks** (owner, 30 min, tether mode). Step PIXEL SHIFT interval (D231), SUBJECT
@@ -215,8 +216,10 @@ Ranked by labels gained per hour.
 5. **Read the X-T5 backup blob** (owner switches the USB mode). One GetObjectInfo(0) and
    GetObject(0), read only, saved under `local/`. Then change one menu item per read and diff.
    This maps settings that have no PTP property. Never restore without a separate decision.
+   `tools/ptp/read_backup.py` reads it; `tools/catalog/backup_diff.py` diffs the reads.
 6. **Movie-mode dump** (owner flips the STILL/MOVIE switch). Check the XSDK movie codes D240,
-   D242, D243, D26C, D26F, D271, D272.
+   D242, D243, D26C, D26F, D271, D272. `tools/ptp/steps/x-t5-second-movie.json` steps through
+   them.
 7. **USB capture of the Tether App** (needs the VM). Gives the X-T5 blob size and confirms the
    backup path. Read the app's EULA first.
 8. **Ask tiredboffin** whether `ffbak` covers the X-Processor 5 record layout.

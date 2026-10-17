@@ -74,6 +74,9 @@ what comes next.
   `UKIYO_CATALOG_DIR` overrides.
 - `tools/catalog/seed_xt5.py LOCAL_DIR [--force]` — seeds `catalog/x-t5.json` and the fake shape
   from `local/` dumps.
+- `tools/catalog/makernote_diff.py PHOTO... [--steps S] [--log L]` — FujiFilm MakerNote changes
+  between photos shot one step apart, paired with a guided session's PTP changes (needs exiftool).
+  `backup_diff.py BLOB...` — changed byte runs between backups. Neither touches the camera.
 - `tools/art/app_icon_layers.py` and `app_icon_alternates.py` build the Liquid Glass `.icon`
   sources from the finals; `tools/art/build_app_icon.sh` compiles `src-tauri/icons/AppIcon.icon`
   into `Assets.car`, `icon.icns` and the PNG fallbacks (all committed). Rerun it after any `.icon`
@@ -91,6 +94,10 @@ what comes next.
   - `guided_map.py STEPS [--dry-run DUMP.json]` — guided mapping session: a dialog names one
     change per step (`steps/<name>.json`); the script diffs every property, keeps the camera awake
     with the D381 toggle, and writes a log, summary and proposed catalog patch to `local/mapping/`.
+    A steps file's `"mode": "movie"` runs with the STILL/MOVIE switch on MOVIE; a `"restore": true`
+    step lists every changed item with its start value.
+  - `read_backup.py LABEL` — the settings backup (object handle 0, RAW CONV. mode) to
+    `local/backup/`. Read-only.
 - `tools/wifi/` — guided Wi-Fi and Bluetooth test run (uv inline deps): `run_wifi_tests.py
   [--dry-run]`, `fujiptpip.py` (Fuji PTP over TCP), `macnet.py`, `ble.py`, `fakecam.py`. Logs to
   `local/wifi-test/`. `docs/wifi.md` covers what sources say and the Wi-Fi transport sketch.

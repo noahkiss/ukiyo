@@ -1,0 +1,90 @@
+{
+  "name": "x-t5-second-movie",
+  "model": "X-T5",
+  "mode": "movie",
+  "about": "Second guided session, movie: set the STILL/MOVIE switch to MOVIE before you start. The movie codes answer only in movie mode. Checks what D229, D22A, D240 and D242 mean (the catalog's names come from older bodies and look wrong), plus D241, D243, D270, D271, D26C and D25B. Before each change, note the setting the camera shows: the last step puts every changed item back, newest first. Run the dial steps with MOVIE OPTIMIZED CONTROL OFF, so the dials and the aperture ring set the movie exposure.",
+  "steps": [
+    {
+      "id": "movie-focus-area-right",
+      "instruction": "MENU > AF/MF SETTING > FOCUS AREA. Move the focus frame one step right with the focus lever. Press MENU/OK.",
+      "note": "Tests whether D22A and D22B are the focus frame position. If the frame cannot move (AF MODE is not AREA), click Skip.",
+      "expect": [{ "code": "0xd22a", "label": "one step right" }],
+      "also": ["0xd22b", "0xd22c"],
+      "patch": { "0xd22a": { "name": "MovieFocusAreaX", "menu": "AF/MF SETTING > FOCUS AREA (movie)" } }
+    },
+    {
+      "id": "movie-af-mode-multi",
+      "instruction": "MENU > AF/MF SETTING > AF MODE: MULTI",
+      "note": "D229 has three values, like this item. If the camera already shows MULTI, choose AREA.",
+      "expect": [{ "code": "0xd229", "label": "MULTI" }],
+      "also": ["0xd22a", "0xd22b", "0xd22c"],
+      "patch": { "0xd229": { "name": "MovieAFMode", "menu": "AF/MF SETTING > AF MODE (movie)" } }
+    },
+    {
+      "id": "movie-aperture",
+      "instruction": "Turn the lens aperture ring one full stop toward a larger f-number (for example f/8 to f/11).",
+      "note": "If the ring is on A, turn it to any number instead.",
+      "expect": [{ "code": "0xd240", "label": "one stop smaller" }],
+      "also": ["0x5007"],
+      "desc": ["0xd240"],
+      "patch": { "0xd240": { "name": "MovieAperture", "menu": "Aperture ring (movie)", "scale": 100 } }
+    },
+    {
+      "id": "movie-shutter-250",
+      "instruction": "Turn the shutter speed dial to 250.",
+      "note": "Tests whether D241 is the movie shutter speed. If the dial already shows 250, turn it to 500.",
+      "expect": [{ "code": "0xd241", "label": "1/250" }],
+      "also": ["0xd033"],
+      "desc": ["0xd241"],
+      "patch": { "0xd241": { "name": "MovieShutterSpeed", "menu": "Shutter speed dial (movie)" } }
+    },
+    {
+      "id": "movie-iso-800",
+      "instruction": "Turn the ISO dial to 800.",
+      "note": "If the dial already shows 800, turn it to 1600.",
+      "expect": [{ "code": "0xd242", "label": "ISO 800" }],
+      "also": ["0xd035"],
+      "desc": ["0xd242"],
+      "patch": { "0xd242": { "name": "MovieSensitivity", "menu": "ISO dial (movie)" } }
+    },
+    {
+      "id": "movie-exp-comp-plus-1",
+      "instruction": "Turn the exposure compensation dial to +1.",
+      "note": "If the dial is on C, set +1 with the front command dial instead.",
+      "expect": [{ "code": "0xd243", "value": 1000, "label": "+1" }],
+      "also": ["0xd034"],
+      "patch": { "0xd243": { "name": "MovieExposureBias", "menu": "Exposure compensation dial (movie)", "scale": 1000 } }
+    },
+    {
+      "id": "movie-film-reala-ace",
+      "instruction": "MENU > IMAGE QUALITY SETTING > FILM SIMULATION: REALA ACE",
+      "expect": [{ "code": "0xd270", "value": 20, "label": "REALA ACE" }],
+      "patch": { "0xd270": { "name": "MovieFilmSimulation", "menu": "IMAGE QUALITY SETTING > FILM SIMULATION (movie)" } }
+    },
+    {
+      "id": "movie-dr-200",
+      "instruction": "MENU > IMAGE QUALITY SETTING > DYNAMIC RANGE: 200%",
+      "note": "If 200% is grey, click Skip.",
+      "expect": [{ "code": "0xd271", "value": 200, "label": "200%" }],
+      "patch": { "0xd271": { "name": "MovieDRangeMode", "menu": "IMAGE QUALITY SETTING > DYNAMIC RANGE (movie)" } }
+    },
+    {
+      "id": "movie-wb-daylight",
+      "instruction": "MENU > IMAGE QUALITY SETTING > WHITE BALANCE: DAYLIGHT. Press MENU/OK on the shift grid without moving it.",
+      "expect": [{ "code": "0xd26c", "value": 4, "label": "DAYLIGHT" }],
+      "also": ["0xd26d", "0xd26e", "0xd26f"],
+      "patch": { "0xd26c": { "name": "MovieWhiteBalance", "menu": "IMAGE QUALITY SETTING > WHITE BALANCE (movie)" } }
+    },
+    {
+      "id": "movie-zebra-right",
+      "instruction": "MENU > MOVIE SETTING > ZEBRA SETTING: ZEBRA RIGHT",
+      "expect": [{ "code": "0xd25b", "value": 1, "label": "ZEBRA RIGHT" }],
+      "patch": { "0xd25b": { "name": "MovieZebraSetting", "menu": "MOVIE SETTING > ZEBRA SETTING" } }
+    },
+    {
+      "id": "restore",
+      "restore": true,
+      "instruction": "Put these items back, one at a time, top to bottom. Pick the setting each one had before this session. Then close the menu and click Done. After the session, set the STILL/MOVIE switch back to STILL."
+    }
+  ]
+}

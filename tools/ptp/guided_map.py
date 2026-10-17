@@ -15,7 +15,7 @@ STEPS is a name in steps/ (x-t5-first) or a path. Run from tools/ptp with
 Before you start:
 - Quit Ukiyo (the script takes owner.lock) and run `killall PTPCamera`.
 - Camera: SET UP > CONNECTION SETTING > CONNECTION MODE: USB TETHER SHOOTING FIXED,
-  STILL/MOVIE switch on STILL, shooting screen showing.
+  STILL/MOVIE switch on STILL (MOVIE for a movie steps file), shooting screen showing.
 
 The session:
 1. A dialog explains the session. After Start, leave the camera alone for 5 s: the script reads
@@ -26,7 +26,10 @@ The session:
 3. At the end: a summary table, a list of settings that now differ from the start, and a
    proposed catalog patch. The script never edits catalog/*.json.
 
-A steps file holds {"name", "model", "steps": [...]}. Each step has:
+A steps file holds {"name", "model", "mode", "steps": [...]}. "mode" is "stills" (the default) or
+"movie": the STILL/MOVIE switch must be on that position at the start, because movie-only codes
+answer 0x2002 in stills and the list of codes is read once, when the session opens.
+Each step has:
   id           short name, used in the log and with the --fake-* options
   instruction  the change in the camera's own menu words
   note         optional extra text for the dialog
@@ -36,6 +39,9 @@ A steps file holds {"name", "model", "steps": [...]}. Each step has:
   desc         codes whose descriptor (enum, range) to compare before and after
   patch        catalog fields to propose per code when the step is confirmed (name, menu, scale,
                values)
+  restore      true for a step that puts settings back. The script builds its expect list: every
+               writable code an earlier step expected that now differs from the session start,
+               newest change first, each with its start value. Its instruction lists them.
 A step whose expected value already shows asks the owner to set another value first.
 
 Output, in local/mapping/ (gitignored, it holds this camera's values):
@@ -272,7 +278,10 @@ class FakeCamera:
             lo, hi, step = p["range"]
             options = list(range(lo, hi + 1, step or 1))
         options = [o for o in options if o not in avoid]
-        return options[0] if options else (self.vals.get(code, 0) or 0) + 1
+        if options:
+            return options[0]
+        now = self.vals.get(code) or 0
+        return now + 1 if isinstance(now, int) else f"{now}~"  # a string code, such as D226
 
     def act(self, step):
         """What the owner's Done would have done on a real camera."""
@@ -402,8 +411,8 @@ def load_catalog(model):
 
 
 class Session:
-    def __init__(self, cam, steps, dialogs, fake):
-        self.cam, self.steps, self.ui, self.fake = cam, steps, dialogs, fake
+    def __init__(self, cam, steps, dialogs, fake, mode="stills"):
+        self.cam, self.steps, self.ui, self.fake, self.mode = cam, steps, dialogs, fake, mode
         self.catalog, self.catalog_path = load_catalog(cam.model)
         self.noisy = set(NOISY)
         self.records = []
@@ -484,8 +493,31 @@ class Session:
         return first
 
     # ----- one step
+    def restore_step(self, i, step, before):
+        """The step with its expect list built: earlier expected codes that differ from the start."""
+        expect, lines, seen = [], [], set()
+        for j in range(i - 2, -1, -1):
+            for e in self.steps[j].get("expect", []):
+                c = int(e["code"], 16)
+                if c in seen or c not in self.start or before.get(c) == self.start[c]:
+                    continue
+                if self.cam.desc(c).get("rw") is False:  # a read-out, such as D226; nothing to set
+                    continue
+                seen.add(c)
+                was = self.show(c, self.start[c])
+                expect.append({"code": hexcode(c), "value": self.start[c], "label": was})
+                what = self.steps[j]["instruction"].split(". ")[0].rstrip(".")
+                lines.append(f"- {self.name(c)}: undo step {j + 1} ({what}). Back to {was}.")
+        text = "\n".join(lines) or "Nothing to put back."
+        return {**step, "expect": expect, "instruction": f"{step['instruction']}\n\n{text}"}
+
     def run_step(self, i, step):
         n = len(self.steps)
+        if step.get("restore"):
+            before = self.stable_snapshot()
+            if before is None:
+                return "Stop"
+            step = self.restore_step(i, step, before)
         expect = [(int(e["code"], 16), e) for e in step["expect"]]
         before = self.stable_snapshot()
         if before is None:
@@ -507,12 +539,14 @@ class Session:
             before = self.stable_snapshot()
             if before is None:
                 return "Stop"
-        now = "\n".join(f"Now: {self.name(c)} = {self.show(c, before.get(c))}" for c, _ in expect)
+        now = "" if step.get("restore") else "\n".join(
+            f"Now: {self.name(c)} = {self.show(c, before.get(c))}" for c, _ in expect)
         note = f"\n\n{step['note']}" if step.get("note") else ""
         desc_before = {c: self.cam.desc(int(c, 16)) for c in step.get("desc", [])}
         pick = self.ui.ask(
             f"Step {i} of {n}: {step['id']}\n\n{step['instruction']}{note}\n\n{now}\n\n"
-            "Make only this change, close the menu, then click Done.", ["Stop", "Skip", "Done"])
+            + ("Close the menu, then click Done." if step.get("restore")
+               else "Make only this change, close the menu, then click Done."), ["Stop", "Skip", "Done"])
         if pick != "Done":
             return self.record(i, step, pick, before, before)
         if self.fake:
@@ -575,7 +609,8 @@ class Session:
         intro = (
             f"Guided mapping: {name}, {len(self.steps)} steps, {self.cam.model}.\n\n"
             "Before you start:\n"
-            "- CONNECTION MODE: USB TETHER SHOOTING FIXED, STILL/MOVIE switch on STILL.\n"
+            f"- CONNECTION MODE: USB TETHER SHOOTING FIXED, STILL/MOVIE switch on "
+            f"{'MOVIE' if self.mode == 'movie' else 'STILL'}.\n"
             "- After you click Start, do not touch the camera for 5 seconds: the script learns which "
             "values change on their own.\n"
             "- Each step names one change. Make only that change, close the menu so the shooting "
@@ -587,8 +622,9 @@ class Session:
         if self.ui.ask(intro, ["Stop", "Start"]) != "Start":
             return
         rc, sm = self.cam.value(STILL_MOVIE)
-        if rc == OK and sm == 1:
-            sys.exit("The STILL/MOVIE switch is on MOVIE; set it to STILL and run again.")
+        if rc == OK and (sm == 1) != (self.mode == "movie"):
+            want, now = ("MOVIE", "STILL") if self.mode == "movie" else ("STILL", "MOVIE")
+            sys.exit(f"The STILL/MOVIE switch is on {now}; these steps need {want}. Set it and run again.")
         self.keep = KeepAwake(self.cam)
         print(f"AUTO POWER OFF is {self.show(AUTO_POWER_OFF, self.keep.owner)}"
               + ("; no keep-alive needed" if self.keep.owner == APO_OFF else "; keep-alive every 10 s"))
@@ -662,13 +698,15 @@ class Session:
             if r["result"] != "confirmed":
                 continue
             step = next(s for s in self.steps if s["id"] == r["id"])
+            if step.get("restore"):
+                continue
             why = f"guided step {r['step']} {r['id']}"
             for e in r["expect"]:
                 code = hexcode(int(e["code"], 16))
                 new = r["changed"][code][1]
                 if code not in props:
                     put(f"/properties/{code}", {"confidence": "guess", "source": "lab session",
-                                                 "modes": ["stills"]}, why)
+                                                 "modes": [self.mode]}, why)
                 extra = {hexcode(int(k, 16)): v for k, v in step.get("patch", {}).items()}.get(code, {})
                 for k in ("name", "menu", "scale"):
                     if k in extra:
@@ -731,7 +769,7 @@ def main():
             fake = None
     except NoAnswer:
         sys.exit(NO_ANSWER)
-    session = Session(cam, spec["steps"], None, fake)
+    session = Session(cam, spec["steps"], None, fake, spec.get("mode", "stills"))
     session.ui = Dialogs(a.answer, session.idle)
     if cam.model != spec.get("model", cam.model):
         print(f"warning: steps are for {spec['model']}, camera is {cam.model}", file=sys.stderr)

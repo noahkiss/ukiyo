@@ -1,0 +1,263 @@
+{
+  "name": "x-t5-second",
+  "model": "X-T5",
+  "mode": "stills",
+  "about": "Second guided session, stills: unknown and flagged codes that one menu change can reveal (D304, D226, D228, D238, D028, D039, D1BD, D1BF/D1C0, D306, D234, D239, D1B6) and likely codes that still lack values. Movie codes are in x-t5-second-movie. Before each change, note the setting the camera shows: the last step puts every changed item back, newest first. Gates: TONE CURVE and DR 200% are grey while D RANGE PRIORITY is on; DR 200% needs ISO 250 or higher; DIGITAL TELE-CONV. needs IMAGE QUALITY without RAW; face detection and subject detection exclude each other. No step needs a mono film simulation, so ACROS (resets COLOR) and HEIF (resets CLARITY) do not come up.",
+  "steps": [
+    {
+      "id": "shadows-plus-2",
+      "instruction": "MENU > IMAGE QUALITY SETTING > TONE CURVE. Move only S (shadows) until it reads S +2. Leave H as it is. Press MENU/OK.",
+      "note": "If TONE CURVE is grey, D RANGE PRIORITY is on: change nothing, close the menu and click Skip.",
+      "expect": [{ "code": "0xd321", "value": 20, "label": "S +2" }],
+      "patch": { "0xd321": { "menu": "IMAGE QUALITY SETTING > TONE CURVE > SHADOWS", "scale": 10 } }
+    },
+    {
+      "id": "dr-200",
+      "instruction": "MENU > IMAGE QUALITY SETTING > DYNAMIC RANGE: 200%",
+      "note": "If 200% is grey, raise ISO to 250 or more, or turn D RANGE PRIORITY off; if you would rather not, click Skip.",
+      "expect": [{ "code": "0xd007", "value": 200, "label": "DR200" }]
+    },
+    {
+      "id": "color-space-adobe",
+      "instruction": "MENU > IMAGE QUALITY SETTING > COLOR SPACE: Adobe RGB",
+      "expect": [{ "code": "0xd00a", "value": 2, "label": "Adobe RGB" }],
+      "patch": {
+        "0xd00a": { "menu": "IMAGE QUALITY SETTING > COLOR SPACE", "values": { "1": "sRGB", "2": "Adobe RGB" } }
+      }
+    },
+    {
+      "id": "long-exposure-nr-off",
+      "instruction": "MENU > IMAGE QUALITY SETTING > LONG EXPOSURE NR: OFF",
+      "expect": [{ "code": "0xd322", "value": 2, "label": "OFF" }],
+      "patch": {
+        "0xd322": { "menu": "IMAGE QUALITY SETTING > LONG EXPOSURE NR", "values": { "1": "ON", "2": "OFF" } }
+      }
+    },
+    {
+      "id": "lmo-off",
+      "instruction": "MENU > IMAGE QUALITY SETTING > LENS MODULATION OPTIMIZER: OFF",
+      "note": "This confirms the live code. The C1-C7 slot copy (D1A3) needs RAW CONV. mode and is a separate check.",
+      "expect": [{ "code": "0xd34d", "value": 2, "label": "OFF" }],
+      "patch": {
+        "0xd34d": { "menu": "IMAGE QUALITY SETTING > LENS MODULATION OPTIMIZER", "values": { "1": "ON", "2": "OFF" } }
+      }
+    },
+    {
+      "id": "raw-uncompressed",
+      "instruction": "MENU > IMAGE QUALITY SETTING > RAW RECORDING: UNCOMPRESSED",
+      "expect": [{ "code": "0xd022", "value": 1, "label": "UNCOMPRESSED" }],
+      "patch": { "0xd022": { "menu": "IMAGE QUALITY SETTING > RAW RECORDING" } }
+    },
+    {
+      "id": "quality-fine",
+      "instruction": "MENU > IMAGE QUALITY SETTING > IMAGE QUALITY: FINE",
+      "note": "FINE means JPEG only, without RAW. The next step needs it. The last step puts your setting back.",
+      "expect": [{ "code": "0xd018", "label": "FINE" }],
+      "also": ["0xd20e", "0xd20d"],
+      "patch": { "0xd018": { "menu": "IMAGE QUALITY SETTING > IMAGE QUALITY" } }
+    },
+    {
+      "id": "tele-conv-1-4",
+      "instruction": "MENU > SHOOTING SETTING > DIGITAL TELE-CONV.: 1.4x",
+      "note": "If 1.4x is grey, click Skip.",
+      "expect": [{ "code": "0xd1b3", "value": 140, "label": "1.4x" }],
+      "also": ["0x5003", "0xd16f", "0xd17e", "0xd20e", "0xd20d"]
+    },
+    {
+      "id": "tele-conv-off",
+      "instruction": "MENU > SHOOTING SETTING > DIGITAL TELE-CONV.: OFF",
+      "note": "This undoes the step before, so the next steps are not blocked.",
+      "expect": [{ "code": "0xd1b3", "value": 100, "label": "OFF" }],
+      "also": ["0x5003", "0xd16f", "0xd17e", "0xd20e", "0xd20d"]
+    },
+    {
+      "id": "shutter-mechanical",
+      "instruction": "MENU > SHOOTING SETTING > SHUTTER TYPE: MECHANICAL SHUTTER",
+      "note": "Session 1 set ELECTRONIC SHUTTER and D304 did not move. If the camera already shows MECHANICAL SHUTTER, choose E-FRONT CURTAIN SHUTTER.",
+      "expect": [{ "code": "0xd304", "label": "MECHANICAL SHUTTER" }],
+      "also": ["0x500d", "0xd16f", "0xd226"],
+      "patch": { "0xd304": { "name": "ShutterType", "menu": "SHOOTING SETTING > SHUTTER TYPE" } }
+    },
+    {
+      "id": "sports-finder-on",
+      "instruction": "MENU > SHOOTING SETTING > SPORTS FINDER MODE: ON",
+      "note": "If the item is grey, click Skip.",
+      "expect": [{ "code": "0xd16f", "label": "SPORTS FINDER ON" }],
+      "also": ["0x5003", "0xd17e"]
+    },
+    {
+      "id": "evf-lcd-boost-resolution",
+      "instruction": "MENU > SET UP > POWER MANAGEMENT > EVF/LCD BOOST SETTING: EVF/LCD RESOLUTION PRIORITY",
+      "note": "The code is a guess (D297 has four values, like this item). The log shows which code moves. If the camera already shows this option, choose EVF/LCD LOW LIGHT PRIORITY.",
+      "expect": [{ "code": "0xd297", "label": "EVF/LCD RESOLUTION PRIORITY" }],
+      "also": ["0xd304", "0xd238", "0xd226"]
+    },
+    {
+      "id": "performance-economy",
+      "instruction": "MENU > SET UP > POWER MANAGEMENT > PERFORMANCE: ECONOMY",
+      "note": "The SDK lists PERFORMANCE as 1 NORMAL, 2 ECONOMY, 3 BOOST. If the camera already shows ECONOMY, choose NORMAL.",
+      "expect": [{ "code": "0xd238", "value": 2, "label": "ECONOMY" }],
+      "also": ["0xd304", "0xd297", "0xd226"],
+      "patch": { "0xd238": { "name": "Performance", "menu": "POWER MANAGEMENT > PERFORMANCE" } }
+    },
+    {
+      "id": "flicker-first-frame",
+      "instruction": "MENU > SHOOTING SETTING > FLICKER REDUCTION: FIRST FRAME",
+      "note": "The code is a guess: PERFORMANCE and FLICKER REDUCTION both have three options. The log shows which code moves.",
+      "expect": [{ "code": "0xd238", "label": "FIRST FRAME" }],
+      "also": ["0xd039"]
+    },
+    {
+      "id": "flickerless-on",
+      "instruction": "MENU > SHOOTING SETTING > FLICKERLESS S.S. SETTING: ON",
+      "note": "If the item is grey, click Skip.",
+      "expect": [{ "code": "0xd234", "value": 1, "label": "ON" }],
+      "desc": ["0xd234"],
+      "patch": {
+        "0xd234": { "name": "FlickerlessShutterSpeed", "menu": "SHOOTING SETTING > FLICKERLESS S.S. SETTING", "values": { "1": "ON", "2": "OFF" } }
+      }
+    },
+    {
+      "id": "is-mode-shooting-only",
+      "instruction": "MENU > SHOOTING SETTING > IS MODE: SHOOTING ONLY",
+      "expect": [{ "code": "0xd351", "value": 2, "label": "SHOOTING ONLY" }],
+      "also": ["0xd346"],
+      "patch": { "0xd351": { "menu": "SHOOTING SETTING > IS MODE" } }
+    },
+    {
+      "id": "af-illuminator-on",
+      "instruction": "MENU > AF/MF SETTING > AF ILLUMINATOR: ON",
+      "expect": [{ "code": "0xd112", "value": 1, "label": "ON" }],
+      "patch": { "0xd112": { "menu": "AF/MF SETTING > AF ILLUMINATOR", "values": { "1": "ON", "2": "OFF" } } }
+    },
+    {
+      "id": "af-plus-mf-on",
+      "instruction": "MENU > AF/MF SETTING > AF+MF: ON",
+      "expect": [{ "code": "0xd323", "value": 1, "label": "ON" }],
+      "patch": { "0xd323": { "menu": "AF/MF SETTING > AF+MF", "values": { "1": "ON", "2": "OFF" } } }
+    },
+    {
+      "id": "focus-check-on",
+      "instruction": "MENU > AF/MF SETTING > FOCUS CHECK: ON",
+      "expect": [{ "code": "0xd35e", "value": 1, "label": "ON" }],
+      "patch": { "0xd35e": { "menu": "AF/MF SETTING > FOCUS CHECK", "values": { "1": "ON", "2": "OFF" } } }
+    },
+    {
+      "id": "afs-priority-release",
+      "instruction": "MENU > AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-S PRIORITY SELECTION: RELEASE",
+      "note": "Change only AF-S. Leave AF-C PRIORITY SELECTION as it is.",
+      "expect": [{ "code": "0xd10a", "value": 1, "label": "RELEASE" }],
+      "patch": { "0xd10a": { "values": { "1": "RELEASE", "2": "FOCUS" } } }
+    },
+    {
+      "id": "dof-scale-film",
+      "instruction": "MENU > AF/MF SETTING > DEPTH-OF-FIELD SCALE: FILM FORMAT BASIS",
+      "note": "Tests whether D028 is this item (two options), not COMMAND DIAL SETTING.",
+      "expect": [{ "code": "0xd028", "value": 2, "label": "FILM FORMAT BASIS" }],
+      "patch": {
+        "0xd028": { "name": "DepthOfFieldScale", "menu": "AF/MF SETTING > DEPTH-OF-FIELD SCALE", "values": { "1": "PIXEL BASIS", "2": "FILM FORMAT BASIS" } }
+      }
+    },
+    {
+      "id": "mf-assist-microprism",
+      "instruction": "MENU > AF/MF SETTING > MF ASSIST: DIGITAL MICROPRISM",
+      "expect": [{ "code": "0xd026", "value": 12, "label": "DIGITAL MICROPRISM" }]
+    },
+    {
+      "id": "range-limiter-preset1",
+      "instruction": "MENU > AF/MF SETTING > AF RANGE LIMITER: PRESET1",
+      "note": "If the item is grey with this lens, click Skip.",
+      "expect": [{ "code": "0xd228", "label": "PRESET1" }],
+      "also": ["0xd225", "0xd226", "0xd227"],
+      "patch": { "0xd228": { "name": "AFRangeLimiter", "menu": "AF/MF SETTING > AF RANGE LIMITER" } }
+    },
+    {
+      "id": "face-eye-auto",
+      "instruction": "MENU > AF/MF SETTING > FACE/EYE DETECTION SETTING: FACE ON/EYE AUTO",
+      "note": "If FACE/EYE DETECTION SETTING is grey, subject detection is on: click Skip.",
+      "expect": [{ "code": "0xd020", "value": 1, "label": "FACE ON" }],
+      "also": ["0xd024", "0xd039", "0xd1bd"],
+      "desc": ["0xd024", "0xd039"],
+      "patch": { "0xd020": { "menu": "AF/MF SETTING > FACE/EYE DETECTION SETTING", "values": { "1": "ON", "2": "OFF" } } }
+    },
+    {
+      "id": "eye-right",
+      "instruction": "MENU > AF/MF SETTING > FACE/EYE DETECTION SETTING: FACE ON/RIGHT EYE PRIORITY",
+      "expect": [{ "code": "0xd024", "label": "RIGHT EYE PRIORITY" }],
+      "also": ["0xd039"],
+      "patch": { "0xd024": { "menu": "AF/MF SETTING > FACE/EYE DETECTION SETTING (eye)" } }
+    },
+    {
+      "id": "subject-animal",
+      "instruction": "MENU > AF/MF SETTING > SUBJECT DETECTION SETTING: SUBJECT DETECTION ON, type ANIMAL",
+      "note": "Turning subject detection on turns face detection off; that is expected.",
+      "expect": [{ "code": "0xd1bd", "value": 2, "label": "ANIMAL" }],
+      "also": ["0xd020", "0xd024", "0xd039"],
+      "patch": { "0xd1bd": { "name": "SubjectDetection", "menu": "AF/MF SETTING > SUBJECT DETECTION SETTING" } }
+    },
+    {
+      "id": "subject-bird",
+      "instruction": "MENU > AF/MF SETTING > SUBJECT DETECTION SETTING: SUBJECT DETECTION ON, type BIRD",
+      "expect": [{ "code": "0xd1bd", "value": 3, "label": "BIRD" }],
+      "also": ["0xd039"]
+    },
+    {
+      "id": "lock-select-one",
+      "instruction": "MENU > SET UP > BUTTON/DIAL SETTING > LOCK > FUNCTION SELECTION: tick the first item in the list that is not ticked. Press BACK.",
+      "note": "Do not change LOCK SETTING. Sources disagree on which code holds which lock category; the log shows which code moves.",
+      "expect": [{ "code": "0xd306", "label": "first unticked item" }],
+      "patch": { "0xd306": { "name": "FunctionLockCategory1", "menu": "BUTTON/DIAL SETTING > LOCK > FUNCTION SELECTION" } }
+    },
+    {
+      "id": "aperture-unit-t",
+      "instruction": "MENU > SET UP > SCREEN SETTING > APERTURE UNIT FOR CINEMA LENS: T NUMBER",
+      "note": "If the item is grey with this lens, click Skip.",
+      "expect": [{ "code": "0xd239", "value": 1, "label": "T NUMBER" }],
+      "patch": {
+        "0xd239": { "name": "ApertureUnit", "menu": "SCREEN SETTING > APERTURE UNIT FOR CINEMA LENS", "values": { "1": "T NUMBER", "2": "F NUMBER" } }
+      }
+    },
+    {
+      "id": "daylight-savings-off",
+      "instruction": "MENU > SET UP > USER SETTING > AREA SETTING > DAYLIGHT SAVINGS: OFF",
+      "note": "The camera clock moves by one hour. The last step puts it back.",
+      "expect": [{ "code": "0xd1b6", "value": 2, "label": "OFF" }],
+      "also": ["0x5011"],
+      "patch": {
+        "0xd1b6": { "name": "DaylightSavings", "menu": "USER SETTING > AREA SETTING > DAYLIGHT SAVINGS", "values": { "1": "ON", "2": "OFF" } }
+      }
+    },
+    {
+      "id": "constant-speed-focus-7",
+      "instruction": "MENU > SET UP > BUTTON/DIAL SETTING > LENS ZOOM/FOCUS SETTING > CONSTANT SPEED FOCUS (Fn): 7",
+      "note": "The catalog and an open plugin disagree on which code this is; the log settles it. If the item is grey with this lens, click Skip.",
+      "expect": [{ "code": "0xd1bf", "value": 70, "label": "7" }],
+      "patch": { "0xd1bf": { "name": "ConstantSpeedFocus", "menu": "BUTTON/DIAL SETTING > LENS ZOOM/FOCUS SETTING > CONSTANT SPEED FOCUS (Fn)", "scale": 10 } }
+    },
+    {
+      "id": "constant-speed-zoom-2",
+      "instruction": "MENU > SET UP > BUTTON/DIAL SETTING > LENS ZOOM/FOCUS SETTING > CONSTANT SPEED ZOOM (Fn): 2",
+      "note": "If the item is grey with this lens, click Skip.",
+      "expect": [{ "code": "0xd1c0", "value": 20, "label": "2" }],
+      "patch": { "0xd1c0": { "name": "ConstantSpeedZoom", "menu": "BUTTON/DIAL SETTING > LENS ZOOM/FOCUS SETTING > CONSTANT SPEED ZOOM (Fn)", "scale": 10 } }
+    },
+    {
+      "id": "focus-mode-m",
+      "instruction": "Set the focus mode selector on the body to M.",
+      "note": "The next step needs manual focus.",
+      "expect": [{ "code": "0x500a", "value": 1, "label": "M" }]
+    },
+    {
+      "id": "focus-ring-infinity",
+      "instruction": "Turn the focus ring all the way to infinity. Touch nothing else.",
+      "note": "Tests whether D226 shows the focus distance. If the screen zooms in for focus check, half-press the shutter to leave it.",
+      "expect": [{ "code": "0xd226", "label": "focus at infinity" }],
+      "also": ["0xd225", "0xd227"]
+    },
+    {
+      "id": "restore",
+      "restore": true,
+      "instruction": "Put these items back, one at a time, top to bottom. Pick the setting each one had before this session. Then close the menu and click Done."
+    }
+  ]
+}
