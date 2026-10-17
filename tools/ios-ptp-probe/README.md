@@ -1,0 +1,128 @@
+# PTP Probe (iOS / iPadOS)
+
+A one-screen test app. It answers one question: can an iPhone or iPad, over a USB-C cable,
+read and write Fujifilm X-T5 PTP properties? It tests two USB modes: USB TETHER SHOOTING FIXED
+and USB RAW CONV./BACKUP RESTORE.
+
+It uses ImageCaptureCore: `ICDeviceBrowser` finds the camera, the app opens one session, and
+`ICCameraDevice.requestSendPTPCommand(_:outData:completion:)` sends PTP command containers
+that the app builds itself. Protocol facts come from `docs/protocol.md`.
+
+## Set the signing team
+
+Signing settings live in `Local.xcconfig`, which git ignores. Never commit it.
+
+```sh
+cd tools/ios-ptp-probe
+cp Local.xcconfig.example Local.xcconfig
+```
+
+Edit `Local.xcconfig`:
+
+| Setting | Value |
+|---|---|
+| `DEVELOPMENT_TEAM` | your Apple team ID (Xcode > Settings > Accounts shows it). A free personal team works. |
+| `BUNDLE_ID_PREFIX` | a reverse-DNS prefix you own, for example `com.yourname`. The bundle id becomes `<prefix>.ptpprobe`. |
+
+Without `Local.xcconfig` the bundle id is `com.example.ptpprobe` and no team is set. That
+builds for the simulator, but it does not sign for a device.
+
+## Build and run on a device
+
+1. Generate the project (the `.xcodeproj` and `Info.plist` are generated and gitignored):
+
+   ```sh
+   xcodegen generate
+   ```
+
+2. Turn on Developer Mode on the device: Settings > Privacy & Security > Developer Mode. The
+   device restarts.
+3. Connect the device to the Mac and find its UDID:
+
+   ```sh
+   xcrun devicectl list devices
+   ```
+
+4. Build and install:
+
+   ```sh
+   xcodebuild build -project PTPProbe.xcodeproj -scheme PTPProbe \
+     -destination 'platform=iOS,id=<udid>' -derivedDataPath build -allowProvisioningUpdates
+   xcrun devicectl device install app --device <udid> build/Build/Products/Debug-iphoneos/PTPProbe.app
+   ```
+
+   Or open `PTPProbe.xcodeproj` in Xcode, pick the device, and press Run.
+
+5. Trust the developer profile on the device: Settings > General > VPN & Device Management >
+   your developer app > Trust. This is needed once per team. A free personal team's profile
+   expires after 7 days; rebuild after that.
+
+Simulator and unsigned builds (compile checks only; the simulator finds no camera):
+
+```sh
+xcodebuild build -project PTPProbe.xcodeproj -scheme PTPProbe -sdk iphonesimulator -derivedDataPath build
+xcodebuild build -project PTPProbe.xcodeproj -scheme PTPProbe -destination 'generic/platform=iOS' \
+  -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+```
+
+## Set up the camera
+
+Set the mode before you plug in the cable. The camera locks the menu item while the cable is in.
+
+| Test | Camera menu |
+|---|---|
+| Tether | SET UP > CONNECTION SETTING > CONNECTION MODE > USB TETHER SHOOTING FIXED |
+| Recipe read | SET UP > CONNECTION SETTING > CONNECTION MODE > USB RAW CONV./BACKUP RESTORE |
+
+Then:
+
+1. Turn the camera on and close every menu (a menu makes every property answer 0xA001).
+2. Connect the camera's USB-C port to the iPhone or iPad with a USB-C data cable.
+3. Open PTP Probe. When the camera name shows, tap **Connect** and allow the prompts.
+4. Tap **Run all**, or the single steps. Then tap **Copy log** or **Share log**.
+
+To test the other mode: unplug, change CONNECTION MODE on the camera, plug in, tap Connect.
+The app never reconnects on its own.
+
+## What the buttons do
+
+| Button | PTP | Writes |
+|---|---|---|
+| Device info | GetDeviceInfo 0x1001. Shows model, firmware, vendor extension and the operation list. The serial number is zeroed in the dump and never shown. | none |
+| Read state | GetDevicePropValue 0x1015 for D22E (screen), D307 (still/movie), D381 (AUTO POWER OFF), then D18E as a mode probe | none |
+| Describe D381 | GetDevicePropDesc 0x1014 for D381 | none |
+| Write test | Reads D381, sets it to 3 (OFF), reads back, restores the original, reads back. If D381 is already 3, it tests with 1 (5 min). | D381, restored |
+| Recipe read | Reads D18C, sets D18C = 1, reads D18D (slot name) and D18E (first field), restores D18C | D18C, restored |
+| Run all | All of the above. It skips the write test unless D381 answered, and the recipe read unless D18E answered. | as above |
+
+The **USB mode** line updates as answers come in:
+
+- **USB TETHER SHOOTING FIXED**: D381 answers.
+- **USB RAW CONV./BACKUP RESTORE**: D18E answers. Descriptors are refused with 0x2002.
+- **unknown**: neither answered. The camera may be in USB CARD READER mode, or iOS blocked the
+  commands.
+
+## Reading the results
+
+Each step logs the response code, the raw response container, and the data bytes. Write and
+recipe steps also log `PASS` or `FAIL` per step.
+
+| Result | Meaning |
+|---|---|
+| `response 0x2001 OK` and the expected values | iOS passes raw PTP for this mode. A write test with every step PASS means iOS can read and write. |
+| error `-21249` | ICReturnPTPNotAuthorizedToSendCommand. iOS refused the raw command. Check that camera control was allowed (Settings > PTP Probe), then unplug, replug and tap Connect. If it persists with control allowed, iOS does not allow raw PTP to this camera. |
+| `0x2019 DeviceBusy` | The camera is about to power off (AUTO POWER OFF). Wait. Do not retry in a loop. |
+| `0xA001` | A menu is open on the camera. Close it and run the step again. |
+| `0x2002 GeneralError` on Describe D381 | Expected in RAW CONV. mode. Values still read. |
+| `0x200A DevicePropNotSupported` | The property does not exist in this mode. Tether mode gives this for D18E. |
+| `0x201D` or `0x201C` on a write | The camera rejected the value or its format. Check how the payload went out (below). |
+
+`WARNING: D381 is not back to N` means the restore failed. Set AUTO POWER OFF on the camera by
+hand.
+
+## Known unknowns
+
+- The app passes the SetDevicePropValue payload to `outData` as bare value bytes, with no data
+  container header. It assumes ImageCaptureCore adds the header. A 0x201C or 0x201D answer may
+  mean that assumption is wrong.
+- If the data phase comes back with a container header, the app strips it before decoding.
