@@ -4,13 +4,8 @@ import { usePrefs } from "../lib/prefs";
 import { href } from "../lib/router";
 import { PageHead } from "../shell/PageHead";
 import { WarnIcon } from "../shell/icons";
+import { SwitchSteps } from "../shell/ModeNotice";
 import { cameraArt } from "../assets/camera";
-
-const MODES = [
-  { id: "tether", name: "USB TETHER SHOOTING FIXED", tag: "Hub, Settings, Lab", text: "Read and change settings. The camera keeps working." },
-  { id: "rawConv", name: "USB RAW CONV./BACKUP RESTORE", tag: "Recipes", text: "Read and write slots C1 to C7. The camera is locked until you unplug." },
-  { id: "cardReader", name: "USB CARD READER", tag: "Not supported", text: "Files only. Ukiyo cannot read settings in this mode." },
-] as const;
 
 /** How to set the camera's USB mode, and where the connection stands now. */
 export function Connect() {
@@ -41,54 +36,7 @@ export function Connect() {
           <img src={theme === "dark" ? art.dark : art.light} alt={art.alt} />
         </div>
 
-        <ol className="steps">
-          <li className="step">
-            <span className="step-n" aria-hidden="true">1</span>
-            <div className="step-body">
-              <span className="step-title">Unplug the USB cable</span>
-              <span className="small muted">The camera locks this menu while the cable is in.</span>
-            </div>
-          </li>
-          <li className="step">
-            <span className="step-n" aria-hidden="true">2</span>
-            <div className="step-body">
-              <span className="step-title">On the camera, open this menu</span>
-              <span className="menu-path-keys">
-                <span className="key">SET UP</span>
-                <span aria-hidden="true">›</span>
-                <span className="key">CONNECTION SETTING</span>
-                <span aria-hidden="true">›</span>
-                <span className="key">CONNECTION MODE</span>
-              </span>
-            </div>
-          </li>
-          <li className="step">
-            <span className="step-n" aria-hidden="true">3</span>
-            <div className="step-body grow-body">
-              <span className="step-title">Pick the mode for what you want to do</span>
-              {MODES.map((m) => {
-                const on = current ? current === m.id : m.id === "tether";
-                const cls = ["mode-card", on ? "on" : "", m.id === "cardReader" ? "unsupported" : ""].filter(Boolean).join(" ");
-                return (
-                  <div key={m.id} className={cls}>
-                    <span className="mode-top">
-                      <span className="mono mode-name">{m.name}</span>
-                      <span className="mode-tag">{current === m.id ? "Set now" : m.tag}</span>
-                    </span>
-                    <span className="small">{m.text}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </li>
-          <li className="step">
-            <span className="step-n" aria-hidden="true">4</span>
-            <div className="step-body">
-              <span className="step-title">Plug the cable into this Mac</span>
-              <span className="small muted">Ukiyo finds the camera on its own.</span>
-            </div>
-          </li>
-        </ol>
+        <SwitchSteps target={current ?? "tether"} current={current ?? null} />
       </div>
 
       <div className="card connect-status" role="status">

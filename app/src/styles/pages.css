@@ -1319,3 +1319,37 @@ a.btn {
 .sheet-actions .select.narrow {
   height: var(--control-h);
 }
+
+/* USB mode notice and the switch walkthrough (shell/ModeNotice.tsx) */
+.link-btn {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.banner.warn .link-btn {
+  color: var(--warn-text);
+}
+
+.switch-sheet {
+  width: min(620px, calc(100vw - 64px));
+}
+
+.switch-sheet .steps {
+  flex: none;
+}
+
+.switch-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0 0 10px;
+  border-top: 1px solid var(--line);
+}

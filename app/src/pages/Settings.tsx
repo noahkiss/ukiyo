@@ -4,6 +4,7 @@ import { APP_ICONS, BRAND_MARKS, usePrefs, type ArtChoice, type ThemePref } from
 import { href } from "../lib/router";
 import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
+import { ModeNotice } from "../shell/ModeNotice";
 import { PageHead } from "../shell/PageHead";
 import { CameraIcon, SearchIcon, StarIcon } from "../shell/icons";
 
@@ -69,6 +70,7 @@ export function Settings({ sub }: { sub: string | null }) {
           Take snapshot
         </button>
       </PageHead>
+      {section !== APPEARANCE && <ModeNotice needs="tether" what="Reading and changing settings" />}
 
       <div className="settings-search">
         <label className="search-box big">
