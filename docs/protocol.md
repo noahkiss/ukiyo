@@ -54,6 +54,10 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
   value and back, and a half-press (D208 = 0x0200 + InitiateCapture, then D208 = 0x0004 +
   InitiateCapture; the lens refocuses). GetDeviceInfo, GetStorageIDs and rewriting D381 with its
   own value do not. A write just after the half-press release answered 0x2019 once; retry it.
+- PC priority (D207 = 2) does not keep it awake either (slept at 15 s). `docs/fuji-vendor-ptp.md`
+  found no keep-alive operation in any source, Fuji's SDK included.
+- D212 (the change-event list) read count 0 at rest, even while D22F changed. Not yet read
+  during a dial change.
 - D22F changes about three times a second at rest: a blob of 32-bit counts, likely the live
   histogram.
 - Auto power off drops the camera from USB entirely; nothing can wake it over USB. Just before,
