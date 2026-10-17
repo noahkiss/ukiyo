@@ -254,7 +254,7 @@ Every command returns one envelope:
 
 ```json
 { "ok": true, "data": { } }
-{ "ok": false, "error": { "code": "needs_rawconv", "message": "Recipe slots read only in USB RAW CONV./BACKUP RESTORE mode.", "hint": "Unplug the cable, set SET UP > CONNECTION SETTING > CONNECTION MODE to USB RAW CONV./BACKUP RESTORE, plug back in.", "walkthrough": "ukiyo help modes rawconv", "mode": "tether" } }
+{ "ok": false, "error": { "code": "needs_rawconv", "message": "Recipe slots read only in USB RAW CONV./BACKUP RESTORE mode.", "hint": "Unplug the cable, set NETWORK/USB SETTING > CONNECTION MODE to USB RAW CONV./BACKUP RESTORE, plug back in.", "walkthrough": "ukiyo help modes rawconv", "mode": "tether" } }
 ```
 
 `data` uses the same shapes as the MCP `structuredContent` in section 4. Key shapes:
@@ -264,7 +264,13 @@ Every command returns one envelope:
 { "link": "connected", "reason": null, "model": "X-T5", "firmware": "x.yy", "mode": "tether",
   "capture": "stills", "screen": "shooting", "battery": null, "card": null, "lens": null,
   "owner": "serve", "pid": 4242, "fake": false, "keep_awake": true, "keep_awake_active": true,
-  "available": { "settings": true, "slots": false, "movie_props": false } }
+  "available": { "settings": true, "slots": false, "movie_props": false },
+  "notices": [] }
+// notices, in tether mode only: what the person must do at the camera first. Each clears on
+// its own once D22E reads 1 again or D307 reads STILL.
+//   { "id": "menu", "text": "Close the camera menu: half-press the shutter button on the camera." }
+//   { "id": "playback", "text": "Leave playback: press the playback button or half-press the shutter button on the camera." }
+//   { "id": "movie", "text": "Set the STILL/MOVIE switch to STILL for stills settings and recipes." }
 
 // settings
 { "rows": [ { "code": "0xd381", "name": "AutoPowerOff", "menu": "SET UP > POWER MANAGEMENT > AUTO POWER OFF",
@@ -324,6 +330,12 @@ X-T5 · firmware 9.99 · tether, stills, shooting · owner: serve (pid 4242)
 Works now: settings, presets, snapshots, owner strings, Lab
 Needs RAW CONV.: recipe slots (ukiyo help modes rawconv)
 Needs MOVIE: movie settings (ukiyo help modes movie)
+
+$ ukiyo status          # the camera in playback
+X-T5 · firmware 9.99 · tether, stills, playback · owner: serve (pid 4242)
+Leave playback: press the playback button or half-press the shutter button on the camera.
+Works now: settings, presets, snapshots, owner strings, Lab
+...
 
 $ ukiyo settings power off
 0xd364  CustomAutoPowerOff  0      likely

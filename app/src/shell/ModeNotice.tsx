@@ -13,13 +13,46 @@ export const MODES = [
   { id: "cardReader", name: "USB CARD READER", tag: "Not supported", text: "Files only. Ukiyo cannot read settings in this mode." },
 ] as const;
 
+const NETWORK_MENU = ["NETWORK/USB SETTING", "CONNECTION MODE"];
+const SETUP_MENU = ["SET UP", "CONNECTION SETTING", "CONNECTION MODE"];
+const PC_MENU = ["SET UP", "CONNECTION SETTING", "PC CONNECTION MODE"];
+
+/**
+ * Where CONNECTION MODE sits in a model's menu, from its owner's manual (`catalog/menus/`).
+ * The same table as `connection_menu` in `src-tauri/core/src/modes.rs`, which a test checks
+ * against the manuals. `null` for a body Ukiyo has no manual entry for.
+ */
+export function connectionMenu(model: string | null | undefined): string[] | null {
+  const slug = (model ?? "").trim().toLowerCase().replace(/ /g, "-");
+  if (["x-t5", "x-t50", "x-e5", "x-m5", "x-s20", "x100vi"].includes(slug)) return NETWORK_MENU;
+  if (["x-t3", "x-t4", "x-t30", "x-t30-ii", "x-s10", "x-e4", "x100v"].includes(slug)) return SETUP_MENU;
+  if (["x-t2", "x-h1", "x-pro2", "x-pro3", "x100f"].includes(slug)) return PC_MENU;
+  return null;
+}
+
+function MenuKeys({ path }: { path: string[] }) {
+  return (
+    <span className="menu-path-keys">
+      {path.map((k, i) => (
+        <span key={k} className="menu-path-part">
+          {i > 0 && <span aria-hidden="true">›</span>}
+          <span className="key">{k}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /**
  * The four steps to change the camera's USB mode. The Connect page and the walkthrough share them.
  * `target` marks the mode to pick; `current` marks the mode the camera is in now. With `named`,
- * step 3 names the target mode.
+ * step 3 names the target mode. Step 2 shows the connected model's menu path, or both common
+ * paths with no known model.
  */
 export function SwitchSteps({ target, current, named = false }: { target: UsbMode | null; current: UsbMode | null; named?: boolean }) {
   const pick = named ? MODES.find((m) => m.id === target)?.name : undefined;
+  const { status } = useCamera();
+  const path = connectionMenu(status?.model);
   return (
     <ol className="steps" data-component="switch-steps">
       <li className="step">
@@ -33,13 +66,13 @@ export function SwitchSteps({ target, current, named = false }: { target: UsbMod
         <span className="step-n" aria-hidden="true">2</span>
         <div className="step-body">
           <span className="step-title">On the camera, open this menu</span>
-          <span className="menu-path-keys">
-            <span className="key">SET UP</span>
-            <span aria-hidden="true">›</span>
-            <span className="key">CONNECTION SETTING</span>
-            <span aria-hidden="true">›</span>
-            <span className="key">CONNECTION MODE</span>
-          </span>
+          <MenuKeys path={path ?? NETWORK_MENU} />
+          {!path && (
+            <>
+              <span className="small muted">On the X-T4 and older:</span>
+              <MenuKeys path={SETUP_MENU} />
+            </>
+          )}
         </div>
       </li>
       <li className="step">
@@ -134,13 +167,17 @@ export function HowToSwitch({ target, children = "How to switch" }: { target: Ne
 
 /**
  * Shows when a camera is connected in a mode that `what` cannot use. Renders nothing with no
- * camera, or in the needed mode.
+ * camera, or in the needed mode. In tether mode it shows what the person must do at the camera
+ * first instead: close a menu (D22E 3), leave playback (D22E 2), or, unless `stills` is false,
+ * set the STILL/MOVIE switch to STILL (D307). These clear when the status changes back. The
+ * same notices reach the CLI and MCP as `notices` in `status` (`read.rs`).
  */
-export function ModeNotice({ needs, what }: { needs: NeededMode; what: string }) {
+export function ModeNotice({ needs, what, stills = true }: { needs: NeededMode; what: string; stills?: boolean }) {
   const { status } = useCamera();
   const state = cameraState(status);
   const mode = status?.mode;
-  if (state === "none" || !mode || mode === "unknown" || mode === needs) return null;
+  if (state === "none" || !mode || mode === "unknown") return null;
+  if (mode === needs) return mode === "tether" ? <CameraNotices stills={stills} /> : null;
   return (
     <div className="banner warn" role="status" data-component="mode-notice" data-needs={needs} data-mode={mode}>
       <WarnIcon />
@@ -149,5 +186,41 @@ export function ModeNotice({ needs, what }: { needs: NeededMode; what: string })
       </span>
       <HowToSwitch target={needs} />
     </div>
+  );
+}
+
+/** Camera screens and the STILL/MOVIE switch, in tether mode. */
+function CameraNotices({ stills }: { stills: boolean }) {
+  const { status } = useCamera();
+  if (status?.link !== "connected") return null;
+  const screen =
+    status.screen === "menu" ? (
+      <>
+        <strong>Close the camera menu.</strong> Half-press the shutter button on the camera.
+      </>
+    ) : status.screen === "playback" ? (
+      <>
+        <strong>Leave playback.</strong> Press the playback button or half-press the shutter button on the camera.
+      </>
+    ) : null;
+  const movie = stills && status.capture === "movie";
+  if (!screen && !movie) return null;
+  return (
+    <>
+      {screen && (
+        <div className="banner warn" role="status" data-component="screen-notice" data-screen={status.screen}>
+          <WarnIcon />
+          <span>{screen}</span>
+        </div>
+      )}
+      {movie && (
+        <div className="banner warn" role="status" data-component="movie-notice">
+          <WarnIcon />
+          <span>
+            <strong>Set the STILL/MOVIE switch to STILL</strong> for stills settings and recipes.
+          </span>
+        </div>
+      )}
+    </>
   );
 }

@@ -16,7 +16,7 @@ what comes next.
   tools, plans, write safety.
 - `app/` — the window: React + TypeScript + Vite (pnpm, Node from `.node-version`).
   `src/App.tsx` the shell and hash routes (`#/hub`, `#/settings/appearance`), `src/shell/`
-  (Sidebar with the brand-mark slot, page head, camera chip, icons, ModeNotice: the wrong-USB-mode notice and the switch walkthrough), `src/pages/` (Hub, Recipes,
+  (Sidebar with the brand-mark slot, page head, camera chip, icons, ModeNotice: the wrong-USB-mode notice, the menu, playback and MOVIE notices, and the switch walkthrough with each body's menu path), `src/pages/` (Hub, Recipes,
   Settings with Appearance, Connect, and Lab: Lab state and keys; it stays mounted while hidden),
   `src/views/` (the Lab's StatusBar, PropTable, ChangeFeed, LabelPanel with the write box,
   FakeBar), `src/lib/` (`camera.tsx` live status for every page, `live.ts` the camera's properties and
@@ -28,7 +28,7 @@ what comes next.
   art, brand marks and app icons as light and dark webp; `camera/index.ts` maps a model to its
   art, with a generic body for unknown models). `src/bindings.ts` generated (do not edit;
   `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort). In a
-  browser outside Tauri, `?camera=tether|rawconv|cardreader` previews a camera state and
+  browser outside Tauri, `?camera=tether|rawconv|cardreader|movie|menu|playback` previews a camera state and
   `?model=X-H2S` another body.
 - `src-tauri/core/` — `ukiyo-core`, the workspace member with no Tauri: `src/api.rs` (`Request`,
   `Response`, `Error`, `Event`, `call`, `dispatch`) and the modules below. Cargo commands in

@@ -218,9 +218,24 @@ fn tools_on_the_fake_camera() {
     let log = std::fs::read_to_string(m.data.path().join("library/log.jsonl")).unwrap();
     assert!(log.lines().all(|l| l.contains("\"actor\":\"mcp:test\"")), "{log}");
 
+    // Camera screens and the STILL/MOVIE switch show as notices, and clear on their own.
+    fn ids(m: &mut Mcp) -> Vec<String> {
+        m.ok("camera_status", json!({}))["notices"].as_array().unwrap().iter().map(|n| n["id"].as_str().unwrap().to_string()).collect()
+    }
+    assert!(ids(&mut m).is_empty());
+    m.ok("fake_camera", json!({ "action": "playback" }));
+    wait_until("the playback notice", 10, || ids(&mut m) == ["playback"]);
+    m.ok("fake_camera", json!({ "action": "closeMenu" }));
+    wait_until("no notice after playback", 10, || ids(&mut m).is_empty());
+    m.ok("fake_camera", json!({ "action": "openMenu" }));
+    wait_until("the menu notice", 10, || ids(&mut m) == ["menu"]);
+    m.ok("fake_camera", json!({ "action": "closeMenu" }));
+    wait_until("no notice after the menu", 10, || ids(&mut m).is_empty());
+
     // fake_camera, then a needs_* error with its walkthrough.
     m.ok("fake_camera", json!({ "action": "movie" }));
     wait_until("movie mode", 10, || m.ok("camera_status", json!({}))["capture"] == "movie");
+    assert_eq!(ids(&mut m), ["movie"]);
     m.ok("fake_camera", json!({ "action": "unplug" }));
     wait_until("unplugged", 10, || m.ok("camera_status", json!({}))["link"] != "connected");
     let e = m.err("settings_read", json!({}));

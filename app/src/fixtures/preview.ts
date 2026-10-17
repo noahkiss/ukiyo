@@ -1,6 +1,7 @@
 // FIXTURE: browser preview only. Outside Tauri there is no camera, so `pnpm dev` in a browser
 // shows no camera. Add `?camera=tether`, `rawconv`, `cardreader` or `none` to the URL to preview
-// a camera state, and `?model=X-T3` (any model name) to preview another body's art. Never used
+// a camera state, `?camera=movie` (tether, STILL/MOVIE at MOVIE), `menu` (SET UP menu open) or
+// `playback` for the camera notices, and `?model=X-T3` (any model name) to preview another body's art. Never used
 // inside the app.
 import type { Status } from "../bindings";
 
@@ -35,6 +36,12 @@ export function previewStatus(): Status | null {
       return { ...base, mode: "rawConv" };
     case "cardreader":
       return { ...base, mode: "cardReader" };
+    case "movie":
+      return { ...base, capture: "movie" };
+    case "menu":
+      return { ...base, screen: "menu" };
+    case "playback":
+      return { ...base, screen: "playback" };
     default:
       return null;
   }

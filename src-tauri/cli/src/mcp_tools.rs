@@ -8,6 +8,7 @@ pub const INSTRUCTIONS: &str = "Ukiyo manages a Fujifilm X-series camera on USB.
 Start with camera_status. Read settings with settings_read. Every camera write is two calls: camera_plan builds a plan and writes nothing; show its steps to the user, and only after they agree call camera_apply with the plan_id. \
 Plans write only properties whose catalog confidence is confirmed, unless the plan sets allow_unconfirmed; do that only when the user asks for it. \
 A needs_* error carries a hint and a walkthrough: tell the user how to switch the camera's USB mode or STILL/MOVIE switch; never retry in a loop. \
+When camera_status lists notices (a camera menu open, playback, the switch at MOVIE), pass each text to the user; the camera answers again once they act. \
 Mapping properties: camera_watch shows what changed while the user turns a dial, then catalog_label names it. Plans expire after 5 minutes. \
 The library on this Mac (presets, snapshots, favourite settings, preferences, camera history) is library_search, library_read, library_save and library_delete; none of them writes to the camera. Apply a preset or restore a snapshot with camera_plan {preset} or {snapshot}, then camera_apply.";
 
@@ -20,7 +21,7 @@ pub fn tools(fake: bool) -> Vec<Value> {
     let mut v = vec![
         json!({
             "name": "camera_status",
-            "description": "Reports the camera connection, its USB mode, and which features work in that mode.\n\nBest for: the first call in any camera task, and after any needs_* error.\nReturns: link, reason, model, firmware, mode, capture (stills/movie), screen, battery, card, keep_awake (the setting) and keep_awake_active (resetting the camera's auto power off timer now), the owner process (serve, its pid, fake or real camera), and available per feature (settings, slots, movie_props).\nNot for property values: use settings_read.",
+            "description": "Reports the camera connection, its USB mode, and which features work in that mode.\n\nBest for: the first call in any camera task, and after any needs_* error.\nReturns: link, reason, model, firmware, mode, capture (stills/movie), screen, battery, card, keep_awake (the setting) and keep_awake_active (resetting the camera's auto power off timer now), the owner process (serve, its pid, fake or real camera), and available per feature (settings, slots, movie_props), and notices: [{ id: menu|playback|movie, text }], what the user must do at the camera first.\nNot for property values: use settings_read.",
             "inputSchema": { "type": "object", "properties": {
                 "history": { "type": "boolean", "default": false, "description": "Also this camera's history on this Mac: connects, shot counts per day and month, lenses seen." },
             }, "additionalProperties": false },

@@ -55,8 +55,8 @@ Set the mode before you plug in the cable. The camera locks the menu item while 
 
 | Test | Camera menu |
 |---|---|
-| Tether | SET UP > CONNECTION SETTING > CONNECTION MODE > USB TETHER SHOOTING FIXED |
-| Recipe read | SET UP > CONNECTION SETTING > CONNECTION MODE > USB RAW CONV./BACKUP RESTORE |
+| Tether | NETWORK/USB SETTING > CONNECTION MODE > USB TETHER SHOOTING FIXED |
+| Recipe read | NETWORK/USB SETTING > CONNECTION MODE > USB RAW CONV./BACKUP RESTORE |
 
 Then:
 

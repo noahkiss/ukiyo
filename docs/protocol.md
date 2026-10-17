@@ -5,8 +5,13 @@ one camera from a Mac. Read-only unless a row says a write was tested.
 
 ## USB connection modes
 
-Set on the camera: SET UP > CONNECTION SETTING > CONNECTION MODE. The menu item is locked while
-the cable is plugged in, so software cannot switch modes.
+Set on the camera: NETWORK/USB SETTING > CONNECTION MODE (X-T5 owner's manual, fw 4.30). The
+menu item is locked while the cable is plugged in, so software cannot switch modes. Other bodies
+put it elsewhere, per their manuals in `catalog/menus/`: SET UP > CONNECTION SETTING >
+CONNECTION MODE on the X-T3/X-T4 generation, and PC CONNECTION MODE in the same place on the
+X-T2, X-H1, X-Pro2, X-Pro3 and X100F. `modes::connection_menu` holds the table; not yet checked
+on any body but the X-T5. The X-T5 lists six modes (USB WEBCAM, USB TETHER SHOOTING AUTO and
+WIRELESS TETHER SHOOTING FIXED besides the three below).
 
 | Mode | What PTP exposes | Camera usable while connected |
 |---|---|---|
@@ -111,6 +116,10 @@ facts above turned into behaviour. Not yet run against a camera.
   closes it. D22E 3 (SET UP, NETWORK/USB SETTING, any depth) and D22E 2 (playback) answer
   0xA001 to everything else, the half-press included. The owner pauses for both 2 and 3, and
   half-presses only at 1, once per write (`close_menu_to_write`, on by default).
+- Notices: in tether mode, `status` lists `notices` for screen 3 (or any read answering 0xA001):
+  "Close the camera menu", screen 2: "Leave playback", and D307 at MOVIE: "Set the STILL/MOVIE
+  switch to STILL". The window shows the same banners (`ModeNotice`). Each clears when the next
+  D22E or D307 read shows shooting or stills.
 
 ## Recipe slots (RAW CONV. mode)
 

@@ -100,6 +100,7 @@ pub(crate) fn status_lines(v: &StatusView) -> Vec<String> {
     }
     head.push(owner_text(v));
     let mut lines = vec![head.join(" · ")];
+    lines.extend(v.notices.iter().map(|n| n.text.to_string()));
     let tether = "settings, presets, snapshots, owner strings";
     match v.mode {
         Some(UsbMode::Tether) => {

@@ -86,7 +86,7 @@ pub fn readiness(s: &Status, rows: usize, need: Need) -> Result<(), Problem> {
         return Err(Problem {
             code: "needs_tether",
             message: format!("Live settings read only in USB TETHER SHOOTING FIXED mode; the camera is in {}.", mode_name(mode)),
-            hint: "Unplug the cable, set SET UP > CONNECTION SETTING > CONNECTION MODE to USB TETHER SHOOTING FIXED, plug back in.".into(),
+            hint: format!("Unplug the cable, set {} to USB TETHER SHOOTING FIXED, plug back in.", s.model.as_deref().and_then(modes::connection_menu).map_or("CONNECTION MODE".into(), |p| p.join(" > "))),
             walkthrough: Some(modes::walkthrough("tether")),
             mode: Some(mode_id(mode)),
         });
@@ -225,6 +225,36 @@ pub struct StatusView {
     /// Keep-awake is resetting the camera's auto power off timer now.
     pub keep_awake_active: bool,
     pub available: Available,
+    /// What the person must do at the camera before Ukiyo can read or write: close a menu,
+    /// leave playback, or set the STILL/MOVIE switch for stills settings. Empty when nothing.
+    pub notices: Vec<Notice>,
+}
+
+/// One thing the person must do at the camera (the window shows the same as a notice).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Notice {
+    /// `menu` (D22E 3: SET UP or NETWORK/USB SETTING open), `playback` (D22E 2), or `movie`
+    /// (D307 at MOVIE: stills settings and recipes do not answer).
+    pub id: &'static str,
+    pub text: &'static str,
+}
+
+pub const NOTICE_MENU: Notice = Notice { id: "menu", text: "Close the camera menu: half-press the shutter button on the camera." };
+pub const NOTICE_PLAYBACK: Notice = Notice { id: "playback", text: "Leave playback: press the playback button or half-press the shutter button on the camera." };
+pub const NOTICE_MOVIE: Notice = Notice { id: "movie", text: "Set the STILL/MOVIE switch to STILL for stills settings and recipes." };
+
+/// The notices for a status: only while connected in tether mode, where D22E and D307 read.
+pub fn notices(s: &Status) -> Vec<Notice> {
+    if s.link != Link::Connected || s.mode != Some(UsbMode::Tether) {
+        return vec![];
+    }
+    let screen = match s.screen {
+        Some(crate::camera::owner::Screen::Menu) => Some(NOTICE_MENU),
+        Some(crate::camera::owner::Screen::Playback) => Some(NOTICE_PLAYBACK),
+        _ => None,
+    };
+    let movie = (s.capture == Some(Capture::Movie)).then_some(NOTICE_MOVIE);
+    screen.into_iter().chain(movie).collect()
 }
 
 fn named_row<'a>(snap: &'a Snapshot, name: &str) -> Option<(&'a PropRow, Option<&'a Entry>)> {
@@ -260,6 +290,7 @@ pub fn status_view(snap: &Snapshot, owner: Option<&Welcome>) -> StatusView {
             slots: connected && s.mode == Some(UsbMode::RawConv),
             movie_props: connected && s.mode == Some(UsbMode::Tether) && s.capture == Some(Capture::Movie),
         },
+        notices: notices(s),
     }
 }
 
@@ -606,11 +637,23 @@ mod tests {
         let v = status_view(&s, None);
         assert_eq!(v.battery.as_deref(), Some("4"));
         assert!(v.available.settings && !v.available.slots);
+        assert!(v.notices.is_empty());
+        s.status.screen = Some(Screen::Playback);
+        s.status.capture = Some(Capture::Movie);
+        let ids: Vec<_> = status_view(&s, None).notices.iter().map(|n| n.id).collect();
+        assert_eq!(ids, ["playback", "movie"]);
+        s.status.screen = Some(Screen::Menu);
+        assert_eq!(status_view(&s, None).notices[0], NOTICE_MENU);
+        s.status.screen = Some(Screen::Shooting);
+        s.status.capture = Some(Capture::Stills);
+        assert!(status_view(&s, None).notices.is_empty(), "back at the shooting screen in stills");
         assert_eq!(readiness(&s.status, 4, Need::Tether), Ok(()));
         assert_eq!(readiness(&s.status, 0, Need::Connected).unwrap_err().code, "not_connected");
         s.status.mode = Some(UsbMode::RawConv);
         let p = readiness(&s.status, 4, Need::Tether).unwrap_err();
         assert_eq!((p.code, p.mode), ("needs_tether", Some("rawconv")));
+        assert!(p.hint.contains("NETWORK/USB SETTING > CONNECTION MODE"), "the X-T5's menu path: {}", p.hint);
+        assert!(status_view(&s, None).notices.is_empty(), "no notices outside tether mode");
         assert_eq!(p.walkthrough.as_deref(), Some("ukiyo help modes tether"));
         assert_eq!(readiness(&s.status, 4, Need::Connected), Ok(()));
         s.status.link = Link::Asleep;

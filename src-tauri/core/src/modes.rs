@@ -13,22 +13,54 @@ pub struct Mode {
     pub name: &'static str,
     /// What Ukiyo can do in this mode.
     pub gives: &'static str,
-    pub steps: Vec<&'static str>,
+    pub steps: Vec<String>,
 }
 
-const CONNECTION_STEPS: [&str; 4] = [
-    "Unplug the USB cable. The camera locks this menu while the cable is in.",
-    "On the camera, open SET UP > CONNECTION SETTING > CONNECTION MODE.",
-    "", // step 3 names the mode
-    "Plug the cable into this Mac. Ukiyo finds the camera on its own.",
-];
+/// Where CONNECTION MODE sits from the X-T5 generation on (owner's manuals in `catalog/menus/`).
+pub const NETWORK_MENU: &[&str] = &["NETWORK/USB SETTING", "CONNECTION MODE"];
+/// Where it sits on the X-T3 and X-T4 generation.
+pub const SETUP_MENU: &[&str] = &["SET UP", "CONNECTION SETTING", "CONNECTION MODE"];
+/// Where it sits on the X-T2 generation, under the older item name.
+pub const PC_MENU: &[&str] = &["SET UP", "CONNECTION SETTING", "PC CONNECTION MODE"];
 
-/// Every mode, in `ukiyo help modes` order.
+/// The CONNECTION MODE menu path for a model (`X-T5`, `X-T30 II`), from its owner's manual.
+/// `None` for a body without a CONNECTION MODE item in `catalog/menus/`.
+/// `app/src/shell/ModeNotice.tsx` holds the same table.
+pub fn connection_menu(model: &str) -> Option<&'static [&'static str]> {
+    let slug = model.trim().to_ascii_lowercase().replace(' ', "-");
+    match slug.as_str() {
+        "x-t5" | "x-t50" | "x-e5" | "x-m5" | "x-s20" | "x100vi" => Some(NETWORK_MENU),
+        "x-t3" | "x-t4" | "x-t30" | "x-t30-ii" | "x-s10" | "x-e4" | "x100v" => Some(SETUP_MENU),
+        "x-t2" | "x-h1" | "x-pro2" | "x-pro3" | "x100f" => Some(PC_MENU),
+        _ => None,
+    }
+}
+
+/// The "open this menu" step: the model's path, or both common paths for an unknown model.
+pub fn open_menu_step(model: Option<&str>) -> String {
+    match model.and_then(connection_menu) {
+        Some(path) => format!("On the camera, open {}.", path.join(" > ")),
+        None => format!("On the camera, open {}. On the X-T4 and older: {}.", NETWORK_MENU.join(" > "), SETUP_MENU.join(" > ")),
+    }
+}
+
+/// Every mode, in `ukiyo help modes` order, with the menu path for any body.
 pub fn all() -> Vec<Mode> {
-    let connection = |id, name, gives, pick| {
-        let mut steps = CONNECTION_STEPS.to_vec();
-        steps[2] = pick;
-        Mode { id, name, gives, steps }
+    all_for(None)
+}
+
+/// Every mode, with the menu path for `model`.
+pub fn all_for(model: Option<&str>) -> Vec<Mode> {
+    let connection = |id, name, gives, pick: &str| Mode {
+        id,
+        name,
+        gives,
+        steps: vec![
+            "Unplug the USB cable. The camera locks this menu while the cable is in.".into(),
+            open_menu_step(model),
+            pick.into(),
+            "Plug the cable into this Mac. Ukiyo finds the camera on its own.".into(),
+        ],
     };
     vec![
         connection(
@@ -48,9 +80,9 @@ pub fn all() -> Vec<Mode> {
             name: "STILL/MOVIE switch at MOVIE",
             gives: "Movie settings, in tether mode. Stills settings need the switch at STILL.",
             steps: vec![
-                "Keep the camera in USB TETHER SHOOTING FIXED.",
-                "Set the STILL/MOVIE switch to MOVIE (or STILL for stills settings).",
-                "Ukiyo sees the change within a second; no need to unplug.",
+                "Keep the camera in USB TETHER SHOOTING FIXED.".into(),
+                "Set the STILL/MOVIE switch to MOVIE (or STILL for stills settings).".into(),
+                "Ukiyo sees the change within a second; no need to unplug.".into(),
             ],
         },
     ]
@@ -75,5 +107,40 @@ mod tests {
         assert_eq!(super::find("rawConv").unwrap().name, "USB RAW CONV./BACKUP RESTORE");
         assert!(super::find("cardreader").is_none());
         assert!(super::all().iter().all(|m| m.steps.iter().all(|s| !s.is_empty())));
+        assert_eq!(super::all_for(Some("X-T5"))[0].steps[1], "On the camera, open NETWORK/USB SETTING > CONNECTION MODE.");
+        assert!(super::all()[0].steps[1].contains("SET UP > CONNECTION SETTING > CONNECTION MODE"));
+    }
+
+    /// The table matches every owner's manual in `catalog/menus/`.
+    #[test]
+    fn connection_menu_matches_the_manuals() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog/menus");
+        let mut n = 0;
+        for f in std::fs::read_dir(&dir).unwrap() {
+            let path = f.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let d: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let model = d["model"].as_str().unwrap();
+            let mut found = None;
+            for t in d["tabs"].as_array().unwrap() {
+                let items = t["pages"].as_array().into_iter().flatten().flat_map(|p| p["items"].as_array().into_iter().flatten());
+                for item in items {
+                    let name = item["name"].as_str().unwrap_or_default();
+                    if name.ends_with("CONNECTION MODE") {
+                        let tab = t["name"].as_str().unwrap().to_string();
+                        found = Some(match t["menu"].as_str() {
+                            Some("setup") => vec!["SET UP".to_string(), tab, name.to_string()],
+                            _ => vec![tab, name.to_string()],
+                        });
+                    }
+                }
+            }
+            let table = super::connection_menu(model).map(|p| p.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+            assert_eq!(table, found, "{model}");
+            n += 1;
+        }
+        assert!(n > 10, "read {n} menu files");
     }
 }

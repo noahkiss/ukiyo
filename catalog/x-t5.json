@@ -752,7 +752,7 @@
     },
     "0xd16e": {
       "name": "UsbConnectionMode",
-      "menu": "SET UP > CONNECTION SETTING > CONNECTION MODE",
+      "menu": "NETWORK/USB SETTING > CONNECTION MODE",
       "type": "uint16",
       "values": {
         "5": "USB TETHER SHOOTING FIXED",

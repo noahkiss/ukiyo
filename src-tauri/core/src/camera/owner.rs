@@ -126,7 +126,7 @@ impl Default for Config {
     }
 }
 
-/// The USB connection mode set on the camera (SET UP > CONNECTION SETTING).
+/// The USB connection mode set on the camera (CONNECTION MODE; `modes::connection_menu`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum UsbMode {

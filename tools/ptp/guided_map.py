@@ -14,7 +14,7 @@ STEPS is a name in steps/ (x-t5-first) or a path. Run from tools/ptp with
 
 Before you start:
 - Quit Ukiyo (the script takes owner.lock) and run `killall PTPCamera`.
-- Camera: SET UP > CONNECTION SETTING > CONNECTION MODE: USB TETHER SHOOTING FIXED,
+- Camera: NETWORK/USB SETTING > CONNECTION MODE: USB TETHER SHOOTING FIXED,
   STILL/MOVIE switch on STILL (MOVIE for a movie steps file), shooting screen showing.
 
 The session:

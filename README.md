@@ -38,7 +38,8 @@ Contributions of a catalog for another body are welcome. `docs/catalog.md` descr
 
 ## USB modes
 
-Set the mode on the camera: SET UP > CONNECTION SETTING > CONNECTION MODE.
+Set the mode on the camera: NETWORK/USB SETTING > CONNECTION MODE on the X-T5 generation, or
+SET UP > CONNECTION SETTING > CONNECTION MODE on the X-T4 and older.
 
 | Mode | What Ukiyo can do |
 |---|---|

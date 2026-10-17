@@ -117,7 +117,7 @@ CURATED = {
     0xD156: dict(name="LensFirmwareVersion", confidence=L, source=MAP, notes="Hex BCD: 0x105 = 1.05."),
     0xD16D: dict(name="FrameNumber", menu="SET UP > SAVE DATA SET-UP > FRAME NO.", confidence=L, source=MAP,
                  notes="The current file number."),
-    0xD16E: dict(name="UsbConnectionMode", menu="SET UP > CONNECTION SETTING > CONNECTION MODE", confidence=L, source=MAP,
+    0xD16E: dict(name="UsbConnectionMode", menu="NETWORK/USB SETTING > CONNECTION MODE", confidence=L, source=MAP,
                  values=labels([(5, "USB TETHER SHOOTING FIXED"), (6, "USB RAW CONV./BACKUP RESTORE")])),
     0xD1B3: dict(name="DigitalTeleConv", menu="SHOOTING SETTING > DIGITAL TELE-CONV.", confidence=L, source=MAP,
                  values=labels([(100, "OFF"), (140, "1.4x"), (200, "2.0x")])),

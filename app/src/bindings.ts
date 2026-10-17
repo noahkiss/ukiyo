@@ -930,7 +930,7 @@ export type Usb = {
 	product: string,
 };
 
-/**  The USB connection mode set on the camera (SET UP > CONNECTION SETTING). */
+/**  The USB connection mode set on the camera (CONNECTION MODE; `modes::connection_menu`). */
 export type UsbMode = "cardReader" | "rawConv" | "tether" | "unknown";
 
 /**  One decoded property value. Numbers widen to i64 (no camera value needs more). */

@@ -1095,6 +1095,12 @@
   color: var(--muted);
 }
 
+.menu-path-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .menu-path-keys .key {
   padding: 5px 9px;
   border-radius: var(--radius-s);

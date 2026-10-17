@@ -233,7 +233,7 @@ export function Lab({ active }: { active: boolean }) {
         <StatusActions status={status} onExport={exportDump} />
       </PageHead>
       <StatusFacts status={status} catalogPath={catalogPath} />
-      <ModeNotice needs="tether" what="Writing and the full property list" />
+      <ModeNotice needs="tether" what="Writing and the full property list" stills={false} />
       {fake && <FakeBar onAction={fakeAction} />}
       <div className="lab-body">
         <PropTable
