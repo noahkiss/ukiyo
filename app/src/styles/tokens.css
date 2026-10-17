@@ -41,9 +41,19 @@
 
   --radius-s: 4px;
   --radius: 8px;
-  --radius-m: 10px;
   --radius-l: 12px;
+
+  /* One shape system. Controls (buttons, inputs, selects, chips, segmented controls) share
+     the control border, radius and height; boxes (cards, slots, banners, sheets) share the
+     card radius. Controls in one row use the same height. */
+  --border-w: 1px;
+  --control-border: var(--border-w) solid var(--line-strong);
+  --card-border: var(--border-w) solid var(--line);
+  --radius-control: var(--radius);
+  --radius-card: var(--radius-l);
   --control-h: 44px;
+  --control-h-s: 36px;
+  --seg-pad: 3px;
 }
 
 @media (prefers-color-scheme: dark) {
