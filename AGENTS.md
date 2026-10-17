@@ -15,3 +15,9 @@ Stage: protocol discovery. No app code yet.
   - `set_prop.py CODE VALUE` — write one uint16 property, with read before and after.
 - `local/` — gitignored. Raw dumps, logs and the working property map. They contain camera and
   lens serial numbers and owner strings.
+
+## Rules for touching the camera
+
+- Read before you write; write only properties whose meaning is confirmed, and read back.
+- One process owns the USB connection.
+- Never reconnect in a tight loop or reset USB on every connect (see protocol.md, power).
