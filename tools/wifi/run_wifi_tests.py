@@ -368,12 +368,8 @@ class Run:
         finally:
             t.close()
         if not res["ok"]:
-            self.dlg.ask("local_network", "Local Network permission", [
-                "macOS blocks this terminal from the local network.",
-                "System Settings > Privacy & Security > Local Network.",
-                "Turn it on for your terminal app (or zellij), then press Done.",
-                "If it is not listed, Stop and start the run from Terminal.app.",
-            ])
+            # fujiptpip.connect falls back to /usr/bin/nc, which macOS allows.
+            self.warn("macOS denies Python the local network; camera connections go through nc.")
         return res
 
     # ------------------------------------------------------------ Bluetooth
