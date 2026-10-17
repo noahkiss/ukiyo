@@ -28,6 +28,13 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
 - Stills properties refuse reads in movie mode and vice versa. Stills: 181 readable; movie: 170.
   Together every one of the 264 properties is readable in one mode or the other.
 - One process can hold the USB interface. Polling and writing must share one connection.
+- Some descriptors use datatype 0x0000 (D180, D181, D1B4, D1B5, D212, D22F, D235): nothing
+  after the read-only flag can be parsed, since the type gives no size. GetDevicePropValue still
+  returns bytes for some of them (D212 and D22F change on their own). The app shows those bytes
+  as hex.
+- D1B1 (string) sends a truncated descriptor: default and current, but no form byte. Treat a
+  missing form byte as "no form".
+- ExposureIndex 0x500F is int32, so ISO AUTO (0xFFFFFFFD) decodes as -3.
 
 ## Camera state and power
 
@@ -44,6 +51,24 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
 - **Do not reconnect in a tight loop.** Rapid reconnects plus USB resets while the camera was
   powering off soft-locked it once; it needed a battery pull. Wait ~30 s after the device
   disappears, and reset the USB device only when a session open actually fails.
+
+## How the app polls
+
+The app's connection owner (`src-tauri/src/camera/owner.rs`) follows these rules; they are the
+facts above turned into behaviour. Not yet run against a camera.
+
+- One thread owns the session. Writes go ahead of every other request, and each write is
+  followed at once by GetDevicePropValue of the same code.
+- Each poll cycle reads the hot set (D22E, D307, anything changed in the last 10 s, pinned
+  codes) plus the next 8 codes of a rotating sweep over every readable property. No sleeps.
+- A code answering 0x2002 when described is skipped by the sweep. A D307 change describes
+  every property again, since stills and movie read different sets.
+- D22E = 3 or any 0xA001 pauses the sweep; D22E is then read every 500 ms until it shows
+  another screen. Whether D22E itself answers 0xA001 in a menu is not yet known; either works.
+- Three 0x2019 answers in a row mean busy: D22E every 500 ms. If the device then leaves the
+  bus within 5 s, the app reports auto power off.
+- After the device leaves or a session fails: presence check every 3 s, no open for 30 s.
+  OpenSession failing on a fresh claim allows one USB reset per connect attempt.
 
 ## Recipe slots (RAW CONV. mode)
 
@@ -72,3 +97,5 @@ The camera enforces dependencies itself: ISO 125 forced D-Range 400 -> 100; CL/C
   for the X-T5: D029 "Shadowing" is Color Chrome Effect; D02E is D Range Priority.
 - The working map of unnamed codes, with confidence levels, lives in `local/` (not tracked:
   it carries this camera's serials and owner strings).
+- The shareable map is `catalog/x-t5.json` (`docs/catalog.md`): names, menu paths and value
+  labels with a confidence each, and no values from this camera.
