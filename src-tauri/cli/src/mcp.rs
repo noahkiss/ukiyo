@@ -22,7 +22,10 @@ use std::io::{BufRead as _, Write as _};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use ukiyo_core::api::{Request, Response};
+use ukiyo_core::api::{call, Request, Response};
+use ukiyo_core::library::{Context, Read, SaveInput, SaveKind, SearchInput, SearchKind};
+use ukiyo_core::paths;
+use crate::library;
 use ukiyo_core::camera::owner::ChangeGroup;
 use ukiyo_core::catalog::{self, Confidence, LabelPatch};
 use ukiyo_core::lab::FakeAction;
@@ -148,11 +151,33 @@ impl Server {
     fn run(&mut self, name: &str, a: &Value) -> Result<(String, Value), Fail> {
         match name {
             "camera_status" => {
-                let _: NoArgs = args(a)?;
+                let x: StatusArgs = args(a)?;
                 let c = self.link.client();
                 let snap = conn::settled(&c, None)?;
                 let v = read::status_view(&snap, c.welcome().as_ref());
-                Ok((cmds::status_lines(&v).join("\n"), to_value(&v)))
+                let mut text = cmds::status_lines(&v);
+                let mut data = to_value(&v);
+                if x.history {
+                    let h = library::history_of(snap.status.camera_id.as_deref());
+                    match &h {
+                        Some(h) => text.extend(library::history_lines(h)),
+                        None => text.push("History: none for this camera yet.".into()),
+                    }
+                    data["history"] = to_value(&h);
+                }
+                Ok((text.join("\n"), data))
+            }
+            "library_search" => self.library_search(args(a)?),
+            "library_read" => self.library_read(args(a)?),
+            "library_save" => self.library_save(args(a)?),
+            "library_delete" => {
+                let x: DeleteArgs = args(a)?;
+                let t = call::library_delete(&paths::data_dir(), &self.link.actor, &x.id)?;
+                let text = match &t.trash_id {
+                    Some(tid) => format!("Moved {} to the trash for 30 days. Restore: library_save {{\"kind\": \"preset\", \"from\": \"{tid}\"}}", t.id),
+                    None => format!("Removed {}.", t.id),
+                };
+                Ok((text, to_value(&t)))
             }
             "camera_watch" => self.watch(args(a)?),
             "settings_read" => self.settings(args(a)?),
@@ -244,11 +269,24 @@ impl Server {
         if let Some(v) = x.view.as_deref().filter(|v| *v != "rows") {
             return Err(bad(format!("no view {v}: pick rows or menus")));
         }
+        let mut codes = codes;
         let (unnamed, unconfirmed) = match x.filter.as_deref().unwrap_or("all") {
             "all" => (false, false),
             "unnamed" => (true, false),
             "unconfirmed" => (false, true),
-            other => return Err(bad(format!("no filter {other}: pick all, unnamed or unconfirmed"))),
+            "favourites" => {
+                let favs = ukiyo_core::library::Store::new(&paths::data_dir()).favourites().codes();
+                if favs.is_empty() {
+                    return Ok(("No favourites yet: add one with library_save {kind: favourite, name}.".into(), json!({ "rows": [], "total": 0, "has_more": false })));
+                }
+                if codes.is_empty() {
+                    codes = favs;
+                } else {
+                    codes.retain(|c| favs.contains(c));
+                }
+                (false, false)
+            }
+            other => return Err(bad(format!("no filter {other}: pick all, favourites, unnamed or unconfirmed"))),
         };
         let query = x.query.filter(|q| !q.trim().is_empty());
         let f = Filter { query, codes, menu: x.menu, unnamed, unconfirmed, limit: Some(x.limit.unwrap_or(25).max(1)) };
@@ -266,12 +304,19 @@ impl Server {
     }
 
     fn plan(&mut self, x: PlanArgs) -> Result<(String, Value), Fail> {
-        if x.set.is_empty() {
-            return Err(bad("set needs at least one name and value"));
+        let from = match (x.set.is_empty(), x.preset, x.snapshot) {
+            (false, None, None) => None,
+            (true, Some(p), None) => Some(prefixed("preset", &p)),
+            (true, None, Some(s)) => Some(prefixed("snapshot", &s)),
+            (true, None, None) => return Err(bad("give one source: set (at least one name and value), preset or snapshot")),
+            _ => return Err(bad("give exactly one source: set, preset or snapshot")),
+        };
+        if let Some(f) = &from {
+            call::library_read(&paths::data_dir(), f, None)?;
         }
         let c = self.link.client();
         conn::settled(&c, None)?;
-        let plan: Plan = match c.call(Request::PlanCreate { set: x.set, allow_unconfirmed: x.allow_unconfirmed })? {
+        let plan: Plan = match c.call(Request::PlanCreate { set: x.set, allow_unconfirmed: x.allow_unconfirmed, from })? {
             Response::PlanCreate(p) => *p,
             r => return Err(unexpected(r)),
         };
@@ -318,6 +363,102 @@ impl Server {
     }
 }
 
+/// `street` or `preset:street` as `preset:street`.
+fn prefixed(kind: &str, id: &str) -> String {
+    if id.contains(':') {
+        id.to_string()
+    } else {
+        format!("{kind}:{id}")
+    }
+}
+
+impl Server {
+    fn library_search(&mut self, x: SearchArgs) -> Result<(String, Value), Fail> {
+        let kind = match x.kind.as_str() {
+            "preset" => SearchKind::Preset,
+            "snapshot" => SearchKind::Snapshot,
+            "favourite" => SearchKind::Favourite,
+            "trash" => SearchKind::Trash,
+            k => return Err(bad(format!("no kind {k}: pick preset, snapshot, favourite or trash"))),
+        };
+        let h = call::library_search(&paths::data_dir(), &SearchInput { kind, query: x.query, limit: Some(x.limit.unwrap_or(20)) });
+        let mut text: Vec<String> = h.items.iter().map(|i| format!("{}  {}", i.id, i.summary)).collect();
+        text.push(format!("{} of {}{}", h.items.len(), h.total, if h.has_more { "; raise limit or narrow the query" } else { "" }));
+        Ok((text.join("\n"), to_value(&h)))
+    }
+
+    fn library_read(&mut self, x: ReadArgs) -> Result<(String, Value), Fail> {
+        let r = call::library_read(&paths::data_dir(), &x.id, x.compare_to.as_deref())?;
+        let text = match &r {
+            Read::Preset(p) => format!("{}: {} settings: {}", p.id, p.set.len(), p.set.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(", ")),
+            Read::Snapshot(s) => format!("{}: {}", s.id, s.summary()),
+            Read::Favourites(f) => format!("{} favourites: {}", f.items.len(), f.items.iter().map(|f| f.name.clone().unwrap_or_else(|| f.code.clone())).collect::<Vec<_>>().join(", ")),
+            Read::Prefs(p) => format!("theme {:?}, brand_mark {}, app_icon {}, keep_awake {}, in_use_minutes {}, close_menu_to_write {}", p.theme, p.brand_mark, p.app_icon, p.keep_awake, p.in_use_minutes, p.close_menu_to_write).to_lowercase(),
+            Read::History(h) => h.iter().flat_map(library::history_lines).collect::<Vec<_>>().join("\n"),
+            Read::Diff(d) => format!("{} changed, {} only in {}, {} only in {}, {} alike", d.changed.len(), d.removed.len(), d.a, d.added.len(), d.b, d.same),
+        };
+        Ok((text, to_value(&r)))
+    }
+
+    fn library_save(&mut self, x: SaveArgs) -> Result<(String, Value), Fail> {
+        let actor = self.link.actor.clone();
+        match x.kind.as_str() {
+            "note" => {
+                let text = x.item.as_ref().and_then(|i| i.get("text")).and_then(Value::as_str).map(str::to_string).or(x.name.clone()).filter(|t| !t.trim().is_empty()).ok_or_else(|| bad("note: give the text as item.text"))?;
+                let group = x.item.as_ref().and_then(|i| i.get("group")).and_then(Value::as_u64).map(|g| g as u32);
+                let c = self.link.client();
+                c.call(Request::LabNote { group, text })?;
+                return Ok(("Noted in the session log.".into(), json!({ "id": "note", "kind": "note", "replaced": false, "warnings": [] })));
+            }
+            "dump" => {
+                let c = self.link.client();
+                conn::settled(&c, Some(Need::Connected))?;
+                let path = match c.call(Request::LabExport)? {
+                    Response::LabExport(p) => p,
+                    r => return Err(unexpected(r)),
+                };
+                return Ok((format!("Dump written: {path}"), json!({ "id": "dump", "kind": "dump", "path": path, "replaced": false, "warnings": [] })));
+            }
+            "recipe" => return Err(Fail::new("not_built", "recipes come with the recipe library (stage 7)")),
+            _ => {}
+        }
+        let kind = match x.kind.as_str() {
+            "preset" => SaveKind::Preset,
+            "snapshot" => SaveKind::Snapshot,
+            "favourite" => SaveKind::Favourite,
+            "prefs" => SaveKind::Prefs,
+            k => return Err(bad(format!("no kind {k}: pick preset, snapshot, favourite, prefs, note or dump"))),
+        };
+        let input = SaveInput { kind, name: x.name, item: x.item, from: x.from };
+        let restoring = input.from.as_deref().is_some_and(|f| f.starts_with("trash:"));
+        let needs_camera = !restoring && (ukiyo_core::api::save_needs_camera(&input) || kind == SaveKind::Favourite);
+        let snap = if needs_camera {
+            let c = self.link.client();
+            let need = if kind == SaveKind::Favourite { None } else { Some(Need::Tether) };
+            Some(conn::settled(&c, need)?)
+        } else {
+            None
+        };
+        if kind == SaveKind::Prefs {
+            if let Some(on) = input.item.as_ref().and_then(|i| i.get("keep_awake")).and_then(Value::as_bool) {
+                // Reaches a running owner at once; never starts one for a preference.
+                let c = conn::existing(Duration::from_millis(500));
+                let _ = c.call(Request::LabKeepAwake { on });
+                c.close();
+            }
+        }
+        let saved = call::library_save(&paths::data_dir(), &actor, &input, Context { camera: snap.as_ref(), catalog: None })?;
+        let mut text = format!("Saved {}{}.", saved.id, if saved.replaced && kind != SaveKind::Prefs { "; the old version is in the trash" } else { "" });
+        for w in &saved.warnings {
+            text.push_str(&format!("\nWarning: {w}"));
+        }
+        if kind == SaveKind::Prefs && input.item.as_ref().is_some_and(|i| i.get("app_icon").is_some()) {
+            text.push_str("\nThe app icon changes at the next start of the app.");
+        }
+        Ok((text, to_value(&saved)))
+    }
+}
+
 fn newest(groups: &[ChangeGroup]) -> u32 {
     groups.iter().map(|g| g.id).max().unwrap_or(0)
 }
@@ -345,7 +486,40 @@ fn parse_codes(codes: &[String]) -> Result<Vec<u16>, Fail> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct NoArgs {}
+struct StatusArgs {
+    #[serde(default)]
+    history: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SearchArgs {
+    kind: String,
+    query: Option<String>,
+    limit: Option<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReadArgs {
+    id: String,
+    compare_to: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SaveArgs {
+    kind: String,
+    name: Option<String>,
+    item: Option<Value>,
+    from: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeleteArgs {
+    id: String,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -371,7 +545,10 @@ struct SettingsArgs {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PlanArgs {
+    #[serde(default)]
     set: IndexMap<String, String>,
+    preset: Option<String>,
+    snapshot: Option<String>,
     #[serde(default)]
     allow_unconfirmed: bool,
 }

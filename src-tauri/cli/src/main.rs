@@ -9,6 +9,7 @@
 
 mod cmds;
 mod conn;
+mod library;
 mod mcp;
 mod mcp_tools;
 mod out;
@@ -34,7 +35,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     /// Link, mode, model, battery, card, and what works now.
-    Status,
+    Status {
+        /// Also this camera's history: connects and shots per month.
+        #[arg(long)]
+        history: bool,
+    },
     /// The camera: the live change feed.
     Camera {
         #[command(subcommand)]
@@ -43,6 +48,26 @@ enum Cmd {
     /// Live settings with their catalog names, menu paths and value labels; `settings set`
     /// changes them through a plan.
     Settings(SettingsArgs),
+    /// Presets: named settings and values, applied through a plan.
+    Presets {
+        #[command(subcommand)]
+        cmd: PresetsCmd,
+    },
+    /// Snapshots: the camera's settings at one moment; compare and restore them.
+    Snapshots {
+        #[command(subcommand)]
+        cmd: SnapshotsCmd,
+    },
+    /// App preferences in settings.json: theme, brand mark, app icon, keep-awake.
+    Prefs {
+        #[command(subcommand)]
+        cmd: PrefsCmd,
+    },
+    /// Deleted and replaced presets and snapshots, kept 30 days.
+    Trash {
+        #[command(subcommand)]
+        cmd: TrashCmd,
+    },
     /// Owner strings: copyright, author, file-name prefix, device name.
     Owner {
         #[command(subcommand)]
@@ -103,6 +128,103 @@ enum SettingsCmd {
         #[command(flatten)]
         flags: WriteFlags,
     },
+    /// The favourite settings: add or remove.
+    Fav {
+        #[command(subcommand)]
+        cmd: FavCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum FavCmd {
+    /// Adds settings to the favourites: a catalog name, a menu label or a code.
+    Add {
+        #[arg(value_name = "NAME", required = true)]
+        names: Vec<String>,
+    },
+    /// Removes settings from the favourites.
+    Rm {
+        #[arg(value_name = "NAME", required = true)]
+        names: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum PresetsCmd {
+    /// Every preset, or those whose name or settings match the words.
+    Ls { query: Vec<String> },
+    /// One preset's settings and values.
+    Show { id: String },
+    /// Saves a preset: the current values of SETTING..., or --set NAME=VALUE..., or a
+    /// snapshot's values. A preset of that name is replaced; the old one goes to the trash.
+    Save {
+        name: String,
+        /// Settings whose values the camera holds now.
+        #[arg(value_name = "SETTING")]
+        settings: Vec<String>,
+        /// A setting and its value, given outright (repeatable).
+        #[arg(long = "set", value_name = "NAME=VALUE")]
+        set: Vec<String>,
+        /// Every value of a snapshot.
+        #[arg(long, value_name = "ID")]
+        from_snapshot: Option<String>,
+        #[arg(long)]
+        notes: Option<String>,
+    },
+    /// Applies a preset to the camera, through a plan.
+    Apply {
+        id: String,
+        #[command(flatten)]
+        flags: WriteFlags,
+    },
+    /// Moves a preset to the trash.
+    Rm { id: String },
+}
+
+#[derive(Subcommand)]
+enum SnapshotsCmd {
+    /// Every snapshot, newest first.
+    Ls,
+    /// One snapshot's settings and values.
+    Show { id: String },
+    /// Reads the camera's settings and saves them (tether mode). Default name: the time.
+    Save { name: Option<String> },
+    /// Compares two snapshots, or one with the camera now.
+    Diff {
+        a: String,
+        b: Option<String>,
+        /// With one snapshot: count unconfirmed settings as restorable, not blocked.
+        #[arg(long)]
+        allow_unconfirmed: bool,
+    },
+    /// Writes a snapshot back to the camera, through a plan.
+    Restore {
+        id: String,
+        #[command(flatten)]
+        flags: WriteFlags,
+    },
+    /// Moves a snapshot to the trash.
+    Rm { id: String },
+}
+
+#[derive(Subcommand)]
+enum PrefsCmd {
+    /// Every preference.
+    Get,
+    /// Sets preferences: theme=system|light|dark, brand-mark=ID, app-icon=ID,
+    /// keep-awake=on|off, in-use-minutes=N, close-menu-to-write=on|off.
+    Set {
+        #[arg(value_name = "KEY=VALUE", required = true)]
+        pairs: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum TrashCmd {
+    /// What the trash holds, newest first.
+    Ls,
+    /// Puts an item back under its old id.
+    Restore { id: String },
 }
 
 #[derive(Subcommand)]
@@ -146,7 +268,7 @@ struct SettingsArgs {
     /// Only this code (repeatable): 0xd381. Works in any USB mode.
     #[arg(long = "code", value_name = "C")]
     codes: Vec<String>,
-    /// Only the favourite settings (not built yet).
+    /// Only the favourite settings.
     #[arg(long)]
     favourites: bool,
     /// Only codes with no catalog name.
@@ -222,7 +344,7 @@ fn main() {
         }
     };
     let out = Out { json: cli.json, quiet: cli.quiet };
-    if matches!(cli.cmd, Cmd::Status | Cmd::Camera { .. } | Cmd::Settings(_) | Cmd::Owner { .. } | Cmd::Plan { .. } | Cmd::Log { cmd: LogCmd::Note { .. } }) {
+    if matches!(cli.cmd, Cmd::Status { .. } | Cmd::Presets { .. } | Cmd::Snapshots { .. } | Cmd::Prefs { .. } | Cmd::Camera { .. } | Cmd::Settings(_) | Cmd::Owner { .. } | Cmd::Plan { .. } | Cmd::Log { cmd: LogCmd::Note { .. } }) {
         if let Err(f) = conn::check_data_dir() {
             std::process::exit(out.fail(&f));
         }
@@ -230,7 +352,28 @@ fn main() {
     // Reads exit 0 on success; writes return their own exit code (writes.rs).
     let ok = |r: Result<(), Fail>| r.map(|()| 0);
     let result = match cli.cmd {
-        Cmd::Status => ok(cmds::status(out)),
+        Cmd::Status { history } => ok(cmds::status(out, history)),
+        Cmd::Presets { cmd } => match cmd {
+            PresetsCmd::Ls { query } => library::presets_ls(out, &query),
+            PresetsCmd::Show { id } => library::presets_show(out, &id),
+            PresetsCmd::Save { name, settings, set, from_snapshot, notes } => library::presets_save(out, library::PresetSave { name, settings, set, from_snapshot, notes }),
+            PresetsCmd::Apply { id, flags } => library::presets_apply(out, &id, flags),
+            PresetsCmd::Rm { id } => library::rm(out, ukiyo_core::library::Kind::Preset, &id),
+        },
+        Cmd::Snapshots { cmd } => match cmd {
+            SnapshotsCmd::Ls => library::snapshots_ls(out),
+            SnapshotsCmd::Show { id } => library::snapshots_show(out, &id),
+            SnapshotsCmd::Save { name } => library::snapshots_save(out, name),
+            SnapshotsCmd::Diff { a, b, allow_unconfirmed } => library::snapshots_diff(out, &a, b.as_deref(), allow_unconfirmed),
+            SnapshotsCmd::Restore { id, flags } => library::snapshots_restore(out, &id, flags),
+            SnapshotsCmd::Rm { id } => library::rm(out, ukiyo_core::library::Kind::Snapshot, &id),
+        },
+        Cmd::Prefs { cmd: PrefsCmd::Get } => library::prefs_get(out),
+        Cmd::Prefs { cmd: PrefsCmd::Set { pairs } } => library::prefs_set(out, &pairs),
+        Cmd::Trash { cmd: TrashCmd::Ls } => library::trash_ls(out),
+        Cmd::Trash { cmd: TrashCmd::Restore { id } } => library::trash_restore(out, &id),
+        Cmd::Settings(SettingsArgs { cmd: Some(SettingsCmd::Fav { cmd: FavCmd::Add { names } }), .. }) => library::fav(out, true, &names),
+        Cmd::Settings(SettingsArgs { cmd: Some(SettingsCmd::Fav { cmd: FavCmd::Rm { names } }), .. }) => library::fav(out, false, &names),
         Cmd::Camera { cmd: CameraCmd::Watch { codes, duration } } => ok(cmds::watch(out, &codes, duration.as_deref())),
         Cmd::Camera { cmd: CameraCmd::Connect } => writes::camera_connect(out, true),
         Cmd::Camera { cmd: CameraCmd::Disconnect } => writes::camera_connect(out, false),

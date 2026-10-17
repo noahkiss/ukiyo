@@ -30,17 +30,28 @@ fn parse_codes(codes: &[String]) -> Result<Vec<u16>, Fail> {
 
 // ---- status ----
 
-pub fn status(out: Out) -> Result<(), Fail> {
+pub fn status(out: Out, history: bool) -> Result<(), Fail> {
     let c = conn::client(out, None);
     let snap = conn::settled(&c, None);
     let welcome = c.welcome();
     c.close();
-    let v = read::status_view(&snap?, welcome.as_ref());
+    let snap = snap?;
+    let v = read::status_view(&snap, welcome.as_ref());
+    let h = history.then(|| crate::library::history_of(snap.status.camera_id.as_deref())).flatten();
     if out.json {
-        out.data(&v);
+        let mut d = serde_json::to_value(&v).unwrap_or_default();
+        if history {
+            d["history"] = serde_json::to_value(&h).unwrap_or_default();
+        }
+        out.data(d);
     } else {
         for l in status_lines(&v) {
             line(&l);
+        }
+        match (&h, history) {
+            (Some(h), _) => crate::library::history_lines(h).iter().for_each(|l| line(l)),
+            (None, true) => line("History: none for this camera yet (it starts when a camera connects)."),
+            _ => {}
         }
     }
     Ok(())
@@ -124,10 +135,26 @@ pub struct SettingsQuery {
 }
 
 pub fn settings(out: Out, q: SettingsQuery) -> Result<(), Fail> {
+    let mut codes = parse_codes(&q.codes)?;
     if q.favourites {
-        return Err(Fail::new("not_built", "--favourites needs the settings library, which is not built yet").hint("docs/agent-interface.md, section 8, stage 6"));
+        let favs = ukiyo_core::library::Store::new(&paths::data_dir()).favourites().codes();
+        if favs.is_empty() {
+            if out.json {
+                out.data(json!({ "rows": [], "total": 0, "has_more": false }));
+            } else {
+                line("No favourites yet. Add one: ukiyo settings fav add NAME");
+            }
+            return Ok(());
+        }
+        if codes.is_empty() {
+            codes = favs;
+        } else {
+            codes.retain(|c| favs.contains(c));
+            if codes.is_empty() {
+                return Err(Fail::new("not_found", "none of those codes is a favourite"));
+            }
+        }
     }
-    let codes = parse_codes(&q.codes)?;
     // The Lab's property table reads any mode; browsing settings needs tether mode.
     let need = if codes.is_empty() { Need::Tether } else { Need::Connected };
     let c = conn::client(out, None);
@@ -365,7 +392,7 @@ fn catalog_files(dir: &Path) -> Vec<PathBuf> {
 
 /// The catalog to show: `--model`, else the connected camera's (asking a running `serve`,
 /// never starting one), else the only catalog in the folder.
-fn catalog_path(model: Option<&str>) -> Result<PathBuf, Fail> {
+pub(crate) fn catalog_path(model: Option<&str>) -> Result<PathBuf, Fail> {
     let data = paths::data_dir();
     let resources = std::env::current_exe().ok().and_then(|e| paths::bundle_resources(&e));
     let dir = ukiyo_core::lab::catalog_dir(&data, resources);

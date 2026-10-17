@@ -522,6 +522,13 @@ fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>
                 m.catalog_model = Some(model);
                 catalog = Some(m.catalog.clone());
             }
+            // The rows may have come before this connect's status: read the counters now.
+            let mut h = history.lock().unwrap();
+            if h.needs_counters() {
+                let rows: Vec<PropRow> = m.rows.values().cloned().collect();
+                h.on_rows(&rows, m.catalog.as_ref(), None);
+            }
+            drop(h);
             drop(m);
             if log_it {
                 write_log(log, serde_json::json!({ "kind": "status", "status": s }));

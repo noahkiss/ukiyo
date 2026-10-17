@@ -221,6 +221,11 @@ impl Recorder {
         s.camera_id = self.current.clone();
     }
 
+    /// A connect is recorded and waits for its counters.
+    pub fn needs_counters(&self) -> bool {
+        self.current.is_some() && self.needs_counters
+    }
+
     /// A full set of rows, or a change group: records the counters when they moved.
     pub fn on_rows(&mut self, rows: &[PropRow], cat: Option<&Catalog>, changes: Option<&[Change]>) {
         let Some(id) = self.current.clone() else { return };

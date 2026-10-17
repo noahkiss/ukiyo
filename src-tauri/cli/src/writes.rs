@@ -77,11 +77,28 @@ pub(crate) fn plan_lines(p: &Plan) -> Vec<String> {
         })
         .collect();
     out.extend(table(&rows));
-    for b in &p.blocked {
-        out.push(format!("  Blocked: {} ({})", b.message, b.reason));
+    out.extend(left_lines("Blocked", &p.blocked));
+    out.extend(left_lines("Skipped", &p.skipped));
+    out
+}
+
+/// Blocked or skipped entries: each on a line, or, past 3 of one reason (a snapshot
+/// restore), one line per reason with the names.
+fn left_lines(what: &str, left: &[ukiyo_core::plan::Left]) -> Vec<String> {
+    let mut by: IndexMap<&str, Vec<&ukiyo_core::plan::Left>> = IndexMap::new();
+    for l in left {
+        by.entry(l.reason.as_str()).or_default().push(l);
     }
-    for s in &p.skipped {
-        out.push(format!("  Skipped: {} ({})", s.message, s.reason));
+    let mut out = vec![];
+    for (reason, ls) in by {
+        if ls.len() <= 3 {
+            out.extend(ls.iter().map(|l| format!("  {what}: {} ({reason})", l.message)));
+        } else if reason == ukiyo_core::plan::UNCHANGED {
+            out.push(format!("  {what}: {} settings already at their value", ls.len()));
+        } else {
+            let names: Vec<String> = ls.iter().map(|l| l.name.clone().unwrap_or_else(|| l.code.clone())).collect();
+            out.push(format!("  {what}: {} settings ({reason}): {}", ls.len(), names.join(", ")));
+        }
     }
     out
 }
@@ -177,10 +194,20 @@ fn apply(out: Out, c: &Client, plan: Plan) -> Result<i32, Fail> {
 
 /// Plans `set` and carries it through: the common body of `settings set` and `owner set`.
 fn set(out: Out, set: IndexMap<String, String>, flags: WriteFlags) -> Result<i32, Fail> {
+    plan_and_decide(out, Request::PlanCreate { set, allow_unconfirmed: flags.allow_unconfirmed, from: None }, flags)
+}
+
+/// Plans a library item (`preset:<slug>`, `snapshot:<slug>`) and carries it through:
+/// `presets apply` and `snapshots restore`.
+pub fn plan_from(out: Out, from: String, flags: WriteFlags) -> Result<i32, Fail> {
+    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(from) }, flags)
+}
+
+fn plan_and_decide(out: Out, req: Request, flags: WriteFlags) -> Result<i32, Fail> {
     let c = conn::client(out, None);
     let r = (|| {
         conn::settled(&c, None)?;
-        let plan = match c.call(Request::PlanCreate { set, allow_unconfirmed: flags.allow_unconfirmed })? {
+        let plan = match c.call(req)? {
             Response::PlanCreate(p) => *p,
             r => return Err(unexpected(r)),
         };

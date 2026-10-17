@@ -127,7 +127,7 @@ fn tools_on_the_fake_camera() {
 
     let list = m.request("tools/list", json!({}));
     let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "catalog_label", "fake_camera"]);
+    assert_eq!(names, ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "library_search", "library_read", "library_save", "library_delete", "catalog_label", "fake_camera"]);
     let unknown = m.request("tools/call", json!({ "name": "lab_write", "arguments": {} }));
     assert_eq!(unknown["error"]["code"], -32602, "{unknown}");
 
@@ -135,8 +135,11 @@ fn tools_on_the_fake_camera() {
     let s = m.ok("camera_status", json!({}));
     assert_eq!((s["link"].as_str(), s["model"].as_str(), s["mode"].as_str(), s["fake"].as_bool()), (Some("connected"), Some("X-T5"), Some("tether"), Some(true)), "{s}");
     let serve_pid = s["pid"].as_u64().unwrap() as u32;
-    let bad = m.err("camera_status", json!({ "history": true }));
+    let bad = m.err("camera_status", json!({ "verbose": true }));
     assert_eq!(bad["code"], "bad_request");
+    let h = m.ok("camera_status", json!({ "history": true }));
+    assert_eq!(h["history"]["model"], "X-T5", "{h}");
+    assert_eq!(h["history"]["connects"].as_array().unwrap().len(), 1);
 
     // settings_read
     let r = m.ok("settings_read", json!({ "query": "auto power off" }));
@@ -179,6 +182,41 @@ fn tools_on_the_fake_camera() {
     assert_eq!((l["code"].as_str(), l["entry"]["confidence"].as_str(), l["entry"]["name"].as_str()), (Some("0xd20b"), Some("confirmed"), Some("DeviceName")), "{l}");
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(m.cats.path().join("x-t5.json")).unwrap()).unwrap();
     assert_eq!(saved["properties"]["0xd20b"]["menu"], "NETWORK/USB SETTING > DEVICE NAME");
+
+    // The library: a snapshot, a preset, favourites, prefs, the trash, restore as a plan.
+    let snap = m.ok("library_save", json!({ "kind": "snapshot", "name": "Before trip" }));
+    assert_eq!((snap["id"].as_str(), snap["replaced"].as_bool()), (Some("snapshot:before-trip"), Some(false)), "{snap}");
+    let found = m.ok("library_search", json!({ "kind": "snapshot", "query": "trip" }));
+    assert_eq!(found["total"], 1, "{found}");
+    let r = m.ok("library_read", json!({ "id": "snapshot:before-trip" }));
+    assert_eq!((r["kind"].as_str(), r["item"]["model"].as_str()), (Some("snapshot"), Some("X-T5")), "{r}");
+    let p = m.ok("library_save", json!({ "kind": "preset", "name": "Power", "item": { "set": { "AutoPowerOff": "OFF" } } }));
+    assert_eq!(p["id"], "preset:power");
+    let plan = m.ok("camera_plan", json!({ "preset": "preset:power" }));
+    assert!(plan["steps"].as_array().unwrap().len() + plan["skipped"].as_array().unwrap().len() == 1, "{plan}");
+    let e = m.err("camera_plan", json!({ "preset": "power", "set": { "AutoPowerOff": "OFF" } }));
+    assert_eq!(e["code"], "bad_request");
+    let e = m.err("camera_plan", json!({ "snapshot": "snapshot:nope" }));
+    assert_eq!(e["code"], "not_found", "{e}");
+    // The restore plans GrainEffect back only with allow_unconfirmed; AutoPowerOff is confirmed.
+    let restore = m.tool("camera_plan", json!({ "snapshot": "snapshot:before-trip" }));
+    let restore = restore.unwrap_or_else(|e| e);
+    assert!(restore.to_string().contains("0xd381") || restore["code"].is_string(), "{restore}");
+    m.ok("library_save", json!({ "kind": "favourite", "name": "AUTO POWER OFF" }));
+    let favs = m.ok("settings_read", json!({ "filter": "favourites" }));
+    assert_eq!(favs["rows"][0]["code"], "0xd381", "{favs}");
+    m.ok("library_save", json!({ "kind": "prefs", "item": { "theme": "dark", "brand_mark": "clouds" } }));
+    let prefs = m.ok("library_read", json!({ "id": "prefs" }));
+    assert_eq!((prefs["item"]["theme"].as_str(), prefs["item"]["brand_mark"].as_str()), (Some("dark"), Some("clouds")));
+    assert_eq!(m.err("library_save", json!({ "kind": "prefs", "item": { "app_icon": "nope" } }))["code"], "not_found");
+    let t = m.ok("library_delete", json!({ "id": "preset:power" }));
+    let tid = t["trash_id"].as_str().unwrap().to_string();
+    assert_eq!(m.ok("library_search", json!({ "kind": "trash" }))["total"], 1);
+    assert_eq!(m.ok("library_save", json!({ "kind": "preset", "from": tid }))["id"], "preset:power");
+    assert_eq!(m.err("library_delete", json!({ "id": "prefs" }))["code"], "read_only");
+    m.ok("library_save", json!({ "kind": "note", "item": { "text": "library test" } }));
+    let log = std::fs::read_to_string(m.data.path().join("library/log.jsonl")).unwrap();
+    assert!(log.lines().all(|l| l.contains("\"actor\":\"mcp:test\"")), "{log}");
 
     // fake_camera, then a needs_* error with its walkthrough.
     m.ok("fake_camera", json!({ "action": "movie" }));

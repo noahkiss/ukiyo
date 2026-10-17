@@ -132,7 +132,49 @@ fn status_and_settings_on_the_fake_camera() {
     assert_eq!(code, 0);
     assert!(v["data"]["menus"].as_array().unwrap().iter().any(|m| m["path"] == "SET UP > POWER MANAGEMENT"));
     let (code, v) = env.json(&["settings", "--favourites"]);
-    assert_eq!((code, v["error"]["code"].as_str()), (1, Some("not_built")));
+    assert_eq!((code, v["data"]["total"].as_u64()), (0, Some(0)), "no favourites yet: {v}");
+    let (code, _) = env.json(&["settings", "fav", "add", "AutoPowerOff"]);
+    assert_eq!(code, 0);
+    let (_, v) = env.json(&["settings", "--favourites"]);
+    assert_eq!(v["data"]["rows"][0]["code"], "0xd381", "{v}");
+
+    // Snapshots and presets.
+    let (code, v) = env.json(&["snapshots", "save", "Before trip"]);
+    assert_eq!((code, v["data"]["id"].as_str()), (0, Some("snapshot:before-trip")), "{v}");
+    let (code, v) = env.json(&["snapshots", "diff", "before-trip"]);
+    assert_eq!(code, 0, "{v}");
+    assert!(v["data"]["plan"]["steps"].as_array().unwrap().is_empty(), "nothing moved since: {v}");
+    let (code, v) = env.json(&["presets", "save", "Power", "AutoPowerOff"]);
+    assert_eq!((code, v["data"]["id"].as_str()), (0, Some("preset:power")), "{v}");
+    let (_, v) = env.json(&["presets", "show", "power"]);
+    assert_eq!(v["data"]["set"].as_object().unwrap().len(), 1, "{v}");
+    let (code, v) = env.json(&["presets", "apply", "power", "--yes"]);
+    assert_eq!(code, 0, "already set: nothing to change: {v}");
+    let (code, v) = env.json(&["presets", "save", "Off", "--set", "AutoPowerOff=OFF", "--set", "AutoPowerOff=5 MIN"]);
+    assert_eq!(code, 0, "{v}");
+    let (code, _) = env.json(&["snapshots", "restore", "before-trip", "--dry-run"]);
+    assert!(code == 0 || code == 6, "nothing to restore, or a plan not applied");
+    let o = env.run(&["presets", "ls"]);
+    assert!(text(&o).contains("preset:power"), "{}", text(&o));
+    let (code, v) = env.json(&["presets", "rm", "power"]);
+    assert_eq!(code, 0);
+    let tid = v["data"]["trash_id"].as_str().unwrap().to_string();
+    let (code, v) = env.json(&["trash", "restore", &tid]);
+    assert_eq!((code, v["data"]["id"].as_str()), (0, Some("preset:power")), "{v}");
+    let (code, v) = env.json(&["presets", "show", "nope"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (2, Some("not_found")));
+
+    // Prefs and history.
+    let (code, v) = env.json(&["prefs", "set", "theme=dark", "keep-awake=off"]);
+    assert_eq!((code, v["data"]["theme"].as_str(), v["data"]["keep_awake"].as_bool()), (0, Some("dark"), Some(false)), "{v}");
+    let (_, v) = env.json(&["status"]);
+    assert_eq!(v["data"]["keep_awake"], false, "the owner got keep-awake off: {v}");
+    let (code, v) = env.json(&["prefs", "set", "brand-mark=nope"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (2, Some("not_found")));
+    let (code, v) = env.json(&["status", "--history"]);
+    assert_eq!((code, v["data"]["history"]["model"].as_str()), (0, Some("X-T5")), "{v}");
+    let settings: Value = serde_json::from_str(&std::fs::read_to_string(env.data.path().join("settings.json")).unwrap()).unwrap();
+    assert_eq!((settings["theme"].as_str(), settings["in_use_minutes"].as_u64()), (Some("dark"), Some(5)));
 
     // Every command found the same owner: one spawn for all of them.
     assert_eq!(env.pid(), pid);

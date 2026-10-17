@@ -8,7 +8,8 @@ pub const INSTRUCTIONS: &str = "Ukiyo manages a Fujifilm X-series camera on USB.
 Start with camera_status. Read settings with settings_read. Every camera write is two calls: camera_plan builds a plan and writes nothing; show its steps to the user, and only after they agree call camera_apply with the plan_id. \
 Plans write only properties whose catalog confidence is confirmed, unless the plan sets allow_unconfirmed; do that only when the user asks for it. \
 A needs_* error carries a hint and a walkthrough: tell the user how to switch the camera's USB mode or STILL/MOVIE switch; never retry in a loop. \
-Mapping properties: camera_watch shows what changed while the user turns a dial, then catalog_label names it. Plans expire after 5 minutes.";
+Mapping properties: camera_watch shows what changed while the user turns a dial, then catalog_label names it. Plans expire after 5 minutes. \
+The library on this Mac (presets, snapshots, favourite settings, preferences, camera history) is library_search, library_read, library_save and library_delete; none of them writes to the camera. Apply a preset or restore a snapshot with camera_plan {preset} or {snapshot}, then camera_apply.";
 
 fn code_list(what: &str) -> Value {
     json!({ "type": "array", "items": { "type": "string", "pattern": "^0x[0-9a-fA-F]{4}$" }, "description": what })
@@ -20,7 +21,9 @@ pub fn tools(fake: bool) -> Vec<Value> {
         json!({
             "name": "camera_status",
             "description": "Reports the camera connection, its USB mode, and which features work in that mode.\n\nBest for: the first call in any camera task, and after any needs_* error.\nReturns: link, reason, model, firmware, mode, capture (stills/movie), screen, battery, card, keep_awake (the setting) and keep_awake_active (resetting the camera's auto power off timer now), the owner process (serve, its pid, fake or real camera), and available per feature (settings, slots, movie_props).\nNot for property values: use settings_read.",
-            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
+            "inputSchema": { "type": "object", "properties": {
+                "history": { "type": "boolean", "default": false, "description": "Also this camera's history on this Mac: connects, shot counts per day and month, lenses seen." },
+            }, "additionalProperties": false },
             "annotations": { "title": "Camera status", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
         }),
         json!({
@@ -40,7 +43,7 @@ pub fn tools(fake: bool) -> Vec<Value> {
                 "query": { "type": "string", "description": "Words to match: \"auto power off\"." },
                 "codes": code_list("Only these codes."),
                 "menu": { "type": "string", "description": "A menu path prefix." },
-                "filter": { "type": "string", "enum": ["all", "unnamed", "unconfirmed"], "default": "all", "description": "unnamed: codes with no catalog name. unconfirmed: codes whose catalog confidence is not confirmed." },
+                "filter": { "type": "string", "enum": ["all", "favourites", "unnamed", "unconfirmed"], "default": "all", "description": "favourites: the user's favourite settings. unnamed: codes with no catalog name. unconfirmed: codes whose catalog confidence is not confirmed." },
                 "view": { "type": "string", "enum": ["rows", "menus"], "default": "rows" },
                 "limit": { "type": "integer", "minimum": 1, "maximum": 500, "default": 25 },
             }, "additionalProperties": false },
@@ -48,11 +51,13 @@ pub fn tools(fake: bool) -> Vec<Value> {
         }),
         json!({
             "name": "camera_plan",
-            "description": "Builds a change plan against the live camera. Writes nothing.\n\nBest for: every camera write: one setting, several, or owner strings.\nReturns: { plan_id, expires_in_s, requires, steps: [{ code, name, menu, before, after, confidence, gate }], skipped: [{ code, name, value, reason, message }], blocked: [...], allow_unconfirmed }. blocked steps are not written; skipped ones need nothing (unchanged) or another mode.\nQuery tips: set maps a name to a value. The name is a catalog name (AutoPowerOff), a menu label (\"AUTO POWER OFF\") or a code (0xd381); the value is a value label (OFF) or a raw number. An unknown or ambiguous name or value fails with the valid choices.\nA plan with nothing to write fails with the reason (unconfirmed_property, needs_tether ...). allow_unconfirmed lets the plan write codes whose catalog confidence is not confirmed: only when the user asks.\nFollow up with camera_apply and the plan_id, after the user agrees to the steps.",
+            "description": "Builds a change plan against the live camera. Writes nothing.\n\nBest for: every camera write: one setting, several, owner strings, a preset, or a snapshot restore.\nReturns: { plan_id, expires_in_s, requires, steps: [{ code, name, menu, before, after, confidence, gate }], skipped: [{ code, name, value, reason, message }], blocked: [...], allow_unconfirmed }. blocked steps are not written; skipped ones need nothing (unchanged) or another mode.\nQuery tips: give exactly one source: set, preset (preset:<name>) or snapshot (snapshot:<name>, a restore; the plan is also the snapshot's diff against the camera). set maps a name to a value. The name is a catalog name (AutoPowerOff), a menu label (\"AUTO POWER OFF\") or a code (0xd381); the value is a value label (OFF) or a raw number. An unknown or ambiguous name or value fails with the valid choices.\nA plan with nothing to write fails with the reason (unconfirmed_property, needs_tether ...). allow_unconfirmed lets the plan write codes whose catalog confidence is not confirmed: only when the user asks.\nFollow up with camera_apply and the plan_id, after the user agrees to the steps.",
             "inputSchema": { "type": "object", "properties": {
                 "set": { "type": "object", "additionalProperties": { "type": "string" }, "minProperties": 1, "description": "{ \"<name or code>\": \"<label or raw value>\" }" },
+                "preset": { "type": "string", "description": "A preset id from library_search: preset:street." },
+                "snapshot": { "type": "string", "description": "A snapshot id from library_search: snapshot:before-trip." },
                 "allow_unconfirmed": { "type": "boolean", "default": false },
-            }, "required": ["set"], "additionalProperties": false },
+            }, "additionalProperties": false },
             "annotations": { "title": "Plan a camera change", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false },
         }),
         json!({
@@ -62,6 +67,44 @@ pub fn tools(fake: bool) -> Vec<Value> {
                 "plan_id": { "type": "string", "description": "From camera_plan: p-7f3a." },
             }, "required": ["plan_id"], "additionalProperties": false },
             "annotations": { "title": "Apply a camera plan", "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false },
+        }),
+        json!({
+            "name": "library_search",
+            "description": "Searches what Ukiyo keeps on this Mac: presets, snapshots, favourite settings, and the trash.\n\nBest for: finding a preset or snapshot by name before reading or applying it.\nReturns: { items: [{ id, kind, name, summary, at }], total, has_more }. at is wall-clock ms of the last save (of the trashing, for trash).\nQuery tips: query words must all appear in the name (and a preset's setting names); no query lists everything of the kind.\nFollow up with library_read for the full item, or camera_plan {preset} / {snapshot} to apply one.",
+            "inputSchema": { "type": "object", "properties": {
+                "kind": { "type": "string", "enum": ["preset", "snapshot", "favourite", "trash"] },
+                "query": { "type": "string" },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 20 },
+            }, "required": ["kind"], "additionalProperties": false },
+            "annotations": { "title": "Search the library", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+        }),
+        json!({
+            "name": "library_read",
+            "description": "Reads one library item in full, or the diff of two snapshots.\n\nBest for: a preset's settings, a snapshot's values, the favourites, the preferences, or camera history.\nReturns: { kind, item }. kind is preset ({ set: {name: value} }), snapshot ({ model, firmware, mode, capture, values: [{ code, name, value, label }] }), favourites, prefs, history (per camera: shots, per_day, per_month, connects, lenses) or diff ({ added, removed, changed: [{ code, name, a, b, a_label, b_label }], same }).\nQuery tips: id is preset:<name>, snapshot:<name>, favourites, prefs, history or history:<camera id>. compare_to (another snapshot id) returns the diff.\nNot for a snapshot against the live camera: camera_plan {snapshot} is that diff.",
+            "inputSchema": { "type": "object", "properties": {
+                "id": { "type": "string" },
+                "compare_to": { "type": "string", "description": "A second snapshot id." },
+            }, "required": ["id"], "additionalProperties": false },
+            "annotations": { "title": "Read a library item", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+        }),
+        json!({
+            "name": "library_save",
+            "description": "Creates or replaces one item on this Mac, or restores one from the trash. Never writes to the camera.\n\nBest for: saving a preset, taking a snapshot, adding a favourite setting, changing preferences, a note in the session log, a full property dump.\nReturns: { id, kind, replaced, warnings }. A replaced preset or snapshot keeps its old version in the trash for 30 days.\nQuery tips, by kind:\n- preset: name, and item { set: { \"<name or code>\": \"<label or raw>\" } } or item { settings: [\"<name or code>\"] } (their values on the camera now), or from: snapshot:<name>.\n- snapshot: name; reads the camera now (tether mode).\n- favourite: name is the setting (a catalog name, menu label or 0x code).\n- prefs: item { theme: system|light|dark, brand_mark, app_icon, keep_awake, in_use_minutes, close_menu_to_write }; app_icon applies at the app's next start.\n- note: item { text, group? } into the session log. dump: a full Lab dump to dumps/.\n- any kind, from: trash:<name> restores that item.",
+            "inputSchema": { "type": "object", "properties": {
+                "kind": { "type": "string", "enum": ["preset", "snapshot", "favourite", "prefs", "note", "dump"] },
+                "name": { "type": "string" },
+                "item": { "type": "object" },
+                "from": { "type": "string", "description": "snapshot:<name> (a preset of its values) or trash:<name> (restore)." },
+            }, "required": ["kind"], "additionalProperties": false },
+            "annotations": { "title": "Save to the library", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+        }),
+        json!({
+            "name": "library_delete",
+            "description": "Deletes one library item: a preset or snapshot goes to the trash for 30 days; a favourite is removed from the list. Never touches the camera.\n\nReturns: { id, trashed_at, trash_id }. Restore with library_save { from: trash_id }.\nQuery tips: id is preset:<name>, snapshot:<name> or favourite:<code>. prefs and history cannot be deleted.",
+            "inputSchema": { "type": "object", "properties": {
+                "id": { "type": "string" },
+            }, "required": ["id"], "additionalProperties": false },
+            "annotations": { "title": "Delete a library item", "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
         }),
         json!({
             "name": "catalog_label",
@@ -99,7 +142,7 @@ mod tests {
     #[test]
     fn surface() {
         let names = |fake| tools(fake).iter().map(|t| t["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
-        assert_eq!(names(false), ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "catalog_label"]);
+        assert_eq!(names(false), ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "library_search", "library_read", "library_save", "library_delete", "catalog_label"]);
         assert_eq!(names(true).last().map(String::as_str), Some("fake_camera"));
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/surface/mcp_tools.json");
         let now = serde_json::to_string_pretty(&json!({ "tools": tools(true) })).unwrap() + "\n";
