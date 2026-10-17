@@ -53,8 +53,8 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-m);
+  border: var(--border-w) dashed var(--line-strong);
+  border-radius: var(--radius-card);
   font-size: 14px;
 }
 
@@ -294,8 +294,8 @@ tr:hover .pin {
 .panel-head .icon-btn {
   margin-left: auto;
   align-self: center;
-  width: 36px;
-  height: 36px;
+  width: var(--control-h-s);
+  height: var(--control-h-s);
 }
 
 .panel-body {
@@ -313,7 +313,7 @@ tr:hover .pin {
 }
 
 .value-label input {
-  height: 38px !important;
+  height: var(--control-h-s) !important;
 }
 
 .value-raw {
@@ -330,9 +330,9 @@ tr:hover .pin {
 .segmented label {
   display: inline-flex;
   align-items: center;
-  height: 34px;
+  height: calc(var(--control-h-s) - 2 * var(--border-w) - 2 * var(--seg-pad));
   padding: 0 12px;
-  border-radius: 7px;
+  border-radius: calc(var(--radius-control) - var(--seg-pad));
   font-size: 13px;
   font-weight: 500;
   color: var(--muted);
@@ -387,8 +387,8 @@ tr:hover .pin {
   min-width: 0;
   height: var(--control-h);
   padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
+  border: var(--control-border);
+  border-radius: var(--radius-control);
   background: var(--raised);
   color: var(--ink);
   font: 400 15px var(--font-mono);
@@ -425,10 +425,6 @@ tr:hover .pin {
 .feed-head h2 {
   font-size: 17px;
   font-weight: 600;
-}
-
-.note input {
-  height: 40px !important;
 }
 
 .groups {

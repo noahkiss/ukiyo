@@ -101,7 +101,7 @@
 }
 
 .inline-field input {
-  height: 36px !important;
+  height: var(--control-h-s) !important;
 }
 
 /* Hub: camera card */
@@ -381,8 +381,8 @@
   min-height: 112px;
   padding: 12px;
   text-align: left;
-  border-radius: var(--radius-m);
-  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  border: var(--card-border);
   background: var(--card);
   color: var(--ink);
   font-family: var(--font-ui);
@@ -493,9 +493,9 @@
   align-items: stretch;
   padding: 0;
   text-align: left;
-  border-radius: var(--radius-m);
+  border-radius: var(--radius-card);
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: var(--card-border);
   background: var(--card);
   color: var(--ink);
   font-family: var(--font-ui);
@@ -568,17 +568,15 @@
 }
 
 .variant-chips .chip {
-  height: 26px;
+  height: 28px;
   padding: 0 10px;
-  border: 0;
-  color: var(--ink);
-  font-family: var(--font-ui);
   font-size: 12px;
   cursor: pointer;
 }
 
 .variant-chips .chip:hover {
-  background: var(--line-strong);
+  background: var(--raised);
+  border-color: var(--slot);
 }
 
 .result-badge {
@@ -608,6 +606,10 @@
 
 .filter-line .search-box {
   flex: 1 1 240px;
+}
+
+.filter-line .select {
+  height: var(--control-h);
 }
 
 .editor {
@@ -654,10 +656,10 @@
 
 .wb-shift input {
   width: 56px;
-  height: 36px;
+  height: var(--control-h-s);
   padding: 0 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border: var(--control-border);
+  border-radius: var(--radius-control);
   background: var(--raised);
   color: var(--ink);
   font: 400 14px var(--font-mono);
@@ -731,8 +733,10 @@
   height: 52px;
   padding: 0 16px;
   gap: 10px;
-  border: 2px solid var(--ink);
-  border-radius: var(--radius-m);
+}
+
+.search-box.big:focus-within {
+  border-color: var(--ink);
 }
 
 .search-box.big input {
@@ -758,10 +762,10 @@
 .hit-chip {
   display: inline-flex;
   align-items: center;
-  height: 32px;
+  height: var(--control-h-s);
   padding: 0 12px;
-  border-radius: 16px;
-  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  border: var(--control-border);
   color: var(--ink);
   text-decoration: none;
 }
@@ -886,14 +890,12 @@
 
 .select.wide {
   min-width: 190px;
-  height: 38px;
 }
 
 .select.narrow {
   flex: 0 0 150px;
   width: 150px;
   min-width: 0;
-  height: 36px;
   font-size: 13px;
 }
 
@@ -934,8 +936,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-m);
+  border: var(--card-border);
+  border-radius: var(--radius-card);
   background: var(--raised);
   color: var(--ink);
   font-family: var(--font-ui);
@@ -1013,7 +1015,6 @@
 
 .banner.big {
   padding: 14px 16px;
-  border-radius: var(--radius-m);
   font-size: 15px;
   gap: 12px;
 }
@@ -1106,9 +1107,9 @@
   flex-direction: column;
   gap: 4px;
   padding: 12px 14px;
-  border-radius: var(--radius-m);
+  border-radius: var(--radius-card);
   background: var(--card);
-  border: 1px solid var(--line-strong);
+  border: var(--card-border);
 }
 
 .mode-card.on {
@@ -1118,6 +1119,7 @@
 
 .mode-card.unsupported {
   border-style: dashed;
+  border-color: var(--line-strong);
   color: var(--muted);
 }
 
@@ -1186,8 +1188,8 @@ a.btn {
   width: min(760px, calc(100vw - 64px));
   max-height: calc(100vh - 64px);
   padding: 22px 24px 24px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-l);
+  border: var(--control-border);
+  border-radius: var(--radius-card);
   background: var(--card);
   color: var(--ink);
   box-shadow: var(--shadow);
@@ -1212,8 +1214,8 @@ a.btn {
 }
 
 .sheet-head .icon-btn {
-  width: 36px;
-  height: 36px;
+  width: var(--control-h-s);
+  height: var(--control-h-s);
 }
 
 .sheet-body {
