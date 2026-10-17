@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ukiyo",
+  "version": "0.1.0",
+  "identifier": "app.ukiyo",
+  "build": {
+    "frontendDist": "../app/dist",
+    "devUrl": "http://localhost:4823",
+    "beforeDevCommand": { "script": "pnpm --dir app dev", "wait": false },
+    "beforeBuildCommand": "pnpm --dir app build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ukiyo Lab",
+        "width": 1320,
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; script-src 'self'; connect-src ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; script-src 'self'; connect-src ipc: http://ipc.localhost http://localhost:4823 ws://localhost:4823"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "category": "Photography",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.png"],
+    "resources": { "../catalog/": "catalog/" },
+    "macOS": { "minimumSystemVersion": "13.0" }
+  }
+}

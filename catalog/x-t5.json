@@ -1,0 +1,2505 @@
+{
+  "schema": 1,
+  "model": "X-T5",
+  "manufacturer": "FUJIFILM",
+  "usb": {
+    "vendor": "0x04cb",
+    "product": "0x02fc"
+  },
+  "firmware": [
+    "4.31"
+  ],
+  "properties": {
+    "0x5003": {
+      "name": "ImageSize",
+      "type": "string",
+      "confidence": "confirmed",
+      "source": "PTP",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0x5005": {
+      "name": "WhiteBalance",
+      "type": "uint16",
+      "confidence": "confirmed",
+      "source": "PTP",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0x5007": {
+      "name": "FNumber",
+      "menu": "Aperture ring",
+      "type": "uint16",
+      "unit": "f/",
+      "scale": 100,
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0x500a": {
+      "name": "FocusMode",
+      "menu": "Focus mode selector",
+      "type": "uint16",
+      "values": {
+        "32769": "S",
+        "32770": "C",
+        "1": "M"
+      },
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0x500b": {
+      "name": "ExposureMeteringMode",
+      "type": "uint16",
+      "confidence": "confirmed",
+      "source": "PTP",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0x500d": {
+      "name": "ExposureTime",
+      "menu": "Shutter speed dial",
+      "type": "uint32",
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0x500e": {
+      "name": "ExposureProgramMode",
+      "type": "uint16",
+      "confidence": "confirmed",
+      "source": "PTP",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0x500f": {
+      "name": "ExposureIndex",
+      "menu": "ISO dial",
+      "type": "int32",
+      "values": {
+        "-3": "AUTO"
+      },
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills"
+      ],
+      "notes": "AUTO is 0xFFFFFFFD."
+    },
+    "0x5010": {
+      "name": "ExposureBiasCompensation",
+      "menu": "Exposure compensation dial",
+      "type": "int16",
+      "unit": "EV",
+      "scale": 1000,
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0x5011": {
+      "name": "DateTime",
+      "type": "string",
+      "confidence": "confirmed",
+      "source": "PTP",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0x5012": {
+      "name": "CaptureDelay",
+      "type": "uint16",
+      "confidence": "confirmed",
+      "source": "PTP",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0x5015": {
+      "name": "Sharpness",
+      "type": "int16",
+      "confidence": "confirmed",
+      "source": "PTP",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0x501c": {
+      "name": "FocusMeteringMode",
+      "type": "uint16",
+      "confidence": "confirmed",
+      "source": "PTP",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd001": {
+      "name": "FilmSimulation",
+      "menu": "IMAGE QUALITY SETTING > FILM SIMULATION",
+      "type": "uint16",
+      "values": {
+        "1": "PROVIA/STANDARD",
+        "2": "Velvia/VIVID",
+        "3": "ASTIA/SOFT",
+        "4": "PRO Neg. Hi",
+        "5": "PRO Neg. Std",
+        "6": "MONOCHROME",
+        "7": "MONOCHROME+Ye",
+        "8": "MONOCHROME+R",
+        "9": "MONOCHROME+G",
+        "10": "SEPIA",
+        "11": "CLASSIC CHROME",
+        "12": "ACROS",
+        "13": "ACROS+Ye",
+        "14": "ACROS+R",
+        "15": "ACROS+G",
+        "16": "ETERNA/CINEMA",
+        "17": "CLASSIC Neg.",
+        "18": "ETERNA BLEACH BYPASS",
+        "19": "NOSTALGIC Neg.",
+        "20": "REALA ACE"
+      },
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ],
+      "notes": "19 and 20 are not in libgphoto2; inferred from the enum length."
+    },
+    "0xd007": {
+      "name": "DRangeMode",
+      "menu": "IMAGE QUALITY SETTING > DYNAMIC RANGE",
+      "type": "uint16",
+      "values": {
+        "65535": "AUTO",
+        "100": "DR100",
+        "200": "DR200",
+        "400": "DR400"
+      },
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd008": {
+      "name": "ColorMode",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd00a": {
+      "name": "ColorSpace",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd00b": {
+      "name": "WhitebalanceTune1",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd00c": {
+      "name": "WhitebalanceTune2",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd017": {
+      "name": "ColorTemperature",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd018": {
+      "name": "Quality",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd01b": {
+      "name": "ThroughImageZoom",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd01c": {
+      "name": "NoiseReduction",
+      "menu": "IMAGE QUALITY SETTING > HIGH ISO NR",
+      "type": "uint16",
+      "values": {
+        "20480": "+4",
+        "24576": "+3",
+        "0": "+2",
+        "4096": "+1",
+        "8192": "0",
+        "12288": "-1",
+        "16384": "-2",
+        "28672": "-3",
+        "32768": "-4"
+      },
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd020": {
+      "name": "FaceDetectionMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd022": {
+      "name": "RawCompression",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd023": {
+      "name": "GrainEffect",
+      "menu": "IMAGE QUALITY SETTING > GRAIN EFFECT",
+      "type": "uint16",
+      "values": {
+        "1": "OFF",
+        "2": "WEAK SMALL",
+        "3": "STRONG SMALL",
+        "4": "WEAK LARGE",
+        "5": "STRONG LARGE"
+      },
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd024": {
+      "name": "SetEyeAFMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd025": {
+      "name": "FocusPoints",
+      "menu": "AF/MF SETTING > NUMBER OF FOCUS POINTS",
+      "type": "uint16",
+      "values": {
+        "3": "117 POINTS",
+        "4": "425 POINTS"
+      },
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd026": {
+      "name": "MFAssistMode",
+      "menu": "AF/MF SETTING > MF ASSIST",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd027": {
+      "name": "InterlockAEAFArea",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd028": {
+      "name": "CommandDialMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd029": {
+      "name": "ColorChromeEffect",
+      "menu": "IMAGE QUALITY SETTING > COLOR CHROME EFFECT",
+      "type": "uint16",
+      "values": {
+        "1": "OFF",
+        "2": "WEAK",
+        "3": "STRONG"
+      },
+      "confidence": "confirmed",
+      "source": "protocol.md",
+      "modes": [
+        "stills",
+        "rawconv"
+      ],
+      "notes": "libgphoto2 calls it Shadowing."
+    },
+    "0xd02a": {
+      "name": "ExposureIndex",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd02b": {
+      "name": "MovieISO",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd02d": {
+      "type": "uint16",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd02e": {
+      "name": "DRangePriority",
+      "menu": "IMAGE QUALITY SETTING > D RANGE PRIORITY",
+      "type": "uint16",
+      "values": {
+        "0": "OFF",
+        "1": "WEAK",
+        "2": "STRONG",
+        "32768": "AUTO"
+      },
+      "confidence": "confirmed",
+      "source": "protocol.md",
+      "modes": [
+        "stills",
+        "rawconv"
+      ],
+      "notes": "libgphoto2 calls it WideDynamicRange."
+    },
+    "0xd02f": {
+      "name": "TNumber",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd030": {
+      "name": "ColorChromeFXBlue",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd031": {
+      "name": "MonochromaticColorMG",
+      "menu": "IMAGE QUALITY SETTING > MONOCHROMATIC COLOR",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "rawconv"
+      ],
+      "notes": "Range collapses to 0 with a colour film simulation."
+    },
+    "0xd032": {
+      "name": "Clarity",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd033": {
+      "name": "ShutterDialAuto",
+      "menu": "Shutter speed dial (A position)",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "lab session",
+      "modes": [
+        "stills"
+      ],
+      "notes": "Flips when the shutter dial moves to or from A."
+    },
+    "0xd034": {
+      "name": "ExposureCompDialC",
+      "menu": "Exposure compensation dial (C position)",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "lab session",
+      "modes": [
+        "stills"
+      ],
+      "notes": "Flips when the dial moves to or from C."
+    },
+    "0xd035": {
+      "name": "IsoDialAuto",
+      "menu": "ISO dial (A position)",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "lab session",
+      "modes": [
+        "stills"
+      ],
+      "notes": "Flips when the ISO dial moves to or from A."
+    },
+    "0xd036": {
+      "type": "uint16",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd038": {
+      "type": "uint32",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd039": {
+      "type": "uint32",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd040": {
+      "type": "uint32",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd100": {
+      "name": "Comment",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd104": {
+      "name": "MonochromaticColorWC",
+      "menu": "IMAGE QUALITY SETTING > MONOCHROMATIC COLOR",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "rawconv"
+      ],
+      "notes": "libgphoto2 calls it BlackImageTone."
+    },
+    "0xd106": {
+      "name": "FrameGuideMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd10a": {
+      "name": "ReleaseFocusPriorityAFS",
+      "menu": "AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-S PRIORITY SELECTION",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ],
+      "notes": "libgphoto2 calls it ShutterPriorityMode1."
+    },
+    "0xd10b": {
+      "name": "ReleaseFocusPriorityAFC",
+      "menu": "AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-C PRIORITY SELECTION",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ],
+      "notes": "libgphoto2 calls it ShutterPriorityMode2."
+    },
+    "0xd112": {
+      "name": "AFIlluminator",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd136": {
+      "name": "FunctionLock",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd145": {
+      "name": "Password",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd153": {
+      "name": "FirmwareVersion",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd154": {
+      "name": "ShotCount",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd155": {
+      "name": "ShutterExchangeCount",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd156": {
+      "name": "LensFirmwareVersion",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ],
+      "notes": "Hex BCD: 0x105 = 1.05."
+    },
+    "0xd157": {
+      "name": "WorldClock",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd158": {
+      "name": "TimeDifference1",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd159": {
+      "name": "TimeDifference2",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd15a": {
+      "name": "Language",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd15b": {
+      "name": "FrameNumberSequence",
+      "menu": "SET UP > SAVE DATA SET-UP > FRAME NO.",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd16d": {
+      "name": "FrameNumber",
+      "menu": "SET UP > SAVE DATA SET-UP > FRAME NO.",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ],
+      "notes": "The current file number."
+    },
+    "0xd16e": {
+      "name": "UsbConnectionMode",
+      "menu": "SET UP > CONNECTION SETTING > CONNECTION MODE",
+      "type": "uint16",
+      "values": {
+        "5": "USB TETHER SHOOTING FIXED",
+        "6": "USB RAW CONV./BACKUP RESTORE"
+      },
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "movie",
+        "rawconv"
+      ]
+    },
+    "0xd16f": {
+      "name": "CropMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd170": {
+      "name": "LensZoomPos",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd171": {
+      "name": "FocusPosition",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd173": {
+      "name": "LiveViewImageQuality",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd174": {
+      "name": "LiveViewImageSize",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd17b": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie",
+        "rawconv"
+      ]
+    },
+    "0xd17e": {
+      "name": "CropAreaFrameInfo",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd17f": {
+      "name": "ResetSetting",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd180": {
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd181": {
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd182": {
+      "type": "int16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd183": {
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd184": {
+      "name": "IOPCode",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd185": {
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd186": {
+      "name": "TetherRawConditionCode",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd187": {
+      "name": "TetherRawCompatibilityCode",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd189": {
+      "name": "SmoothSkinEffect",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd18a": {
+      "type": "string",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd18b": {
+      "type": "string",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd18c": {
+      "name": "PresetSlot",
+      "type": "uint16",
+      "values": {
+        "1": "C1",
+        "2": "C2",
+        "3": "C3",
+        "4": "C4",
+        "5": "C5",
+        "6": "C6",
+        "7": "C7"
+      },
+      "confidence": "confirmed",
+      "source": "filmkit",
+      "modes": [
+        "stills",
+        "movie",
+        "rawconv"
+      ],
+      "notes": "Selects which custom slot D18D-D1A5 read and write."
+    },
+    "0xd18d": {
+      "name": "PresetName",
+      "type": "string",
+      "confidence": "confirmed",
+      "source": "filmkit",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd18e": {
+      "name": "PresetImageSize",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd18f": {
+      "name": "PresetImageQuality",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd190": {
+      "name": "PresetDynamicRange",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd191": {
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd192": {
+      "name": "PresetFilmSimulation",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd193": {
+      "name": "PresetMonoWC",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd194": {
+      "name": "PresetMonoMG",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd195": {
+      "name": "PresetGrainEffect",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd196": {
+      "name": "PresetColorChrome",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd197": {
+      "name": "PresetColorChromeFxBlue",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd198": {
+      "name": "PresetSmoothSkin",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd199": {
+      "name": "PresetWhiteBalance",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd19a": {
+      "name": "PresetWBShiftR",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd19b": {
+      "name": "PresetWBShiftB",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd19c": {
+      "name": "PresetColorTemp",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd19d": {
+      "name": "PresetHighlightTone",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd19e": {
+      "name": "PresetShadowTone",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd19f": {
+      "name": "PresetColor",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd1a0": {
+      "name": "PresetSharpness",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd1a1": {
+      "name": "PresetHighIsoNR",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd1a2": {
+      "name": "PresetClarity",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd1a3": {
+      "name": "PresetLongExpNR",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd1a4": {
+      "name": "PresetColorSpace",
+      "confidence": "likely",
+      "source": "filmkit",
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd1a5": {
+      "modes": [
+        "rawconv"
+      ]
+    },
+    "0xd1b0": {
+      "type": "string",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd1b1": {
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd1b2": {
+      "type": "uint16",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd1b3": {
+      "name": "DigitalTeleConv",
+      "menu": "SHOOTING SETTING > DIGITAL TELE-CONV.",
+      "type": "uint32",
+      "values": {
+        "100": "OFF",
+        "140": "1.4x",
+        "200": "2.0x"
+      },
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd1b4": {
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1b5": {
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1b6": {
+      "type": "uint16",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd1b8": {
+      "type": "uint32",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1b9": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1ba": {
+      "type": "uint32",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1bb": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1bc": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1bd": {
+      "type": "uint16",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd1be": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1bf": {
+      "name": "ConstantSpeedFocus",
+      "menu": "SET UP > BUTTON/DIAL SETTING > LENS ZOOM/FOCUS SETTING",
+      "type": "uint16",
+      "scale": 10,
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1c0": {
+      "name": "ConstantSpeedZoom",
+      "menu": "SET UP > BUTTON/DIAL SETTING > LENS ZOOM/FOCUS SETTING",
+      "type": "uint16",
+      "scale": 10,
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd1c5": {
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd201": {
+      "name": "ReleaseMode",
+      "menu": "Drive dial",
+      "type": "uint16",
+      "values": {
+        "4": "S",
+        "2": "CL",
+        "3": "CH",
+        "10": "BKT",
+        "8": "Movie"
+      },
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills",
+        "movie"
+      ],
+      "notes": "CH = 3 is not confirmed."
+    },
+    "0xd207": {
+      "name": "PriorityMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd208": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie",
+        "rawconv"
+      ]
+    },
+    "0xd209": {
+      "name": "AFStatus",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd20a": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd20b": {
+      "name": "DeviceName",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd20c": {
+      "name": "MediaRecord",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd20d": {
+      "name": "MediaCapacity",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd20e": {
+      "name": "FreeSDRAMImages",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd211": {
+      "name": "MediaStatus",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd212": {
+      "name": "CurrentState",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie",
+        "rawconv"
+      ]
+    },
+    "0xd215": {
+      "name": "Copyright",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd216": {
+      "name": "Copyright2",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd21c": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie",
+        "rawconv"
+      ]
+    },
+    "0xd21d": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd222": {
+      "name": "SensitivityFineTune1",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd223": {
+      "name": "SensitivityFineTune2",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd224": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd225": {
+      "type": "string",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd226": {
+      "type": "string",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd227": {
+      "type": "string",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd228": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd229": {
+      "name": "CaptureRemaining",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd22a": {
+      "name": "MovieRemainingTime",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd22b": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd22c": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd22d": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd22e": {
+      "name": "CameraScreen",
+      "type": "uint16",
+      "values": {
+        "1": "Shooting",
+        "2": "Playback",
+        "3": "Menu open"
+      },
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd22f": {
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd230": {
+      "name": "ForceMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd231": {
+      "type": "uint16",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd232": {
+      "name": "AfcCustomSet",
+      "menu": "AF/MF SETTING > AF-C CUSTOM SETTINGS",
+      "type": "uint16",
+      "values": {
+        "1": "SET 1",
+        "2": "SET 2",
+        "3": "SET 3",
+        "4": "SET 4",
+        "5": "SET 5",
+        "6": "SET 6"
+      },
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd233": {
+      "name": "AfcCustomValues",
+      "menu": "AF/MF SETTING > AF-C CUSTOM SETTINGS",
+      "type": "string",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ],
+      "notes": "Tracking sensitivity, speed tracking sensitivity, zone area switching."
+    },
+    "0xd234": {
+      "type": "uint16",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd235": {
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd236": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd237": {
+      "name": "CopyrightAuthor",
+      "menu": "SET UP > SAVE DATA SET-UP > COPYRIGHT INFO",
+      "type": "string",
+      "confidence": "guess",
+      "source": "menu map",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd238": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd239": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd23a": {
+      "type": "uint32",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd23b": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd23c": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd23e": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd23f": {
+      "type": "uint32",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd240": {
+      "name": "ShutterSpeed2",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd241": {
+      "name": "ImageAspectRatio",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd242": {
+      "name": "BatteryLevel",
+      "type": "int32",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd243": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd246": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd247": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd248": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd249": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd24a": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd24b": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd24c": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd24d": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd24e": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd251": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd252": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd253": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd254": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd255": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd256": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd257": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd258": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd259": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd25a": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd25b": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd25c": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd25d": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd25e": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd262": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd263": {
+      "type": "string",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd264": {
+      "type": "string",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd265": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd266": {
+      "type": "string",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd267": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd268": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd269": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd26a": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd26b": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd26c": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd26d": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd26e": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd26f": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd270": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd271": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd272": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd273": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd274": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd275": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd276": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd277": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd278": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd279": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd27a": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd27b": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd27c": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd27d": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd27e": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd27f": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd280": {
+      "type": "string",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd281": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd282": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd283": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd284": {
+      "type": "string",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd285": {
+      "type": "string",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd286": {
+      "type": "string",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd287": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd288": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd289": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd28a": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd28b": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd28c": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd28d": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd28e": {
+      "type": "int16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd28f": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd290": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd291": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd292": {
+      "type": "string",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd293": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd294": {
+      "type": "uint16",
+      "modes": [
+        "movie"
+      ]
+    },
+    "0xd297": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd304": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd305": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd306": {
+      "type": "uint32",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd307": {
+      "name": "StillMovie",
+      "menu": "STILL/MOVIE switch",
+      "type": "uint16",
+      "values": {
+        "1": "Movie",
+        "2": "Stills"
+      },
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd310": {
+      "name": "TotalShotCount",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd320": {
+      "name": "HighLightTone",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd321": {
+      "name": "ShadowTone",
+      "type": "int16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd322": {
+      "name": "LongExposureNR",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd323": {
+      "name": "FullTimeManualFocus",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd33f": {
+      "name": "ViewMode1",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd346": {
+      "name": "LensISSwitch",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd347": {
+      "name": "FocusPoint",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd34a": {
+      "name": "InstantAFMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd34b": {
+      "name": "PreAFMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd34d": {
+      "name": "LMOMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "rawconv"
+      ]
+    },
+    "0xd34e": {
+      "name": "AeAfLockMode",
+      "menu": "SET UP > BUTTON/DIAL SETTING > AE/AF-LOCK MODE",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "menu map",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd351": {
+      "name": "ISMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd352": {
+      "name": "DateTimeDispFormat",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd359": {
+      "name": "ExposurePreview",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd35e": {
+      "name": "FocusCheckMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd35f": {
+      "name": "FocusScaleUnit",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd364": {
+      "name": "CustomAutoPowerOff",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd365": {
+      "name": "FileNamePrefix1",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd366": {
+      "name": "FileNamePrefix2",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd369": {
+      "type": "uint16",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd36a": {
+      "name": "BatteryInfo1",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie",
+        "rawconv"
+      ]
+    },
+    "0xd36b": {
+      "name": "BatteryInfo2",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie",
+        "rawconv"
+      ]
+    },
+    "0xd36d": {
+      "name": "LensNameAndSerial",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd36e": {
+      "name": "CustomDispInfo",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd36f": {
+      "name": "FunctionLockCategory1",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd370": {
+      "name": "FunctionLockCategory2",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd372": {
+      "name": "FocusArea1",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd374": {
+      "name": "FocusArea3",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd375": {
+      "name": "FrameGuideGridInfo1",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd376": {
+      "name": "FrameGuideGridInfo2",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd381": {
+      "name": "AutoPowerOff",
+      "menu": "SET UP > POWER MANAGEMENT > AUTO POWER OFF",
+      "type": "uint16",
+      "values": {
+        "1": "5 MIN",
+        "2": "2 MIN",
+        "3": "OFF",
+        "4": "1 MIN",
+        "5": "30 SEC",
+        "6": "15 SEC"
+      },
+      "confidence": "confirmed",
+      "source": "lab session",
+      "modes": [
+        "stills",
+        "movie"
+      ],
+      "notes": "Write 1 -> 3 tested. Movie mode keeps its own value."
+    },
+    "0xd38a": {
+      "name": "LensUnknownData",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd38b": {
+      "type": "uint16",
+      "modes": [
+        "stills"
+      ]
+    },
+    "0xd38c": {
+      "name": "LensZoomPosCaps",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd38d": {
+      "name": "LensFNumberList",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd38e": {
+      "name": "LensFocalLengthList",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills",
+        "movie"
+      ]
+    },
+    "0xd395": {
+      "name": "FocusArea4",
+      "type": "string",
+      "confidence": "likely",
+      "source": "libgphoto2",
+      "modes": [
+        "stills"
+      ]
+    }
+  }
+}

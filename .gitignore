@@ -1,3 +1,7 @@
 local/
 __pycache__/
 .DS_Store
+node_modules/
+app/dist/
+src-tauri/target/
+src-tauri/gen/

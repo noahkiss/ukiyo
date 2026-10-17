@@ -1,0 +1,5 @@
+# The Rust toolchain for the whole repo: rustup reads this file from any folder below it.
+[toolchain]
+channel = "1.99.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
