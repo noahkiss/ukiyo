@@ -5,5 +5,9 @@
   <!-- The camera thread polls continuously; App Nap would slow it when the window is behind others. -->
   <key>NSAppSleepDisabled</key>
   <true/>
+  <!-- The Liquid Glass icon in Resources/Assets.car (tools/art/build_app_icon.sh).
+       CFBundleIconFile, set by Tauri, keeps icon.icns for macOS before 26. -->
+  <key>CFBundleIconName</key>
+  <string>AppIcon</string>
 </dict>
 </plist>

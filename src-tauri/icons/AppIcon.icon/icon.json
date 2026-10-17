@@ -1,0 +1,116 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.94902,0.90196,0.80392,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.06667,0.07451,0.08627,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Seal",
+      "layers": [
+        {
+          "name": "seal",
+          "image-name-specializations": [
+            {
+              "value": "seal.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular": true
+    },
+    {
+      "name": "Glyph",
+      "layers": [
+        {
+          "name": "glyph",
+          "image-name-specializations": [
+            {
+              "value": "glyph-light.png"
+            },
+            {
+              "appearance": "dark",
+              "value": "glyph-dark.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular-specializations": [
+        {
+          "value": false
+        },
+        {
+          "appearance": "tinted",
+          "value": true
+        }
+      ]
+    },
+    {
+      "name": "Enso",
+      "layers": [
+        {
+          "name": "enso",
+          "image-name-specializations": [
+            {
+              "value": "enso-light.png"
+            },
+            {
+              "appearance": "dark",
+              "value": "enso-dark.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular-specializations": [
+        {
+          "value": false
+        },
+        {
+          "appearance": "tinted",
+          "value": true
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}
