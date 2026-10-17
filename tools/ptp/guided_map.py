@@ -7,7 +7,7 @@
 Usage:
   guided_map.py STEPS [--answer done|skip|stop] [--rescan]
   guided_map.py STEPS --dry-run SNAPSHOT.json [--answer ...] [--fake-wrong ID,..] [--fake-noop ID,..]
-                [--fake-menu-stuck ID,..]
+                [--fake-menu-stuck ID,..] [--fake-write-menu ID,..] [--fake-timeout ID|open,..]
 
 STEPS is a name in steps/ (x-t5-first) or a path. Run from tools/ptp with
 `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib uv run -q guided_map.py x-t5-first`.
@@ -48,12 +48,18 @@ when the owner's is 5 min) and back to the owner's value, so a crash between the
 leaves the camera at OFF. This
 which resets the power-off timer (docs/protocol.md, "Camera state and power"). A finally block
 restores it, retrying 0x2019 and 0xA001 with a 250 ms backoff. If the owner's value is already
-OFF, nothing is written.
+OFF, nothing is written. A write can answer 0xA001 while reads work and D22E reads 1: the owner
+is in a menu. Outside a dialog the script then prints "a camera menu is open; close it".
+
+If the camera stops answering (a USB timeout, at open or mid-session), the script tries once to
+restore D381, writes the summary, and ends with one line naming what to check.
 
 --dry-run reads a recorded dump (dump_props.py format) instead of USB. It fakes each Done as the
 change the step expects, a menu that stays open about a second, histogram noise, and a busy
 answer now and then. --answer answers every dialog without showing it, to test unattended.
 --fake-wrong/--fake-noop/--fake-menu-stuck make named steps go wrong, to test the result logic.
+--fake-write-menu makes writes answer 0xA001 for 12 s after a step while reads work.
+--fake-timeout makes the camera stop answering once after a step (or at open, with "open").
 """
 import argparse
 import copy
@@ -76,11 +82,20 @@ SCREEN, STILL_MOVIE, AUTO_POWER_OFF = 0xD22E, 0xD307, 0xD381
 APO_OFF = 3  # AUTO POWER OFF: OFF
 APO_5MIN, APO_2MIN = 1, 2
 KEEPALIVE_S = 10
+WRITE_MENU_S = 12  # --fake-write-menu: how long writes answer 0xA001 after a step
 BASELINE_S = 5
 MENU_PATIENCE_S = 5
 # Always noisy: histogram, focus position, the change-event list, and our own keep-alive writes.
 NOISY = {0xD22F, 0xD171, 0xD212, AUTO_POWER_OFF}
 SCALARS = {1: "b", 2: "B", 3: "h", 4: "H", 5: "i", 6: "I", 7: "q", 8: "Q"}
+
+
+NO_ANSWER = ("the camera did not answer: check CONNECTION MODE is USB TETHER SHOOTING FIXED, "
+             "close menus, unplug/replug once")
+
+
+class NoAnswer(Exception):
+    """The camera did not answer over USB: a timeout, or the device went away."""
 
 
 def hexcode(c):
@@ -115,15 +130,20 @@ class RealCamera:
     def __init__(self, rescan):
         from read_presets import PTP  # imported here so --dry-run never loads pyusb
         import dump_props
+        import usb.core
 
-        self.p = PTP()
-        rc, _ = self.p.open()
+        self.usb_error = usb.core.USBError
+        try:
+            self.p = PTP()
+            rc, _ = self.p.open()
+        except self.usb_error as e:
+            raise NoAnswer(str(e)) from e
         if rc not in (OK, 0x201E):
             sys.exit(f"OpenSession failed: {rc:#x}")
-        rc, raw = self.p.op(0x1001)
+        rc, raw = self._op(0x1001)
         info, props = dump_props.device_info(raw)
         self.model, self.firmware = info["model"], info["firmware"]
-        rc, raw = self.p.op(0x1015, (STILL_MOVIE,))
+        rc, raw = self._op(0x1015, (STILL_MOVIE,))
         mode = "movie" if rc == OK and struct.unpack_from("<H", raw)[0] == 1 else "stills"
         cache = OUT_DIR / "cache" / f"{self.model}-{self.firmware}-{mode}.json".lower()
         if cache.exists() and not rescan:
@@ -132,24 +152,38 @@ class RealCamera:
             print(f"describing {len(props)} properties ({mode}) ...")
             self.types = {}
             for code in props:
-                rc, raw = self.p.op(0x1014, (code,))
+                rc, raw = self._op(0x1014, (code,))
                 if rc == OK:
                     self.types[code] = struct.unpack_from("<H", raw, 2)[0]
-                elif self.p.op(0x1015, (code,))[0] == OK:
+                elif self._op(0x1015, (code,))[0] == OK:
                     self.types[code] = 0
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps({hexcode(k): v for k, v in sorted(self.types.items())}, indent=1))
         self.dump_props = dump_props
 
+    def _op(self, code, params=(), data=None):
+        try:
+            return self.p.op(code, params, data)
+        except self.usb_error as e:
+            raise NoAnswer(str(e)) from e
+
+    def drain(self):
+        """Drop a late answer to an operation that timed out, so the next one reads its own."""
+        try:
+            while True:
+                self.p.inp.read(1 << 20, timeout=200)
+        except self.usb_error:
+            pass
+
     def codes(self):
         return sorted(self.types)
 
     def value(self, code):
-        rc, raw = self.p.op(0x1015, (code,))
+        rc, raw = self._op(0x1015, (code,))
         return rc, decode(self.types.get(code, 0), raw) if rc == OK else None
 
     def desc(self, code):
-        rc, raw = self.p.op(0x1014, (code,))
+        rc, raw = self._op(0x1014, (code,))
         if rc != OK:
             return {"error": f"{rc:#x}"}
         try:
@@ -159,16 +193,18 @@ class RealCamera:
         return {k: v for k, v in d.items() if k in ("rw", "range", "enum")}
 
     def write_u16(self, code, value):
-        return self.p.op(0x1016, (code,), struct.pack("<H", value))[0]
+        return self._op(0x1016, (code,), struct.pack("<H", value))[0]
 
     def close(self):
-        self.p.op(0x1003)
+        self._op(0x1003)
 
 
 class FakeCamera:
     """A recorded dump_props.py file standing in for the camera. No USB."""
 
-    def __init__(self, path, wrong, noop, stuck):
+    def __init__(self, path, wrong, noop, stuck, write_menu=frozenset(), timeout=frozenset()):
+        if "open" in timeout:
+            raise NoAnswer("fake timeout at open")
         d = json.loads(Path(path).read_text())
         self.model, self.firmware = d.get("model", "X-T5"), d.get("firmware", "?")
         self.props, self.vals = {}, {}
@@ -182,7 +218,10 @@ class FakeCamera:
         self.vals.setdefault(SCREEN, 1)
         self.vals.setdefault(STILL_MOVIE, 2)
         self.wrong, self.noop, self.stuck = wrong, noop, stuck
+        self.write_menu, self.timeout = write_menu, timeout
         self.menu_until = 0.0
+        self.write_menu_until = 0.0
+        self.dead = False
         self.writes = 0
         self.rng = random.Random(5)
 
@@ -194,6 +233,9 @@ class FakeCamera:
 
     def value(self, code):
         time.sleep(0.001)  # about the time a USB read takes
+        if self.dead:
+            self.dead = False  # one timeout; the camera answers again after it
+            raise NoAnswer("fake timeout")
         if code not in self.vals:
             return NOT_SUPPORTED, None
         if self.menu_open():
@@ -209,7 +251,7 @@ class FakeCamera:
         return {k: v for k, v in p.items() if k in ("rw", "range", "enum")}
 
     def write_u16(self, code, value):
-        if self.menu_open():
+        if self.menu_open() or time.monotonic() < self.write_menu_until:
             return MENU
         self.writes += 1
         if self.writes % 5 == 0:  # a busy answer now and then, to exercise the retries
@@ -218,6 +260,9 @@ class FakeCamera:
         return OK
 
     def close(self):
+        pass
+
+    def drain(self):
         pass
 
     def _other(self, code, avoid):
@@ -233,6 +278,10 @@ class FakeCamera:
         """What the owner's Done would have done on a real camera."""
         sid = step["id"]
         self.menu_until = time.monotonic() + (MENU_PATIENCE_S + 2.5 if sid in self.stuck else 1.2)
+        if sid in self.write_menu:
+            self.write_menu_until = self.menu_until + WRITE_MENU_S
+        if sid in self.timeout:
+            self.dead = True
         if sid in self.noop:
             return
         for e in step["expect"]:
@@ -267,9 +316,13 @@ class Dialogs:
             return pick if pick in buttons else buttons[-1]
         args = ["osascript"] + sum((["-e", line] for line in self.SCRIPT), []) + [text, title] + list(buttons)
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        while proc.poll() is None:
-            self.idle()
-            time.sleep(0.5)
+        try:
+            while proc.poll() is None:
+                self.idle(True)
+                time.sleep(0.5)
+        except BaseException:
+            proc.kill()  # the camera stopped answering, or Ctrl-C: do not leave the dialog up
+            raise
         out = proc.stdout.read().strip()
         return out if proc.returncode == 0 and out in buttons else "Stop"
 
@@ -286,12 +339,23 @@ class KeepAwake:
         self.last = time.monotonic()
         self.toggles = 0
         self.other = APO_2MIN if self.owner == APO_5MIN else APO_5MIN
+        self.in_dialog = False  # the owner is expected to be in a menu while a dialog is up
+        self.menu_told = False
+
+    def menu(self, rc):
+        """Tell the owner once per episode when a write answers 0xA001: D22E can read 1 meanwhile."""
+        if rc == MENU and not self.in_dialog and not self.menu_told:
+            print("! a camera menu is open; close it (writes answer 0xA001)", file=sys.stderr)
+            self.menu_told = True
+        elif rc == OK:
+            self.menu_told = False
 
     def write(self, value, patience):
         """Write D381 and read it back, retrying busy (0x2019) and menu (0xA001) every 250 ms."""
         end = time.monotonic() + patience
         while True:
             rc = self.cam.write_u16(AUTO_POWER_OFF, value)
+            self.menu(rc)
             if rc == OK:
                 rc, now = self.cam.value(AUTO_POWER_OFF)
                 if rc == OK and now == value:
@@ -306,7 +370,9 @@ class KeepAwake:
         if self.owner == APO_OFF or time.monotonic() - self.last < KEEPALIVE_S:
             return
         self.last = time.monotonic()
-        if self.cam.write_u16(AUTO_POWER_OFF, self.other) != OK:
+        rc = self.cam.write_u16(AUTO_POWER_OFF, self.other)
+        self.menu(rc)
+        if rc != OK:
             # A menu is open (the owner's presses keep it awake) or the camera is busy: try in 1 s.
             self.last = time.monotonic() - KEEPALIVE_S + 1
             return
@@ -317,10 +383,15 @@ class KeepAwake:
     def restore(self, patience):
         if not self.dirty:
             return True
-        if self.write(self.owner, patience):
+        try:
+            done = self.write(self.owner, patience)
+        except NoAnswer:
+            return False
+        if done:
             self.dirty = False
             return True
-        print("! AUTO POWER OFF not back to your value yet; retrying (close any menu)", file=sys.stderr)
+        if not self.menu_told:
+            print("! AUTO POWER OFF not back to your value yet; retrying", file=sys.stderr)
         return False
 
 
@@ -354,8 +425,9 @@ class Session:
     def name(self, code):
         return f"{self.entry(code).get('name', '?')} ({hexcode(code)})"
 
-    def idle(self):
+    def idle(self, in_dialog=False):
         if self.keep:
+            self.keep.in_dialog = in_dialog
             self.keep.tick()
 
     def snapshot(self):
@@ -528,13 +600,20 @@ class Session:
             for i, step in enumerate(self.steps, 1):
                 if self.run_step(i, step) == "Stop":
                     break
+        except NoAnswer:
+            print("the camera stopped answering; trying once to restore AUTO POWER OFF", file=sys.stderr)
+            self.cam.drain()
+            raise
         finally:
             # A second Ctrl-C or SIGTERM must not cut the restore short.
             signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM, signal.SIGHUP})
             ok = self.keep.restore(60)
             print(f"AUTO POWER OFF {'restored to' if ok else 'NOT restored; set it by hand to'} "
                   f"{self.show(AUTO_POWER_OFF, self.keep.owner)} ({self.keep.toggles} keep-alive toggles)")
-            end = self.snapshot() if self.start else None
+            try:
+                end = self.snapshot() if self.start else None
+            except NoAnswer:
+                end = None
             self.log.close()
             self.finish(stem, end)
 
@@ -619,6 +698,8 @@ def main():
     ap.add_argument("--fake-wrong", default="", help="dry run: these step ids set another value")
     ap.add_argument("--fake-noop", default="", help="dry run: these step ids change nothing")
     ap.add_argument("--fake-menu-stuck", default="", help="dry run: the menu stays open past the patience")
+    ap.add_argument("--fake-write-menu", default="", help="dry run: after these steps writes answer 0xA001")
+    ap.add_argument("--fake-timeout", default="", help="dry run: the camera stops answering after these steps, or at open")
     a = ap.parse_args()
 
     path = Path(a.steps)
@@ -640,22 +721,34 @@ def main():
         signal.signal(s, stop)
 
     ids = lambda s: {x for x in s.split(",") if x}
-    if a.dry_run:
-        cam = FakeCamera(a.dry_run, ids(a.fake_wrong), ids(a.fake_noop), ids(a.fake_menu_stuck))
-        fake = cam
-    else:
-        cam = RealCamera(a.rescan)
-        fake = None
+    try:
+        if a.dry_run:
+            cam = FakeCamera(a.dry_run, ids(a.fake_wrong), ids(a.fake_noop), ids(a.fake_menu_stuck),
+                             ids(a.fake_write_menu), ids(a.fake_timeout))
+            fake = cam
+        else:
+            cam = RealCamera(a.rescan)
+            fake = None
+    except NoAnswer:
+        sys.exit(NO_ANSWER)
     session = Session(cam, spec["steps"], None, fake)
     session.ui = Dialogs(a.answer, session.idle)
     if cam.model != spec.get("model", cam.model):
         print(f"warning: steps are for {spec['model']}, camera is {cam.model}", file=sys.stderr)
+    gone = False
     try:
         session.run(name, stem)
     except KeyboardInterrupt:
         print("stopped", file=sys.stderr)
+    except NoAnswer:
+        gone = True
     finally:
-        cam.close()
+        try:
+            cam.close()
+        except NoAnswer:
+            gone = True
+    if gone:
+        sys.exit(NO_ANSWER)
 
 
 if __name__ == "__main__":
