@@ -46,9 +46,9 @@
       "menu": "Focus mode selector",
       "type": "uint16",
       "values": {
+        "1": "M",
         "32769": "S",
-        "32770": "C",
-        "1": "M"
+        "32770": "C"
       },
       "confidence": "confirmed",
       "source": "lab session",
@@ -188,10 +188,10 @@
       "menu": "IMAGE QUALITY SETTING > DYNAMIC RANGE",
       "type": "uint16",
       "values": {
-        "65535": "AUTO",
         "100": "DR100",
         "200": "DR200",
-        "400": "DR400"
+        "400": "DR400",
+        "65535": "AUTO"
       },
       "confidence": "likely",
       "source": "menu map",
@@ -275,13 +275,13 @@
       "menu": "IMAGE QUALITY SETTING > HIGH ISO NR",
       "type": "uint16",
       "values": {
-        "20480": "+4",
-        "24576": "+3",
         "0": "+2",
         "4096": "+1",
         "8192": "0",
         "12288": "-1",
         "16384": "-2",
+        "20480": "+4",
+        "24576": "+3",
         "28672": "-3",
         "32768": "-4"
       },
@@ -1238,11 +1238,11 @@
       "menu": "Drive dial",
       "type": "uint16",
       "values": {
-        "4": "S",
         "2": "CL",
         "3": "CH",
-        "10": "BKT",
-        "8": "Movie"
+        "4": "S",
+        "8": "Movie",
+        "10": "BKT"
       },
       "confidence": "confirmed",
       "source": "lab session",

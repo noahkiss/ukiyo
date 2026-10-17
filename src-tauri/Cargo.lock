@@ -2984,6 +2984,7 @@ version = "2.0.0-rc.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38f9a30cbcbb7011f1da7d73483983bf838af123883e45f2b36ed76328df9c50"
 dependencies = [
+ "indexmap 2.14.2",
  "paste",
  "rustc_version",
  "serde_json",
@@ -3793,6 +3794,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "indexmap 2.14.2",
  "nusb",
  "serde",
  "serde_json",

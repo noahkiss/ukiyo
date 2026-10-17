@@ -854,7 +854,7 @@ impl Owner {
             if r.rc == ptp::RC_OK {
                 if let Ok(d) = ptp::prop_desc(&r.data) {
                     desc_ok += 1;
-                    p.value = Some(d.current.clone()).filter(|_| d.datatype != 0);
+                    p.value = (d.datatype != 0).then(|| d.current.clone());
                     p.available = true;
                     p.desc = Some(d);
                 }

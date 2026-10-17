@@ -51,7 +51,8 @@ FILM_SIMS = ["PROVIA/STANDARD", "Velvia/VIVID", "ASTIA/SOFT", "PRO Neg. Hi", "PR
              "CLASSIC Neg.", "ETERNA BLEACH BYPASS", "NOSTALGIC Neg.", "REALA ACE"]
 
 def labels(pairs):
-    return {str(k): v for k, v in pairs}
+    """Value labels keyed by the value in decimal, in numeric order (the app keeps that order)."""
+    return {str(k): v for k, v in sorted(pairs, key=lambda kv: kv[0])}
 
 # Curated entries: protocol.md (confirmed) and menu-map.md high/medium guesses (likely).
 C, L = "confirmed", "likely"
