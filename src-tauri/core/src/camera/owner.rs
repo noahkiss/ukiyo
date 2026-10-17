@@ -220,6 +220,13 @@ pub struct Status {
     pub hot: u32,
     pub readable: u32,
     pub keep_awake: KeepAwake,
+    /// This camera's id in the library's history: its serial's digest, salted per Mac
+    /// (`library::history`). The Lab sets it; the owner leaves it `None`.
+    pub camera_id: Option<String>,
+    /// The serial's digest from GetDeviceInfo (`ptp::serial_digest`), for the Lab to salt.
+    /// Never serialized: no log line, socket message or window sees it.
+    #[serde(skip)]
+    pub serial_digest: Option<String>,
 }
 
 impl Default for Status {
@@ -239,6 +246,8 @@ impl Default for Status {
             hot: 0,
             readable: 0,
             keep_awake: KeepAwake { enabled: false, active: false, period_s: None },
+            camera_id: None,
+            serial_digest: None,
         }
     }
 }
@@ -1116,7 +1125,10 @@ impl Owner {
             op_time: Duration::ZERO,
         });
         let info = match s.t.op(ptp::OP_GET_DEVICE_INFO, &[], None) {
-            Ok(r) if r.rc == ptp::RC_OK => ptp::device_info(&r.data).map_err(|e| e.0),
+            Ok(r) if r.rc == ptp::RC_OK => {
+                self.status.serial_digest = ptp::serial_digest(&r.data);
+                ptp::device_info(&r.data).map_err(|e| e.0)
+            }
             Ok(r) => Err(ptp::rc_name(r.rc).to_string()),
             Err(e) => Err(e.to_string()),
         };

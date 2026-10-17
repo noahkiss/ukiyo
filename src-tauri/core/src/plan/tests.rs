@@ -58,7 +58,7 @@ impl Rig {
 
     fn plan(&self, pairs: &[(&str, &str)], allow: bool) -> Result<Plan, Error> {
         let set = pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-        self.lab.plan(PlanInput { set, allow_unconfirmed: allow })
+        self.lab.plan(PlanInput { set, allow_unconfirmed: allow, ..Default::default() })
     }
 
     fn log(&self) -> Vec<serde_json::Value> {

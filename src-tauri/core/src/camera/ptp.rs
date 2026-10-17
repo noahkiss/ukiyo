@@ -305,7 +305,8 @@ pub fn prop_desc(b: &[u8]) -> Result<PropDesc, DecodeError> {
     Ok(PropDesc { code, datatype, writable, default, current, form })
 }
 
-/// The parts of GetDeviceInfo the app uses. The serial number is never read out.
+/// The parts of GetDeviceInfo the app uses. The serial number is never read out, except as
+/// a digest ([`serial_digest`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DeviceInfo {
     pub vendor_ext: String,
@@ -314,6 +315,28 @@ pub struct DeviceInfo {
     pub firmware: String,
     pub operations: Vec<u16>,
     pub properties: Vec<u16>,
+}
+
+/// The SHA-256 of the serial number in a GetDeviceInfo dataset, as lowercase hex; `None`
+/// when the dataset has no serial. The serial text goes no further than this function. The
+/// library salts the digest again before it names a camera's history (`library::history`).
+pub fn serial_digest(b: &[u8]) -> Option<String> {
+    use sha2::Digest as _;
+    let mut r = Reader::new(b);
+    r.u16().ok()?;
+    r.u32().ok()?;
+    r.u16().ok()?;
+    r.string().ok()?;
+    r.u16().ok()?;
+    for _ in 0..5 {
+        r.array_u16().ok()?;
+    }
+    for _ in 0..3 {
+        r.string().ok()?; // manufacturer, model, firmware
+    }
+    let serial = r.string().ok()?;
+    let serial = serial.trim();
+    (!serial.is_empty()).then(|| hex(&sha2::Sha256::digest(format!("ukiyo-serial:{serial}").as_bytes())))
 }
 
 pub fn device_info(b: &[u8]) -> Result<DeviceInfo, DecodeError> {

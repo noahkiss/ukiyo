@@ -19,6 +19,8 @@ use crate::plan::{self, Applied, Plan, PlanInput, Raw, Stored};
 use crate::camera::transport::Connector;
 use crate::camera::usb::UsbConnector;
 use crate::catalog::{Catalog, LabelPatch};
+use crate::library::history::Recorder;
+use crate::library::prefs;
 use crate::serve::OwnerLock;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -44,25 +46,6 @@ pub struct Snapshot {
     pub session_path: Option<String>,
     pub fake: bool,
     pub noisy: Vec<u16>,
-}
-
-/// `settings.json` in the app data dir. A field the file lacks takes its default.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-struct Settings {
-    /// Keep the camera awake while Ukiyo is in use (the owner's D381 toggle).
-    keep_awake: bool,
-    /// Minutes after the last client request or window input that still count as in use.
-    in_use_minutes: u32,
-    /// A write the camera refuses with a menu open over the shooting screen gets one
-    /// half-press, which closes the menu, and one retry.
-    close_menu_to_write: bool,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Settings { keep_awake: true, in_use_minutes: 5, close_menu_to_write: true }
-    }
 }
 
 /// What the person at the fake camera does (`UKIYO_FAKE_CAMERA=1` only).
@@ -114,7 +97,6 @@ pub struct Lab {
     /// Plans by id, until applied, discarded or expired.
     plans: Mutex<HashMap<String, Stored>>,
     next_plan: AtomicU32,
-    settings: Mutex<Settings>,
 }
 
 fn wall_ms() -> i64 {
@@ -152,6 +134,13 @@ pub fn catalog_dir(data_dir: &Path, resources: Option<PathBuf>) -> PathBuf {
     dir
 }
 
+impl Snapshot {
+    /// A snapshot with no camera, only a catalog: for resolving names offline.
+    pub fn of_catalog(catalog: Option<Catalog>) -> Snapshot {
+        Snapshot { status: Status::default(), rows: vec![], groups: vec![], catalog, catalog_path: None, session_path: None, fake: false, noisy: vec![] }
+    }
+}
+
 impl Lab {
     /// Starts the camera thread. `emit` sends an event to the front ends.
     ///
@@ -164,10 +153,8 @@ impl Lab {
         let session_path = file.as_ref().map(|_| session_path);
         let log = Arc::new(Mutex::new(file));
         let mirror = Arc::new(Mutex::new(Mirror::default()));
-        let settings: Settings = std::fs::read_to_string(data_dir.join("settings.json"))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        let settings = prefs::load(&data_dir);
+        let history = Arc::new(Mutex::new(Recorder::new(&data_dir)));
 
         let clock: Arc<dyn Clock> = Arc::new(RealClock::new());
         let use_fake = std::env::var("UKIYO_FAKE_CAMERA").is_ok_and(|v| v == "1");
@@ -188,7 +175,8 @@ impl Lab {
             let log = log.clone();
             let emit = emit.clone();
             let catalog_dir = catalog_dir.clone();
-            Box::new(move |e: Event| on_event(e, &mirror, &log, &catalog_dir, &*emit))
+            let history = history.clone();
+            Box::new(move |e: Event| on_event(e, &mirror, &log, &catalog_dir, &history, &*emit))
         };
         // The first line, before the owner thread can log a status.
         write_log(&log, serde_json::json!({ "kind": "start", "fake": fake.is_some() }));
@@ -225,7 +213,6 @@ impl Lab {
             lock: Mutex::new(Some(lock)),
             plans: Mutex::new(HashMap::new()),
             next_plan: AtomicU32::new(1),
-            settings: Mutex::new(settings),
         })
     }
 
@@ -235,6 +222,11 @@ impl Lab {
 
     fn log_line(&self, v: serde_json::Value) {
         write_log(&self.log, v)
+    }
+
+    /// The data folder: sessions, dumps, `settings.json`, the library.
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -268,12 +260,9 @@ impl Lab {
     /// off timer. Saved in `settings.json`.
     pub fn keep_awake(&self, actor: &str, on: bool) {
         self.send(Request::KeepAwake(on));
-        let text = {
-            let mut s = self.settings.lock().unwrap();
-            s.keep_awake = on;
-            serde_json::to_string_pretty(&*s).unwrap_or_default()
-        };
-        let _ = std::fs::write(self.data_dir.join("settings.json"), text);
+        if let Err(e) = prefs::update(&self.data_dir, &prefs::PrefsPatch { keep_awake: Some(on), ..Default::default() }) {
+            eprintln!("ukiyo: settings.json not saved: {e}");
+        }
         self.log_line(serde_json::json!({ "kind": "keep_awake", "actor": actor, "on": on }));
     }
 
@@ -328,9 +317,30 @@ impl Lab {
     }
 
     /// Builds and stores a plan against the camera now. Writes nothing.
+    /// With `from`, the plan comes from the library: a preset's `set`, or a snapshot's exact
+    /// values (a restore). `set` must then be empty.
     pub fn plan(&self, input: PlanInput) -> Result<Plan, Error> {
         let snap = self.snapshot();
-        let (plan, raw) = plan::build(&snap, &input)?;
+        let (plan, raw) = match input.from.as_deref() {
+            None => plan::build(&snap, &input)?,
+            Some(from) => {
+                if !input.set.is_empty() {
+                    return Err(Error::new(ErrorCode::BadRequest, "a plan has one source: set, or from (a preset or snapshot), not both"));
+                }
+                let store = crate::library::Store::new(&self.data_dir);
+                match crate::library::Id::parse(from)? {
+                    crate::library::Id::Item(crate::library::Kind::Preset, slug) => {
+                        let p = store.preset(&slug)?;
+                        plan::build(&snap, &PlanInput { set: p.set, allow_unconfirmed: input.allow_unconfirmed, from: None })?
+                    }
+                    crate::library::Id::Item(crate::library::Kind::Snapshot, slug) => {
+                        let s = store.snapshot(&slug)?;
+                        plan::build_values(&snap, &crate::library::snapshot::as_values(&s), input.allow_unconfirmed)?
+                    }
+                    _ => return Err(Error::new(ErrorCode::BadRequest, format!("{from} is not a preset or a snapshot"))),
+                }
+            }
+        };
         Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now() }))
     }
 
@@ -495,9 +505,10 @@ fn write_log(log: &Mutex<Option<std::fs::File>>, mut v: serde_json::Value) {
     }
 }
 
-fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>, catalog_dir: &Path, emit: &dyn Fn(api::Event)) {
+fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>, catalog_dir: &Path, history: &Mutex<Recorder>, emit: &dyn Fn(api::Event)) {
     match e {
-        Event::Status(s) => {
+        Event::Status(mut s) => {
+            history.lock().unwrap().on_status(&mut s);
             let mut m = mirror.lock().unwrap();
             let key = (s.link, s.reason.clone(), s.screen, s.capture, s.mode);
             let log_it = m.logged.as_ref() != Some(&key);
@@ -523,6 +534,7 @@ fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>
         Event::Props(rows) => {
             let mut m = mirror.lock().unwrap();
             m.rows = rows.iter().map(|r| (r.code, r.clone())).collect();
+            history.lock().unwrap().on_rows(&rows, m.catalog.as_ref(), None);
             drop(m);
             emit(api::Event::Props(rows));
         }
@@ -536,6 +548,8 @@ fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>
             }
             m.groups.push_front(g.clone());
             m.groups.truncate(FEED);
+            let rows: Vec<PropRow> = m.rows.values().cloned().collect();
+            history.lock().unwrap().on_rows(&rows, m.catalog.as_ref(), Some(&g.changes));
             drop(m);
             write_log(log, serde_json::json!({ "kind": "changes", "group": g }));
             emit(api::Event::Changes(g));
@@ -580,7 +594,7 @@ mod tests {
 
         let mut set = indexmap::IndexMap::new();
         set.insert("0xd023".to_string(), "2".to_string());
-        let p = lab.plan(PlanInput { set, allow_unconfirmed: true }).unwrap();
+        let p = lab.plan(PlanInput { set, allow_unconfirmed: true, ..Default::default() }).unwrap();
         let out = lab.apply("test", &p.plan_id).unwrap();
         assert_eq!(out.applied, 1, "{out:?}");
         let path = lab.export("test").unwrap();

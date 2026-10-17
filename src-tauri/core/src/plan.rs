@@ -28,10 +28,15 @@ pub const LIFETIME: Duration = Duration::from_secs(300);
 /// label or a raw number; the text itself for a string property).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub struct PlanInput {
+    #[serde(default)]
     pub set: IndexMap<String, String>,
     /// Lets the plan write codes whose catalog confidence is not `confirmed`.
     #[serde(default)]
     pub allow_unconfirmed: bool,
+    /// A library item to plan instead of `set`: `preset:<slug>` (its `set`) or
+    /// `snapshot:<slug>` (a restore: its exact values).
+    #[serde(default)]
+    pub from: Option<String>,
 }
 
 /// The camera state a plan was made in, and needs at apply.
@@ -316,6 +321,13 @@ pub fn step_view(snap: &Snapshot, code: u16, before: Option<&Value>, after: &Val
     }
 }
 
+/// What one step asks for: a value as given (a label or raw text), or an exact value
+/// (a snapshot restore).
+enum Want<'a> {
+    Text(&'a str),
+    Exact(Value),
+}
+
 /// Builds a plan against the snapshot. Fails as a whole on a camera that cannot take writes
 /// and on a name or value it cannot resolve; a gate only moves its step to `blocked` or
 /// `skipped`. The plan's id and lifetime are the Lab's to set.
@@ -324,6 +336,21 @@ pub fn build(snap: &Snapshot, input: &PlanInput) -> Result<(Plan, Vec<Raw>), Err
     if input.set.is_empty() {
         return Err(err(ErrorCode::NotFound, "the plan names no setting").hint("Give NAME=VALUE pairs."));
     }
+    let wants = input.set.iter().map(|(name, text)| Ok((resolve_code(snap, name)?, Want::Text(text)))).collect::<Result<Vec<_>, Error>>()?;
+    gate(snap, wants, input.allow_unconfirmed)
+}
+
+/// Builds a plan that writes exact values by code: a snapshot restore. Codes the camera
+/// does not read now are skipped with the mode they need, like any plan.
+pub fn build_values(snap: &Snapshot, values: &[(u16, Value)], allow_unconfirmed: bool) -> Result<(Plan, Vec<Raw>), Error> {
+    ready(snap)?;
+    if values.is_empty() {
+        return Err(err(ErrorCode::NotFound, "the plan names no setting"));
+    }
+    gate(snap, values.iter().map(|(c, v)| (*c, Want::Exact(v.clone()))).collect(), allow_unconfirmed)
+}
+
+fn gate(snap: &Snapshot, wants: Vec<(u16, Want)>, allow_unconfirmed: bool) -> Result<(Plan, Vec<Raw>), Error> {
     let cat = snap.catalog.as_ref();
     let mut plan = Plan {
         plan_id: String::new(),
@@ -332,18 +359,21 @@ pub fn build(snap: &Snapshot, input: &PlanInput) -> Result<(Plan, Vec<Raw>), Err
         steps: vec![],
         skipped: vec![],
         blocked: vec![],
-        allow_unconfirmed: input.allow_unconfirmed,
+        allow_unconfirmed,
     };
     let mut raw = vec![];
     let mut seen = std::collections::HashSet::new();
-    for (name, text) in &input.set {
-        let code = resolve_code(snap, name)?;
+    for (code, want) in wants {
         if !seen.insert(code) {
             return Err(err(ErrorCode::Ambiguous, format!("{} is set twice in one plan", read::code_text(code))));
         }
         let e = entry(cat, code);
         let row = snap.rows.iter().find(|r| r.code == code);
         let what = describe(code, e);
+        let text = match &want {
+            Want::Text(t) => t.to_string(),
+            Want::Exact(v) => read::display(e, Some(v)),
+        };
         let left = |reason: &str, message: String| Left { code: read::code_text(code), name: e.and_then(|e| e.name.clone()), value: text.clone(), reason: reason.into(), message };
         let Some(row) = row.filter(|r| r.available) else {
             let need = needs(snap, row, e);
@@ -354,7 +384,10 @@ pub fn build(snap: &Snapshot, input: &PlanInput) -> Result<(Plan, Vec<Raw>), Err
             plan.skipped.push(left(ErrorCode::name(need), msg));
             continue;
         };
-        let value = resolve_value(Some(row), e, text, &what)?;
+        let value = match want {
+            Want::Text(t) => resolve_value(Some(row), e, t, &what)?,
+            Want::Exact(v) => v,
+        };
         if !row.writable {
             plan.blocked.push(left("read_only", format!("{what} is read-only")));
             continue;
@@ -364,7 +397,7 @@ pub fn build(snap: &Snapshot, input: &PlanInput) -> Result<(Plan, Vec<Raw>), Err
             continue;
         }
         let confirmed = e.and_then(|e| e.confidence) == Some(Confidence::Confirmed);
-        if !confirmed && !input.allow_unconfirmed {
+        if !confirmed && !allow_unconfirmed {
             let c = e.and_then(|e| e.confidence).map(|c| format!("{c:?}").to_lowercase()).unwrap_or_else(|| "unmapped".into());
             plan.blocked.push(left("unconfirmed_property", format!("{what} is not confirmed in the catalog ({c}); its meaning may be wrong. Pass allow_unconfirmed (--allow-unconfirmed) to write it")));
             continue;

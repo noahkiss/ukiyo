@@ -23,10 +23,13 @@ use crate::camera::owner::{ChangeGroup, PropRow, Status};
 use crate::catalog::{Catalog, LabelPatch};
 use crate::lab::{FakeAction, Lab, Snapshot};
 use crate::plan::{Applied, Plan, PlanInput};
+use crate::library::prefs::{Prefs, PrefsPatch};
+use crate::library::{self, Hits, SaveInput, Saved, SearchInput, Store, Trashed};
 use crate::recipes::{self, Parsed};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::path::Path;
 
 /// One call into the core.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -54,9 +57,13 @@ pub enum Request {
     /// Builds a plan against the live camera: names or codes to labels or raw values.
     /// Writes nothing.
     PlanCreate {
+        #[serde(default)]
         set: IndexMap<String, String>,
         #[serde(default)]
         allow_unconfirmed: bool,
+        /// A library item to plan instead of `set`: `preset:<slug>` or `snapshot:<slug>`.
+        #[serde(default)]
+        from: Option<String>,
     },
     /// A stored plan, with its time left.
     PlanShow { plan_id: String },
@@ -65,6 +72,23 @@ pub enum Request {
     PlanDiscard { plan_id: String },
     /// Input in the window: Ukiyo is in use (keep-awake). Every other request counts too.
     Activity,
+    /// Searches the library on this Mac: presets, snapshots, favourites, the trash.
+    LibrarySearch(SearchInput),
+    /// One library item in full, or the diff of two snapshots.
+    LibraryRead {
+        id: String,
+        #[serde(default)]
+        compare_to: Option<String>,
+    },
+    /// Creates or replaces one library item, or restores one from the trash. Never writes
+    /// to the camera.
+    LibrarySave(SaveInput),
+    /// Moves a preset or snapshot to the trash, or removes a favourite.
+    LibraryDelete { id: String },
+    /// The preferences in `settings.json`.
+    PrefsGet,
+    /// Changes some preferences. `keep_awake` reaches the owner at once.
+    PrefsSet { patch: PrefsPatch },
 }
 
 /// Every method, in `Request` order.
@@ -83,6 +107,12 @@ pub const METHODS: &[&str] = &[
     "plan_apply",
     "plan_discard",
     "activity",
+    "library_search",
+    "library_read",
+    "library_save",
+    "library_delete",
+    "prefs_get",
+    "prefs_set",
 ];
 
 impl Request {
@@ -103,6 +133,12 @@ impl Request {
             Request::PlanApply { .. } => 11,
             Request::PlanDiscard { .. } => 12,
             Request::Activity => 13,
+            Request::LibrarySearch(_) => 14,
+            Request::LibraryRead { .. } => 15,
+            Request::LibrarySave(_) => 16,
+            Request::LibraryDelete { .. } => 17,
+            Request::PrefsGet => 18,
+            Request::PrefsSet { .. } => 19,
         }]
     }
 }
@@ -127,6 +163,12 @@ pub enum Response {
     PlanApply(Box<Applied>),
     PlanDiscard,
     Activity,
+    LibrarySearch(Hits),
+    LibraryRead(Box<library::Read>),
+    LibrarySave(Saved),
+    LibraryDelete(Trashed),
+    PrefsGet(Box<Prefs>),
+    PrefsSet(Box<Prefs>),
 }
 
 /// Why a request failed (docs/agent-interface.md, section 5, "Typed errors").
@@ -335,6 +377,45 @@ pub mod call {
     pub fn activity(lab: &Lab) {
         lab.activity()
     }
+
+    // The library methods take the data folder, not the Lab: every front end runs them in
+    // its own process, with or without `serve`. `serve` answers them too.
+
+    pub fn library_search(data_dir: &Path, input: &SearchInput) -> Hits {
+        Store::new(data_dir).search(input)
+    }
+
+    pub fn library_read(data_dir: &Path, id: &str, compare_to: Option<&str>) -> Result<library::Read, Error> {
+        Store::new(data_dir).read(id, compare_to)
+    }
+
+    /// `ctx.camera` is the Lab's snapshot, for a snapshot or a preset of current values.
+    pub fn library_save(data_dir: &Path, actor: &str, input: &SaveInput, ctx: library::Context) -> Result<Saved, Error> {
+        Store::new(data_dir).save(actor, input, ctx)
+    }
+
+    pub fn library_delete(data_dir: &Path, actor: &str, id: &str) -> Result<Trashed, Error> {
+        Store::new(data_dir).delete(actor, id)
+    }
+
+    pub fn prefs_get(data_dir: &Path) -> Prefs {
+        library::prefs::load(data_dir)
+    }
+
+    /// Saves the patch. A `keep_awake` change must also reach a running owner: the caller
+    /// sends `lab_keep_awake` (as `dispatch` does).
+    pub fn prefs_set(data_dir: &Path, patch: &PrefsPatch) -> Result<Prefs, Error> {
+        library::prefs::update(data_dir, patch)
+    }
+}
+
+/// Whether a save needs the camera's state: a snapshot, or a preset of current values.
+pub fn save_needs_camera(input: &SaveInput) -> bool {
+    match input.kind {
+        library::SaveKind::Snapshot => input.from.is_none(),
+        library::SaveKind::Preset => input.item.as_ref().is_some_and(|i| i.get("settings").is_some()),
+        _ => false,
+    }
 }
 
 /// Answers one request from `actor`. Methods that wait on the camera block the calling thread.
@@ -366,7 +447,7 @@ pub fn dispatch(lab: &Lab, actor: &str, req: Request) -> Result<Response, Error>
             Response::LabFake
         }
         Request::RecipeParse { text } => Response::RecipeParse(Box::new(call::recipe_parse(&text))),
-        Request::PlanCreate { set, allow_unconfirmed } => Response::PlanCreate(Box::new(call::plan_create(lab, PlanInput { set, allow_unconfirmed })?)),
+        Request::PlanCreate { set, allow_unconfirmed, from } => Response::PlanCreate(Box::new(call::plan_create(lab, PlanInput { set, allow_unconfirmed, from })?)),
         Request::PlanShow { plan_id } => Response::PlanShow(Box::new(call::plan_show(lab, &plan_id)?)),
         Request::PlanApply { plan_id } => Response::PlanApply(Box::new(call::plan_apply(lab, actor, &plan_id)?)),
         Request::PlanDiscard { plan_id } => {
@@ -374,6 +455,22 @@ pub fn dispatch(lab: &Lab, actor: &str, req: Request) -> Result<Response, Error>
             Response::PlanDiscard
         }
         Request::Activity => Response::Activity,
+        Request::LibrarySearch(input) => Response::LibrarySearch(call::library_search(lab.data_dir(), &input)),
+        Request::LibraryRead { id, compare_to } => Response::LibraryRead(Box::new(call::library_read(lab.data_dir(), &id, compare_to.as_deref())?)),
+        Request::LibrarySave(input) => {
+            let snap = save_needs_camera(&input).then(|| lab.snapshot());
+            let ctx = library::Context { camera: snap.as_ref(), catalog: None };
+            Response::LibrarySave(call::library_save(lab.data_dir(), actor, &input, ctx)?)
+        }
+        Request::LibraryDelete { id } => Response::LibraryDelete(call::library_delete(lab.data_dir(), actor, &id)?),
+        Request::PrefsGet => Response::PrefsGet(Box::new(call::prefs_get(lab.data_dir()))),
+        Request::PrefsSet { patch } => {
+            patch.check()?;
+            if let Some(on) = patch.keep_awake {
+                call::lab_keep_awake(lab, actor, on);
+            }
+            Response::PrefsSet(Box::new(call::prefs_set(lab.data_dir(), &patch)?))
+        }
     })
 }
 
@@ -391,7 +488,7 @@ mod tests {
     #[test]
     fn wire_shapes() {
         let r = req(json!({ "method": "plan_create", "params": { "set": { "AutoPowerOff": "OFF" } } }));
-        let Request::PlanCreate { set, allow_unconfirmed } = &r else { panic!("{r:?}") };
+        let Request::PlanCreate { set, allow_unconfirmed, .. } = &r else { panic!("{r:?}") };
         assert_eq!((set["AutoPowerOff"].as_str(), *allow_unconfirmed), ("OFF", false));
         assert_eq!(r.method(), "plan_create");
         assert_eq!(serde_json::to_value(&r).unwrap()["method"], "plan_create");
@@ -430,11 +527,17 @@ mod tests {
             Request::LabNote { group: None, text: String::new() },
             Request::LabFake { action: FakeAction::Nudge },
             Request::RecipeParse { text: String::new() },
-            Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false },
+            Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false, from: None },
             Request::PlanShow { plan_id: String::new() },
             Request::PlanApply { plan_id: String::new() },
             Request::PlanDiscard { plan_id: String::new() },
             Request::Activity,
+            Request::LibrarySearch(SearchInput { kind: library::SearchKind::Preset, query: None, limit: None }),
+            Request::LibraryRead { id: "prefs".into(), compare_to: None },
+            Request::LibrarySave(SaveInput { kind: library::SaveKind::Prefs, name: None, item: None, from: None }),
+            Request::LibraryDelete { id: String::new() },
+            Request::PrefsGet,
+            Request::PrefsSet { patch: PrefsPatch::default() },
         ];
         assert_eq!(all.len(), METHODS.len());
         for (r, name) in all.iter().zip(METHODS) {

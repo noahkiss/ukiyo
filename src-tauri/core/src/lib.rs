@@ -4,6 +4,8 @@
 //! - `catalog`: the per-model property catalog.
 //! - `recipes`: the recipe parser and the bundled recipe catalogue.
 //! - `lab`: the mirror of the owner's state, the session log, export and labels.
+//! - `library`: presets, snapshots, favourites, preferences (`settings.json`), camera history
+//!   and the trash, on this Mac.
 //! - `api`: the requests, responses and events every front end speaks.
 //! - `paths`: the data folder, `owner.lock` and `ukiyo.sock`.
 //! - `read`: read-only views (status, settings rows, menus, change groups) for the CLI and MCP.
@@ -18,6 +20,7 @@ pub mod camera;
 pub mod catalog;
 pub mod evidence;
 pub mod lab;
+pub mod library;
 pub mod modes;
 pub mod paths;
 pub mod plan;
