@@ -33,6 +33,11 @@ pub fn check_data_dir() -> Result<(), Fail> {
 
 /// A client that spawns `serve` when none runs. With `on_event`, it subscribes.
 pub fn client(out: Out, on_event: Option<EventFn>) -> Arc<Client> {
+    client_as(out, "cli", on_event)
+}
+
+/// `client` with another actor: the MCP server is `mcp:<client name>`.
+pub fn client_as(out: Out, actor: &str, on_event: Option<EventFn>) -> Arc<Client> {
     let data = paths::data_dir();
     let dir = data.clone();
     let spawn: SpawnFn = Arc::new(move || {
@@ -40,7 +45,7 @@ pub fn client(out: Out, on_event: Option<EventFn>) -> Arc<Client> {
         let exe = std::env::current_exe()?;
         ukiyo_core::serve::spawn_detached(&exe, &dir)
     });
-    Client::new(Options::new(data, "cli", Some(spawn)), on_event)
+    Client::new(Options::new(data, actor, Some(spawn)), on_event)
 }
 
 /// A client that never spawns: for reads that only want a running owner's answer.

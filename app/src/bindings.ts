@@ -246,7 +246,11 @@ export type ErrorCode =
 /**  No such plan: expired (5 minutes), applied, discarded, or `serve` restarted. */
 "plan_expired" | 
 /**  The write was accepted but the camera holds another value. */
-"readback_mismatch";
+"readback_mismatch" | 
+/**  A label marks a code `confirmed` that has not changed in this session (`evidence`). */
+"no_evidence" | 
+/**  A label holds a string this camera reports: a serial or an owner string (`evidence`). */
+"private_text";
 
 /**  What the person at the fake camera does (`UKIYO_FAKE_CAMERA=1` only). */
 export type FakeAction = "openMenu" | "closeMenu" | "movie" | "stills" | "powerOff" | "powerOn" | "unplug" | "nudge" | "autoOn" | "autoOff";

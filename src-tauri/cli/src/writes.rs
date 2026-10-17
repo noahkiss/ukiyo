@@ -57,7 +57,7 @@ fn pairs(items: &[String]) -> Result<IndexMap<String, String>, Fail> {
     Ok(m)
 }
 
-fn plan_lines(p: &Plan) -> Vec<String> {
+pub(crate) fn plan_lines(p: &Plan) -> Vec<String> {
     let mut needs: Vec<String> = p.requires.mode.iter().cloned().collect();
     if let Some(c) = &p.requires.capture {
         needs.push(format!("{c:?}").to_lowercase());
@@ -86,7 +86,7 @@ fn plan_lines(p: &Plan) -> Vec<String> {
     out
 }
 
-fn applied_lines(a: &Applied, total: usize) -> Vec<String> {
+pub(crate) fn applied_lines(a: &Applied, total: usize) -> Vec<String> {
     let rows: Vec<Vec<String>> = a
         .steps
         .iter()

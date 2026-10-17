@@ -161,6 +161,10 @@ pub enum ErrorCode {
     PlanExpired,
     /// The write was accepted but the camera holds another value.
     ReadbackMismatch,
+    /// A label marks a code `confirmed` that has not changed in this session (`evidence`).
+    NoEvidence,
+    /// A label holds a string this camera reports: a serial or an owner string (`evidence`).
+    PrivateText,
 }
 
 impl ErrorCode {
@@ -189,6 +193,8 @@ impl ErrorCode {
             PlanStale => "plan_stale",
             PlanExpired => "plan_expired",
             ReadbackMismatch => "readback_mismatch",
+            NoEvidence => "no_evidence",
+            PrivateText => "private_text",
         }
     }
 
@@ -282,7 +288,9 @@ pub mod call {
         lab.export(actor)
     }
 
+    /// A label from anyone but the window must pass `evidence::check`.
     pub fn lab_label(lab: &Lab, actor: &str, patch: LabelPatch) -> Result<Catalog, Error> {
+        crate::evidence::check(&lab.snapshot(), actor, &patch)?;
         lab.label(actor, patch).map_err(Error::failed)
     }
 
@@ -386,7 +394,7 @@ mod tests {
     #[test]
     fn error_code_names() {
         use ErrorCode::*;
-        for c in [Failed, NoFakeCamera, BadRequest, Unavailable, NotConnected, CameraAsleep, Busy, MenuOpen, NeedsTether, NeedsRawconv, NeedsStills, NeedsMovie, OwnerConflict, UnconfirmedProperty, ReadOnly, ValueOutOfRange, NotFound, Ambiguous, PlanStale, PlanExpired, ReadbackMismatch] {
+        for c in [Failed, NoFakeCamera, BadRequest, Unavailable, NotConnected, CameraAsleep, Busy, MenuOpen, NeedsTether, NeedsRawconv, NeedsStills, NeedsMovie, OwnerConflict, UnconfirmedProperty, ReadOnly, ValueOutOfRange, NotFound, Ambiguous, PlanStale, PlanExpired, ReadbackMismatch, NoEvidence, PrivateText] {
             assert_eq!(serde_json::to_value(c).unwrap(), json!(c.name()));
             assert_eq!(ErrorCode::from_name(c.name()), c);
         }

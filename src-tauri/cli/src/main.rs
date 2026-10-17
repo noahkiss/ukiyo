@@ -1,13 +1,16 @@
 //! `ukiyo`: the command line tool (docs/agent-interface.md, section 3).
 //!
 //! Reads (`cmds`): `status`, `settings`, `camera watch`, `catalog show`, `log show` and
-//! `help modes`. Writes (`writes`, stage 4): `settings set`, `owner`, `plan`, `camera
+//! `help modes`. `mcp` (stage 5) is the MCP server on stdio, a client of `serve` like the
+//! rest. Writes (`writes`, stage 4): `settings set`, `owner`, `plan`, `camera
 //! connect|disconnect|export` and `log note`; every camera write is a plan first. Plus
 //! `serve`, the shared camera owner. Everything that touches the camera goes to `serve` over
 //! its socket (`conn`); the CLI never opens USB itself.
 
 mod cmds;
 mod conn;
+mod mcp;
+mod mcp_tools;
 mod out;
 mod writes;
 
@@ -65,6 +68,8 @@ enum Cmd {
         #[command(subcommand)]
         topic: Option<HelpCmd>,
     },
+    /// The MCP server on stdio, for coding agents: `ukiyo mcp`.
+    Mcp,
     /// The headless camera owner (spawned on demand): `ukiyo serve [--idle-exit S]`.
     Serve,
 }
@@ -257,6 +262,7 @@ fn main() {
             let _ = Cli::command().print_help();
             Ok(0)
         }
+        Cmd::Mcp => Ok(mcp::main()),
         Cmd::Serve => unreachable!("handled before parsing"),
     };
     std::process::exit(match result {

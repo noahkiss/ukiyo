@@ -1,0 +1,210 @@
+//! `ukiyo-cli mcp` as a real process on stdio, against the fake camera
+//! (`UKIYO_FAKE_CAMERA=1`) in a temp data folder, so the `serve` it spawns never touches USB.
+
+use serde_json::{json, Value};
+use std::io::{BufRead, BufReader, Write};
+use std::path::Path;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::{Duration, Instant};
+use ukiyo_core::paths;
+use ukiyo_core::serve::lock;
+
+const EXE: &str = env!("CARGO_BIN_EXE_ukiyo-cli");
+
+struct Mcp {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    next: u64,
+    data: tempfile::TempDir,
+    cats: tempfile::TempDir,
+}
+
+impl Mcp {
+    fn start() -> Mcp {
+        let cats = tempfile::tempdir().unwrap();
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog/x-t5.json");
+        std::fs::copy(repo, cats.path().join("x-t5.json")).unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let mut child = Command::new(EXE)
+            .arg("mcp")
+            // Never the real camera: the spawned serve inherits this.
+            .env("UKIYO_FAKE_CAMERA", "1")
+            .env("UKIYO_DATA_DIR", data.path())
+            .env("UKIYO_CATALOG_DIR", cats.path())
+            .env("UKIYO_IDLE_EXIT", "3")
+            .env("UKIYO_MCP_IDLE", "2")
+            .env_remove("UKIYO_FAKE_MODE")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut m = Mcp { child, stdin, stdout, next: 0, data, cats };
+        let init = m.request("initialize", json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "1" } }));
+        assert_eq!(init["result"]["protocolVersion"], "2025-06-18", "{init}");
+        assert_eq!(init["result"]["serverInfo"]["name"], "ukiyo");
+        assert!(init["result"]["instructions"].as_str().unwrap().contains("camera_plan"));
+        m.send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
+        m
+    }
+
+    fn send(&mut self, v: Value) {
+        writeln!(self.stdin, "{v}").unwrap();
+        self.stdin.flush().unwrap();
+    }
+
+    fn request(&mut self, method: &str, params: Value) -> Value {
+        self.next += 1;
+        let id = self.next;
+        self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        let mut line = String::new();
+        self.stdout.read_line(&mut line).unwrap();
+        let v: Value = serde_json::from_str(&line).unwrap_or_else(|e| panic!("stdout is MCP only: {line:?} ({e})"));
+        assert_eq!(v["id"], id, "{v}");
+        v
+    }
+
+    /// A tool call: `Ok(structuredContent)`, or `Err` with the typed error.
+    fn tool(&mut self, name: &str, args: Value) -> Result<Value, Value> {
+        let r = self.request("tools/call", json!({ "name": name, "arguments": args }));
+        let res = &r["result"];
+        assert!(res["content"][0]["text"].as_str().is_some_and(|t| !t.is_empty()), "{r}");
+        if res["isError"] == true {
+            Err(res["structuredContent"]["error"].clone())
+        } else {
+            Ok(res["structuredContent"].clone())
+        }
+    }
+
+    fn ok(&mut self, name: &str, args: Value) -> Value {
+        self.tool(name, args.clone()).unwrap_or_else(|e| panic!("{name} {args}: {e}"))
+    }
+
+    fn err(&mut self, name: &str, args: Value) -> Value {
+        match self.tool(name, args.clone()) {
+            Ok(v) => panic!("{name} {args} should fail: {v}"),
+            Err(e) => e,
+        }
+    }
+
+    /// Closes stdin and checks the server exits, then that `serve` idles out and leaves
+    /// nothing behind.
+    fn finish(mut self, serve_pid: u32) {
+        drop(self.stdin);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while self.child.try_wait().unwrap().is_none() {
+            assert!(Instant::now() < deadline, "mcp did not exit at end of input");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(self.child.wait().unwrap().code(), Some(0));
+        wait_until("serve idles out", 30, || !alive(serve_pid));
+        assert!(lock::is_free(&paths::lock_path(self.data.path())));
+        assert!(!paths::socket_path(self.data.path()).exists());
+    }
+}
+
+fn alive(pid: u32) -> bool {
+    // SAFETY: signal 0 only checks that the process exists.
+    unsafe { libc::kill(pid as i32, 0) == 0 }
+}
+
+fn wait_until(what: &str, secs: u64, mut f: impl FnMut() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    while !f() {
+        assert!(Instant::now() < deadline, "timed out: {what}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn tools_on_the_fake_camera() {
+    let mut m = Mcp::start();
+
+    let list = m.request("tools/list", json!({}));
+    let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["camera_status", "camera_watch", "settings_read", "camera_plan", "camera_apply", "catalog_label", "fake_camera"]);
+    let unknown = m.request("tools/call", json!({ "name": "lab_write", "arguments": {} }));
+    assert_eq!(unknown["error"]["code"], -32602, "{unknown}");
+
+    // camera_status
+    let s = m.ok("camera_status", json!({}));
+    assert_eq!((s["link"].as_str(), s["model"].as_str(), s["mode"].as_str(), s["fake"].as_bool()), (Some("connected"), Some("X-T5"), Some("tether"), Some(true)), "{s}");
+    let serve_pid = s["pid"].as_u64().unwrap() as u32;
+    let bad = m.err("camera_status", json!({ "history": true }));
+    assert_eq!(bad["code"], "bad_request");
+
+    // settings_read
+    let r = m.ok("settings_read", json!({ "query": "auto power off" }));
+    let row = r["rows"].as_array().unwrap().iter().find(|r| r["code"] == "0xd381").cloned().expect("AutoPowerOff");
+    assert_eq!((row["name"].as_str(), row["confidence"].as_str()), (Some("AutoPowerOff"), Some("confirmed")));
+    assert!(row["options"].as_array().unwrap().iter().any(|o| o["label"] == "OFF"));
+    let r = m.ok("settings_read", json!({ "limit": 3 }));
+    assert_eq!((r["rows"].as_array().unwrap().len(), r["has_more"].as_bool()), (3, Some(true)));
+    let menus = m.ok("settings_read", json!({ "view": "menus" }));
+    assert!(menus["menus"].as_array().unwrap().iter().any(|x| x["path"] == "SET UP"), "{menus}");
+
+    // camera_plan + camera_apply
+    let off = if row["value_label"] == "OFF" { "5 MIN" } else { "OFF" };
+    let plan = m.ok("camera_plan", json!({ "set": { "AUTO POWER OFF": off } }));
+    let id = plan["plan_id"].as_str().unwrap().to_string();
+    assert_eq!(plan["steps"][0]["after"], off, "{plan}");
+    let cursor = m.ok("camera_watch", json!({ "wait_s": 0 }))["cursor"].as_u64().unwrap();
+    let done = m.ok("camera_apply", json!({ "plan_id": id }));
+    assert_eq!((done["applied"].as_u64(), done["failed"].as_u64()), (Some(1), Some(0)), "{done}");
+    assert_eq!(done["steps"][0]["readback"], off);
+    assert!(done["undo_plan_id"].is_string());
+    assert_eq!(m.err("camera_apply", json!({ "plan_id": id }))["code"], "plan_expired", "a plan applies once");
+    let w = m.ok("camera_watch", json!({ "since": cursor, "codes": ["0xd381"], "wait_s": 5 }));
+    assert_eq!(w["groups"][0]["source"], "write", "{w}");
+    assert_eq!(w["groups"][0]["changes"][0]["new_label"], off);
+
+    // An unconfirmed property is refused without allow_unconfirmed.
+    let e = m.err("camera_plan", json!({ "set": { "GrainEffect": "2" } }));
+    assert_eq!(e["code"], "unconfirmed_property", "{e}");
+    let e = m.err("camera_plan", json!({ "set": { "NoSuchSetting": "2" } }));
+    assert_eq!(e["code"], "not_found", "{e}");
+
+    // catalog_label: the evidence rule, private text, and a label that passes.
+    assert_eq!(m.err("catalog_label", json!({ "code": "0xd20b", "confidence": "confirmed" }))["code"], "no_evidence");
+    let plan = m.ok("camera_plan", json!({ "set": { "DeviceName": "studio-cam42" }, "allow_unconfirmed": true }));
+    let done = m.ok("camera_apply", json!({ "plan_id": plan["plan_id"] }));
+    assert_eq!(done["applied"], 1, "{done}");
+    assert_eq!(m.err("catalog_label", json!({ "code": "0xd20b", "notes": "set to Studio-Cam42" }))["code"], "private_text");
+    let l = m.ok("catalog_label", json!({ "code": "0xd20b", "menu": "NETWORK/USB SETTING > DEVICE NAME", "confidence": "confirmed" }));
+    assert_eq!((l["code"].as_str(), l["entry"]["confidence"].as_str(), l["entry"]["name"].as_str()), (Some("0xd20b"), Some("confirmed"), Some("DeviceName")), "{l}");
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(m.cats.path().join("x-t5.json")).unwrap()).unwrap();
+    assert_eq!(saved["properties"]["0xd20b"]["menu"], "NETWORK/USB SETTING > DEVICE NAME");
+
+    // fake_camera, then a needs_* error with its walkthrough.
+    m.ok("fake_camera", json!({ "action": "movie" }));
+    wait_until("movie mode", 10, || m.ok("camera_status", json!({}))["capture"] == "movie");
+    m.ok("fake_camera", json!({ "action": "unplug" }));
+    wait_until("unplugged", 10, || m.ok("camera_status", json!({}))["link"] != "connected");
+    let e = m.err("settings_read", json!({}));
+    assert_eq!(e["code"], "not_connected", "{e}");
+    assert!(e["hint"].is_string());
+
+    // The session log names the MCP client on every write.
+    let log = std::fs::read_dir(m.data.path().join("sessions")).unwrap().flatten().map(|e| std::fs::read_to_string(e.path()).unwrap()).collect::<String>();
+    let writes: Vec<Value> = log.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(|v| v["kind"] == "write" || v["kind"] == "label").collect();
+    assert!(writes.len() >= 3, "{log}");
+    assert!(writes.iter().all(|w| w["actor"] == "mcp:test"), "{writes:?}");
+
+    m.finish(serve_pid);
+}
+
+/// The connection drops after `UKIYO_MCP_IDLE`, so `serve` can idle out while the agent
+/// session stays open; the next call starts a new one.
+#[test]
+fn idle_connection_lets_serve_go() {
+    let mut m = Mcp::start();
+    let first = m.ok("camera_status", json!({}))["pid"].as_u64().unwrap() as u32;
+    wait_until("serve idles out", 30, || !alive(first));
+    let s = m.ok("camera_status", json!({}));
+    assert_eq!(s["link"], "connected", "{s}");
+    let second = s["pid"].as_u64().unwrap() as u32;
+    assert_ne!(first, second);
+    m.finish(second);
+}

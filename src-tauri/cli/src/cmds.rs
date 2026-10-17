@@ -57,7 +57,7 @@ fn owner_text(v: &StatusView) -> String {
     }
 }
 
-fn status_lines(v: &StatusView) -> Vec<String> {
+pub(crate) fn status_lines(v: &StatusView) -> Vec<String> {
     if v.link != Link::Connected {
         let reason = v.reason.as_deref().map(|r| format!(" ({r})")).unwrap_or_default();
         let hint = match v.link {
@@ -185,7 +185,7 @@ fn json_text(v: &serde_json::Value) -> String {
     }
 }
 
-fn value_text(r: &SettingRow) -> String {
+pub(crate) fn value_text(r: &SettingRow) -> String {
     if !r.available {
         return "n/a".into();
     }
@@ -196,7 +196,7 @@ fn value_text(r: &SettingRow) -> String {
     }
 }
 
-fn options_text(r: &SettingRow) -> Option<String> {
+pub(crate) fn options_text(r: &SettingRow) -> Option<String> {
     let v = serde_json::to_value(r.options.as_ref()?).ok()?;
     if let Some(list) = v.as_array() {
         let items: Vec<String> = list
@@ -276,7 +276,7 @@ fn status_event_text(v: &StatusView) -> String {
     format!("{}  status  {}", clock(chrono::Utc::now().timestamp_millis() as f64), parts.join(", "))
 }
 
-fn group_lines(g: &GroupView) -> Vec<String> {
+pub(crate) fn group_lines(g: &GroupView) -> Vec<String> {
     let label = |l: &Option<String>, v: &Option<read::RawValue>| l.clone().or_else(|| v.as_ref().map(read::RawValue::text)).unwrap_or_else(|| "-".into());
     g.changes
         .iter()

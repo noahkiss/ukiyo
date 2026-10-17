@@ -9,12 +9,14 @@
 //! - `read`: read-only views (status, settings rows, menus, change groups) for the CLI and MCP.
 //! - `modes`: the USB mode walkthrough.
 //! - `session`: reading the session logs back.
+//! - `evidence`: the rules on a label from an agent (evidence for `confirmed`, no camera strings).
 //! - `plan`: change plans: build, gate, check, and the shapes of an applied plan.
 //! - `serve`: the shared owner (`ukiyo serve`), its socket protocol, and the client.
 
 pub mod api;
 pub mod camera;
 pub mod catalog;
+pub mod evidence;
 pub mod lab;
 pub mod modes;
 pub mod paths;
