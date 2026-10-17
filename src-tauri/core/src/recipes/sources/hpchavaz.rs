@@ -81,6 +81,18 @@ fn slugify(s: &str) -> String {
     out.trim_end_matches('-').to_string()
 }
 
+/// A row's URL as a link the window can open, or None. The sheet types some hosts with a hyphen
+/// for the dot (`fujixweekly-com`), and some rows use http on sites that serve https (checked
+/// 2026-10-17), so http becomes https.
+fn link(u: &str) -> Option<String> {
+    let u = u.trim().replacen("://fujixweekly-com/", "://fujixweekly.com/", 1);
+    let u = match u.strip_prefix("http://") {
+        Some(rest) => format!("https://{rest}"),
+        None => u,
+    };
+    u.starts_with("https://").then_some(u)
+}
+
 fn recipes(csv: &str) -> Vec<SourceRecipe> {
     let rows = csv_rows(csv);
     let Some(head) = rows.first() else { return Vec::new() };
@@ -108,12 +120,11 @@ fn recipes(csv: &str) -> Vec<SourceRecipe> {
             id = format!("{id}-{}", out.len() + 1);
             seen.insert(id.clone());
         }
-        let link = get(url);
         let r = SourceRecipe {
             id,
             name: title.clone(),
             title,
-            url: if link.starts_with("http") { link } else { format!("{SHEET}/edit#gid=1806109569") },
+            url: link(&get(url)).unwrap_or_else(|| format!("{SHEET}/edit#gid=1806109569")),
             date: d,
             author: Some(get(creator)).filter(|c| !c.is_empty()),
             sensor: post::sensor(&get(sensor), &[]),
@@ -146,5 +157,13 @@ mod tests {
         assert_eq!((s.white_balance.as_deref(), s.wb_shift_r, s.wb_shift_b), (Some("Auto"), Some(4), Some(-5)));
         assert_eq!((r[1].date.as_str(), r[1].author.as_deref(), r[1].sensor.as_deref()), ("", Some("osanbilgi"), Some("X-Trans V")));
         assert!(r[1].url.starts_with(SHEET));
+    }
+
+    #[test]
+    fn links_are_https_with_the_host_typo_fixed() {
+        assert_eq!(link(" http://www.hendriximages.com/blog/x ").as_deref(), Some("https://www.hendriximages.com/blog/x"));
+        assert_eq!(link("https://fujixweekly-com/2019/09/21/x/").as_deref(), Some("https://fujixweekly.com/2019/09/21/x/"));
+        assert_eq!(link("https://film.recipes/x/").as_deref(), Some("https://film.recipes/x/"));
+        assert_eq!((link(""), link("Unknown"), link("ftp://a.b/c")), (None, None, None));
     }
 }

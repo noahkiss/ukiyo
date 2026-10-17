@@ -19,6 +19,8 @@ generation and link. It bundles no photos, no post text, no comments and no auth
 The database is a compilation (`compilation: true`): each of its recipes credits the
 creator in its Creator column, shown as "From <creator>, via H-P Chavaz recipe database".
 A row's link is the creator's original post when the sheet gives one, else the sheet.
+The adapter upgrades an http link to https (every such site served https when checked,
+2026-10-17) and fixes the sheet's `fujixweekly-com` host typo.
 
 The app opens a recipe's Post and Source links in the default browser. The window may open
 only https links on the catalogue's hosts: `src-tauri/capabilities/links.json` lists them, one
