@@ -46,10 +46,11 @@
     },
     {
       "id": "tone-curve",
-      "instruction": "MENU > IMAGE QUALITY SETTING > TONE CURVE: HIGHLIGHTS +1.5, SHADOWS -1. If TONE CURVE is grey, set D RANGE PRIORITY: OFF first.",
+      "instruction": "MENU > IMAGE QUALITY SETTING > TONE CURVE. The screen shows two numbers beside the curve: H (highlights) and S (shadows). Change both on this one screen: move H up until it reads H +2, then move S down until it reads S -1. Press MENU/OK once to save both.",
+      "note": "If TONE CURVE is grey, D RANGE PRIORITY is on: change nothing, close the menu and click Skip.",
       "expect": [
-        { "code": "0xd320", "value": 15, "label": "+1.5" },
-        { "code": "0xd321", "value": -10, "label": "-1" }
+        { "code": "0xd320", "value": 20, "label": "H +2" },
+        { "code": "0xd321", "value": -10, "label": "S -1" }
       ],
       "patch": {
         "0xd320": { "menu": "IMAGE QUALITY SETTING > TONE CURVE > HIGHLIGHTS", "scale": 10 },
