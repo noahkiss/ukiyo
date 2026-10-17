@@ -1,8 +1,8 @@
 # Agent interface: CLI and MCP
 
 A design for the `ukiyo` command line tool and its MCP server. Stage 1 (the core crate and
-`api`), stage 2 (the shared owner, `ukiyo serve`), stage 3 (the read-only CLI) and stage 4
-(plans and gated writes) are built; the rest is not (section 8). The
+`api`), stage 2 (the shared owner, `ukiyo serve`), stage 3 (the read-only CLI), stage 4
+(plans and gated writes) and stage 5 (the MCP server) are built; the rest is not (section 8). The
 bm task is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool
 surface, search then read, and plan then apply for every camera write.
 
@@ -41,8 +41,9 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
   and `serve/` (the shared owner, its socket protocol and the client; "One USB owner" below).
   Stage 3 added `read.rs` (the read-only views: status, settings rows, menus, change groups,
   and why the camera cannot answer), `modes.rs` (the USB mode walkthrough) and `session.rs`
-  (reading the session logs back). The CLI prints them; the MCP server will return the same
-  shapes. Three more modules are planned or built:
+  (reading the session logs back). The CLI prints them; the MCP server returns the same
+  shapes. Stage 5 added `evidence.rs`, the two rules on a label from an agent (section 4,
+  `catalog_label`). Three more modules are planned or built:
   - `library` (stage 6): presets, favourites, snapshots, user recipes, camera history, and
     preferences.
   - `plan` (built, stage 4): builds and gates a plan, checks it for staleness, and shapes the
@@ -52,12 +53,12 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
     - `Response`, the variant of the same name: `{"method": "plan_create", "result": {...}}`.
     - `Error`: a `code`, a `message`, and `hint`, `walkthrough` and `mode` when they help.
       The codes are section 5's, plus `failed`, `no_fake_camera`, `bad_request` (a socket
-      line that is not a request) and `unavailable` (no `serve` to answer).
+      line or tool call that is not a request) and `unavailable` (no `serve` to answer).
     - `Event`: `status`, `props`, `changes`, `catalog`, as `{"event": ..., "data": ...}`.
       `serve` sends these to every client that called `subscribe`.
     - `call::<method>`, one typed function per method, and `dispatch(&Lab, actor, Request)`.
-      The socket calls `dispatch` with the connection's `hello` actor; MCP (stage 5) will send
-      requests over the socket too.
+      The socket calls `dispatch` with the connection's `hello` actor. The CLI and the MCP
+      server send their requests over the socket.
     - Method names are the window's command names (`lab_snapshot`, `lab_pin`,
       `lab_keep_awake`, `lab_connect`, `lab_export`, `lab_label`, `lab_note`, `lab_fake`,
       `recipe_parse`, `plan_create`, `plan_show`, `plan_apply`, `plan_discard`). New methods
@@ -183,11 +184,21 @@ session for all of them.
   `~/.local/bin/ukiyo` to the bundled binary, and shows the path if that directory is not on
   `PATH`. `ukiyo install --prefix DIR` does the same from a shell.
 - The symlink follows app updates, since it points into the bundle.
-- MCP client config:
+- MCP client config. Until stage 8 puts `ukiyo` on PATH, give the built binary's full path
+  (`src-tauri/target/debug/ukiyo-cli` after `cargo build -p ukiyo-cli`):
+
+  ```bash
+  claude mcp add ukiyo -- ukiyo mcp
+  claude mcp add ukiyo -- /path/to/ukiyo/src-tauri/target/debug/ukiyo-cli mcp
+  ```
 
   ```json
   { "mcpServers": { "ukiyo": { "command": "ukiyo", "args": ["mcp"] } } }
   ```
+
+  Add `"env": { "UKIYO_FAKE_CAMERA": "1" }` to work against the fake camera. A fake
+  `serve` and a real one must not share a data folder, so give that setup its own
+  `UKIYO_DATA_DIR` too.
 
 ## 3. CLI
 
@@ -300,7 +311,7 @@ exit 1) and `not_built` (a flag for a later stage, exit 1).
 | 2 | Usage error: bad flag, unknown name, ambiguous value. |
 | 3 | No camera: not connected, asleep, unplugged. |
 | 4 | Wrong camera state: `needs_*`, `menu_open`, `busy`. |
-| 5 | Refused by a gate: unconfirmed, read-only, out of range. |
+| 5 | Refused by a gate: unconfirmed, read-only, out of range, a label without evidence (`no_evidence`) or with camera text (`private_text`). |
 | 6 | Not applied: declined at the prompt, `--dry-run`, no TTY without `--yes`, plan stale or expired. A `--dry-run` with `--json` prints `ok: true` and the plan, and still exits 6. |
 | 7 | Applied in part: at least one step failed (`readback_mismatch`, `busy` ...). The output lists each step. |
 
@@ -580,6 +591,50 @@ Edits one property's entry in the model's catalog: name, menu, value labels, con
 Drives the fake camera: `{ action: "openMenu"|"closeMenu"|"movie"|"stills"|"powerOff"|"powerOn"|"unplug"|"nudge"|"autoOn"|"autoOff" }`.
 The server lists it only when `UKIYO_FAKE_CAMERA=1`.
 
+### The MCP server as built (stage 5)
+
+`cli/src/mcp.rs` (the server and one handler per tool), `cli/src/mcp_tools.rs` (the listing).
+Tests: `cli/tests/mcp.rs` drives `ukiyo-cli mcp` over stdio against a fake-camera `serve`;
+the surface guard in `mcp_tools.rs` diffs the listing against
+`cli/tests/surface/mcp_tools.json` (after a deliberate change:
+`UKIYO_UPDATE_SURFACE=1 cargo test -p ukiyo-cli surface`).
+
+- **No SDK.** JSON-RPC 2.0 over stdio, one message per line, as QuadCam's server does:
+  `initialize`, `ping`, `tools/list`, `tools/call`. Protocol versions 2024-11-05 to
+  2025-11-25. One request at a time; a `camera_watch` holds the line for its `wait_s`.
+- **A client of `serve`, actor `mcp:<client name>`** (the `clientInfo.name` from
+  `initialize`; `mcp` without one). It never opens USB, and spawns `serve` when none runs,
+  under the CLI's rules. The connection stays open between calls, so a plan lives its full 5
+  minutes while the user decides. It drops after 300 s with no call (`UKIYO_MCP_IDLE`
+  changes it), so `serve` can idle out; the next call connects again.
+- **Results:** a text summary in `content`, the section 3 shape in `structuredContent`. A
+  failure is `isError: true` with `structuredContent.error` = `{ code, message, hint?,
+  walkthrough?, mode? }`, and the same in the text. An unknown tool is JSON-RPC error
+  -32602; bad arguments are `bad_request`.
+- `fake_camera` is listed when the server's own environment has `UKIYO_FAKE_CAMERA=1`.
+- **Left for later stages.** Each input below is not in the schema yet, so an agent cannot
+  call it and get `not_built`:
+  - `camera_status` `history` (stage 6)
+  - `settings_read` `filter: "favourites"` (stage 6)
+  - `camera_plan` sources `preset` and `snapshot` (stage 6), and `recipe` with `slot` (stage 7).
+    Only `set` exists.
+- **`camera_watch`:** without `since`, it returns only groups that arrive during the call.
+  It returns at most 50 groups; `has_more` and `cursor` page through the rest. A cursor past
+  the newest group means `serve` restarted: the result has `reset: true` and starts from
+  now. `codes` filters; it does not pin, for the same reason as `camera watch --code`
+  (section 3). It also returns `link`.
+- **`catalog_label`** returns `{ model, path, code, entry }`. Its two rules live in the
+  core (`evidence.rs`) and apply to every actor except `app`:
+  - `no_evidence`: `confirmed` needs a change group for the code in this session, from
+    the Lab's feed or the session log.
+  - `private_text`: refuses a name, menu, note or value label that contains a string
+    the camera reports. That is each whole string value, plus each word of 5 or more
+    characters with a digit in it.
+
+  The window's label panel is the person mapping by hand, so these rules do not apply to it.
+- `camera_apply` reports a partial failure as a normal result (`failed` > 0), not
+  `isError`: the steps say what was written.
+
 ### Deviations from the bm proposal
 
 | bm proposal | This design | Reason (mcp-tool-design) |
@@ -667,6 +722,8 @@ the Connect page's guide in the window.
 | `read_only`, `value_out_of_range`, `not_found`, `ambiguous` | Gate or lookup | Lists the valid values or candidates. |
 | `plan_stale`, `plan_expired` | Apply | Make a new plan. |
 | `readback_mismatch` | Apply: the camera took the write but holds another value | Read the setting; a camera rule may tie it to another. Apply the undo plan to revert. |
+| `no_evidence` | A label from an agent marks a code `confirmed` that has not changed this session | Change it on the camera while `camera_watch` runs, or write it through a plan. |
+| `private_text` | A label from an agent holds a string the camera reports | Describe the property; the catalog is shared. |
 
 ### No power cycling, no reconnect loops
 
@@ -763,7 +820,10 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    watch --code`, a `plan applied` event to subscribers (the read-back change group carries
    the actor instead), and an idle exit that waits for open plans.
 5. **MCP server.** `ukiyo mcp` with `camera_status`, `camera_watch`, `settings_read`,
-   `camera_plan`, `camera_apply`, `catalog_label`, and `fake_camera` in fake builds.
+   `camera_plan`, `camera_apply`, `catalog_label`, and `fake_camera` in fake builds. Done
+   2026-10-17: section 4, "The MCP server as built". Left for later: the inputs listed
+   there for stages 6 and 7, per-client pins for `camera_watch` `codes`, and progress
+   notifications during a long `camera_watch`.
 6. **Library.** Presets, favourites, snapshots, history and preferences in `ukiyo-core`, with
    the trash. Preferences move out of the window's local storage into `settings.json`. CLI:
    `presets`, `snapshots`, `settings fav`, `prefs`. MCP: `library_search`, `library_read`,
