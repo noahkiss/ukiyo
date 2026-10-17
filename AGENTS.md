@@ -9,6 +9,7 @@ what comes next.
 
 - `docs/protocol.md` — what is known about the camera's PTP interface. Update it with every finding.
 - `docs/catalog.md` — the property catalog format.
+- `docs/agent-interface.md` — the planned `ukiyo` CLI and MCP server: owner hand-off, tools, safety.
 - `app/` — the window: React + TypeScript + Vite (pnpm, Node from `.node-version`).
   `src/App.tsx` the shell and hash routes (`#/hub`, `#/settings/appearance`), `src/shell/`
   (Sidebar with the brand-mark slot, page head, camera chip, icons), `src/pages/` (Hub, Recipes,

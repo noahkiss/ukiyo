@@ -1,0 +1,543 @@
+# Agent interface: CLI and MCP
+
+A design for the `ukiyo` command line tool and its MCP server. Nothing here is built yet. The
+bm task is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool
+surface, search then read, and plan then apply for every camera write.
+
+## 1. Goals
+
+- An agent can configure everything the app can:
+  - camera settings, presets and favourite settings
+  - snapshots of the camera, their diffs, and restores
+  - the C1-C7 recipe slots, the recipe library, and the bundled catalogue (search and import)
+  - owner strings (copyright, author, file-name prefix, device name)
+  - the Lab's property mapping: names, menu paths, value labels, confidence, notes
+  - app appearance: theme, sidebar brand mark, app icon, keep-awake
+- Agents get the same safety rules as the window, enforced in the core, not in each front end.
+- One behaviour per feature. The window, the CLI and the MCP server never disagree.
+
+Out of scope: shooting (no capture or live view), firmware, and anything the app itself cannot do.
+
+## 2. Architecture
+
+### One core, three front ends
+
+```
+                 ukiyo-core (library crate)
+   camera owner · catalog · recipes · library · plans · session log
+        |                      |                       |
+   Tauri app            ukiyo CLI (clap)        ukiyo mcp (stdio)
+   (window)             human + --json          MCP tools
+```
+
+- `ukiyo-core` takes over `src-tauri/src/camera/`, `catalog.rs`, `recipes/` and the non-Tauri
+  part of `lab.rs`. It adds three modules:
+  - `library`: presets, favourites, snapshots, user recipes, camera history, and preferences.
+  - `plan`: builds, checks and applies multi-property changes.
+  - `api`: one request enum and one response enum. Every front end speaks only this.
+- `src-tauri/` keeps the window glue: Tauri commands, events and specta bindings. Each command
+  becomes a one-line call into `api`.
+- The CLI and the MCP server are one binary, `ukiyo`. `ukiyo mcp` starts the MCP server.
+
+### One USB owner
+
+AGENTS.md says one process owns the USB connection. The design keeps that rule with a lock file
+and a socket.
+
+| File (in `~/Library/Application Support/app.ukiyo/`) | Purpose |
+|---|---|
+| `owner.lock` | An exclusive `flock`. The process that holds it is the owner. |
+| `ukiyo.sock` | The owner's Unix socket, mode 0600. Newline-delimited JSON-RPC carrying `api` requests. |
+
+Only two kinds of process can own the camera: the app, or `ukiyo serve` (a headless owner).
+The CLI and the MCP server are always clients of the socket. They never claim USB themselves.
+
+Rules:
+
+1. A process takes `owner.lock` before it claims the USB device, and keeps it until it has
+   closed the session cleanly. The kernel drops a `flock` when a process dies, so a crash
+   leaves no stale lock.
+2. The owner serves `ukiyo.sock`. A client connects, sends requests, and reads replies.
+3. A client finds no owner when the connect fails and `owner.lock` is free. It then removes any
+   stale socket and spawns `ukiyo serve --idle-exit 120`. It waits up to 5 s for the socket.
+   It never spawns a second time in one command.
+4. `ukiyo serve` runs the same owner thread as the app (`owner.rs`): polling, the 3 s presence
+   check, the 30 s reopen delay, one USB reset per connect attempt. It exits after 120 s with
+   no client, with a clean disconnect (AUTO POWER OFF restored, session closed).
+5. Hand-off to the app: the app starts and finds `owner.lock` held. It sends `handoff` on the
+   socket. `serve` finishes the request in progress, disconnects cleanly, releases the lock,
+   and exits. The app then takes the lock and serves the same socket path. A client that loses
+   its connection reconnects once and gets `owner_changed` in the log. Plans made on `serve`
+   are lost in the hand-off; `camera_apply` then returns `plan_expired`.
+6. The app quits: it disconnects cleanly and releases the lock. The next client command spawns
+   `serve` (rule 3).
+7. Nothing else touches USB. `tools/ptp/` scripts check `owner.lock` and refuse to run while
+   it is held.
+
+Why `serve` and not "the CLI opens the camera itself" (the bm proposal): ten CLI calls in a
+script would mean ten USB claims and ten session opens. That is close to the reconnect loop
+that soft-locked the camera once (docs/protocol.md, power). One short-lived owner holds one
+session for all of them.
+
+### Where the binary lives
+
+- The app bundle ships the binary as a Tauri `externalBin`:
+  `ukiyo.app/Contents/MacOS/ukiyo-cli`. It is signed and notarized with the app.
+- Settings > Command line has one button, "Install command line tool". It symlinks
+  `~/.local/bin/ukiyo` to the bundled binary, and shows the path if that directory is not on
+  `PATH`. `ukiyo install --prefix DIR` does the same from a shell.
+- The symlink follows app updates, since it points into the bundle.
+- MCP client config:
+
+  ```json
+  { "mcpServers": { "ukiyo": { "command": "ukiyo", "args": ["mcp"] } } }
+  ```
+
+## 3. CLI
+
+### Command tree
+
+```
+ukiyo status                                   link, mode, model, battery, card, what works now
+ukiyo camera  watch [--code C]... [--for 60s]  the change feed, live
+              connect | disconnect             the Lab's connect switch
+              export                           write a full dump to dumps/
+ukiyo settings [QUERY] [--menu PATH] [--code C]... [--favourites] [--unnamed] [--menus]
+              set NAME=VALUE...                one or more settings, through a plan
+              fav add|rm NAME...
+ukiyo presets ls | show ID | save NAME [--from-snapshot ID | NAME...] | apply ID | rm ID
+ukiyo snapshots ls | save [NAME] | diff A [B] | restore ID | rm ID
+ukiyo recipes ls [QUERY] [--catalogue] [--sensor S] [--sim F]
+              show ID | edit ID FIELD=VALUE... | rm ID
+              import (--text FILE|- | --url URL | cat:ID) [--save]
+              slots                            read C1-C7 (RAW CONV. mode)
+              write SLOT ID                    write a recipe to a slot, through a plan
+ukiyo owner   get | set FIELD=VALUE...         copyright, author, prefix, device-name
+ukiyo catalog show [CODE] | label CODE [--name N] [--menu M] [--value K=LABEL]...
+                                [--confidence C] [--notes T]
+ukiyo prefs   get | set KEY=VALUE...           theme, brand-mark, app-icon, keep-awake
+ukiyo plan    show ID | apply ID | discard ID
+ukiyo log     show [--since T] | note TEXT [--group N]
+ukiyo help modes [tether|rawconv|movie]        the USB mode walkthrough
+ukiyo mcp                                      the MCP server on stdio
+ukiyo serve [--idle-exit S]                    the headless owner (spawned on demand)
+```
+
+11 top-level commands for daily use, plus `mcp`, `serve`, `install` and `help`.
+`ukiyo dev fake ACTION` exists only in a fake-camera build.
+
+### Flags (every command)
+
+| Flag | Effect |
+|---|---|
+| `--json` | One JSON document on stdout, nothing else. Errors too. |
+| `--dry-run` | Build and print the plan; apply nothing. Only on commands that write. |
+| `--yes` | Apply a plan without the y/N prompt. Without a TTY and without `--yes`, a write prints the plan and exits 6. |
+| `--allow-unconfirmed` | Lets a plan include properties whose catalog confidence is not `confirmed`. |
+| `--quiet` | No progress lines on stderr. |
+
+Values: `NAME` is a catalog name (`AutoPowerOff`), a menu label (`"AUTO POWER OFF"`), or a code
+(`0xd381`). `VALUE` is a value label (`OFF`) or a raw number (`3`). The core resolves both and
+refuses an ambiguous match with the candidates.
+
+### `--json` shapes
+
+Every command returns one envelope:
+
+```json
+{ "ok": true, "data": { } }
+{ "ok": false, "error": { "code": "needs_rawconv", "message": "Recipe slots read only in USB RAW CONV./BACKUP RESTORE mode.", "hint": "Unplug the cable, set SET UP > CONNECTION SETTING > CONNECTION MODE to USB RAW CONV./BACKUP RESTORE, plug back in.", "walkthrough": "ukiyo help modes rawconv", "mode": "tether" } }
+```
+
+`data` uses the same shapes as the MCP `structuredContent` in section 4. Key shapes:
+
+```jsonc
+// status
+{ "link": "connected", "reason": null, "model": "X-T5", "firmware": "x.yy", "mode": "tether",
+  "capture": "stills", "screen": "shooting", "battery": "...", "card": "...", "lens": "...",
+  "owner": "app", "available": { "settings": true, "slots": false, "movie_props": false } }
+
+// a plan (settings set, presets apply, snapshots restore, recipes write, owner set)
+{ "plan_id": "p-7f3a", "expires_in_s": 300, "requires": { "mode": "tether", "capture": "stills" },
+  "steps": [ { "code": "0xd381", "name": "AutoPowerOff", "before": "5 MIN", "after": "OFF",
+               "confidence": "confirmed", "gate": "ok" } ],
+  "skipped": [ { "code": "0x....", "name": "...", "reason": "needs_movie" } ],
+  "blocked": [ { "code": "0x....", "name": "...", "reason": "unconfirmed_property" } ] }
+
+// an applied plan
+{ "plan_id": "p-7f3a", "applied": 1, "failed": 0, "not_attempted": 0, "undo_plan_id": "p-91c0",
+  "steps": [ { "code": "0xd381", "wanted": "OFF", "readback": "OFF", "ok": true, "result": "OK" } ],
+  "side_effects": [ { "code": "0x....", "old": "...", "new": "..." } ] }
+```
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Done. |
+| 1 | Internal or I/O error. |
+| 2 | Usage error: bad flag, unknown name, ambiguous value. |
+| 3 | No camera: not connected, asleep, unplugged. |
+| 4 | Wrong camera state: `needs_*`, `menu_open`, `busy`. |
+| 5 | Refused by a gate: unconfirmed, read-only, out of range. |
+| 6 | Not applied: declined at the prompt, `--dry-run`, no TTY without `--yes`, plan stale or expired. |
+| 7 | Applied in part: at least one step failed. The output lists each step. |
+
+### Example sessions
+
+```console
+$ ukiyo status
+X-T5 · tether, stills, shooting · battery ... · owner: app
+Works now: settings, presets, snapshots, owner strings, Lab
+Needs RAW CONV.: recipe slots (ukiyo help modes rawconv)
+
+$ ukiyo settings "eye focus"
+AF/MF > FACE/EYE DETECTION SETTING   FaceEyeDetection   Face on, eye auto   confirmed
+
+$ ukiyo settings set "AUTO POWER OFF=OFF" --dry-run
+Plan p-7f3a (expires in 5 min), needs tether + stills
+  AutoPowerOff   5 MIN -> OFF   confirmed
+Not applied (--dry-run).
+
+$ ukiyo plan apply p-7f3a --yes
+AutoPowerOff   OFF  read back OFF  OK
+Applied 1 of 1. Undo: ukiyo plan apply p-91c0
+
+$ ukiyo recipes write C3 cat:<recipe-id> --json
+{"ok":false,"error":{"code":"needs_rawconv", ...}}
+$ echo $?
+4
+
+$ ukiyo snapshots save before-trip && ukiyo snapshots diff before-trip
+12 settings differ from the camera ...
+```
+
+## 4. MCP
+
+Tools only. No resources and no prompts: camera state is live and polled, so it is not stable
+addressable context, and the catalogue is too large to read whole. The server is stdio; stdout
+carries only MCP messages and logs go to stderr.
+
+11 tools. A fake-camera build adds a 12th, `fake_camera`.
+
+| # | Tool | readOnly | destructive | idempotent | openWorld |
+|---|---|---|---|---|---|
+| 1 | `camera_status` | yes | no | yes | no |
+| 2 | `camera_watch` | yes | no | no | no |
+| 3 | `settings_read` | yes | no | yes | no |
+| 4 | `camera_plan` | yes | no | no | no |
+| 5 | `camera_apply` | no | yes | no | no |
+| 6 | `library_search` | yes | no | yes | no |
+| 7 | `library_read` | yes | no | yes | no |
+| 8 | `library_save` | no | no | yes | no |
+| 9 | `library_delete` | no | yes | yes | no |
+| 10 | `recipe_parse` | yes | no | yes | yes |
+| 11 | `catalog_label` | no | no | yes | no |
+
+Stable ids used across tools: `preset:<slug>`, `snapshot:<slug>`, `recipe:<slug>` (the user
+library), `cat:<id>` (the bundled catalogue, `docs/recipes.md`), `slot:C1` to `slot:C7`,
+`favourites`, `prefs`, `history`. Property codes are `0x` plus four lowercase hex digits.
+
+### 1. `camera_status`
+
+Reports the connection, the USB mode, and which features work in that mode.
+
+- Best for: the first call in any camera task, and after any `needs_*` error.
+- Input: `{ history?: boolean }`.
+- Returns: link, reason, model, firmware, mode, capture, screen, battery, card space, lens,
+  owner process (`app` or `serve`), and `available` per feature with the missing requirement.
+  With `history: true`: shot counts per day and month, lenses seen, the connect log.
+- Not for property values: use `settings_read`.
+
+### 2. `camera_watch`
+
+Returns the change groups the camera reported since a cursor. Waits for new ones up to a limit.
+
+- Best for: Lab mapping ("turn the dial now"), and checking a person's change on the body.
+- Input: `{ since?: number, codes?: string[], wait_s?: number /* 0-60, default 10 */ }`.
+  `codes` are pinned (read every cycle) for the duration of the call.
+- Returns: `{ cursor, groups: [{ id, at, source: "camera"|"write", changes: [{ code, name?, old, new }] }], has_more }`.
+- Follow up with `catalog_label` to name what moved.
+
+### 3. `settings_read`
+
+Reads live settings with their catalog names, menu paths and value labels.
+
+- Best for: "what is X set to", finding a setting by name or meaning, browsing a menu.
+- Input: `{ query?: string, codes?: string[], menu?: string, filter?: "all"|"favourites"|"unnamed"|"unconfirmed", view?: "rows"|"menus", limit?: number /* default 25 */ }`.
+- Returns: rows `{ code, name, menu, value, value_label, options?, writable, confidence, available, error? }`,
+  a `total` and `has_more`. `view: "menus"` returns the menu tree with row counts instead.
+- Query tips: `query` matches names, menu paths and keywords ("eye focus" finds FACE/EYE
+  DETECTION SETTING). `options` appear when the result has 10 rows or fewer.
+- Not for recipe slots: use `library_read` with `slot:C1`.
+- Follow up with `camera_plan` to change a value.
+
+### 4. `camera_plan`
+
+Builds a change plan against the live camera. Writes nothing.
+
+- Best for: every camera write. One property, a preset, a snapshot restore, owner strings, a
+  recipe into a slot.
+- Input, exactly one source:
+  - `{ set: { "<name|code>": "<label|raw>" } }`
+  - `{ preset: "preset:<slug>" }`
+  - `{ snapshot: "snapshot:<slug>" }`
+  - `{ recipe: "recipe:<slug>"|"cat:<id>", slot: "C1".."C7" }`
+
+  plus `allow_unconfirmed?: boolean` (default false).
+- Returns: `{ plan_id, expires_in_s, requires, steps, skipped, blocked }` (shape in section 3).
+  A plan with blocked steps can still be applied; blocked steps are not written.
+- A plan of a snapshot is also its diff against the camera.
+- Follow up with `camera_apply` and the `plan_id`, after the user agrees to the steps.
+
+### 5. `camera_apply`
+
+Applies a plan made by `camera_plan`. Writes to the camera, reads every value back, and logs it.
+
+- Input: `{ plan_id: string }`.
+- Returns: the applied-plan shape in section 3, with `undo_plan_id`.
+- Refuses with `plan_stale` when any planned code changed since the plan, and `plan_expired`
+  after 5 minutes or an owner hand-off. Make a new plan.
+- Stops at the first failed step; later steps are `not_attempted`. Apply `undo_plan_id` to
+  revert what was written.
+
+### 6. `library_search`
+
+Searches what ukiyo stores on this Mac and the bundled recipe catalogue.
+
+- Best for: finding a preset, snapshot or recipe by name, film simulation or sensor.
+- Input: `{ kind: "recipe"|"catalogue"|"preset"|"snapshot"|"favourite", query?: string, sensor?: string, film_sim?: string, limit?: number /* default 20 */ }`.
+- Returns: `{ items: [{ id, kind, name, summary, source?, credit? }], total, has_more }`.
+  Catalogue items carry their credit and post link.
+- Follow up with `library_read` for the full item.
+
+### 7. `library_read`
+
+Reads one stored item in full, or the diff between two.
+
+- Input: `{ id: string, compare_to?: string }`. `id` takes every id form above, including
+  `slot:C3`, `prefs` and `history`.
+- Returns: the item: recipe settings, notes and warnings; preset properties; snapshot values
+  with mode coverage; slot contents; preferences. With `compare_to`: `{ added, removed, changed: [{ code, name, a, b }] }`.
+- A `slot:` read needs RAW CONV. mode. It selects the slot through D18C and restores D18C
+  after (docs/protocol.md, "Recipe slots"); both writes go to the session log.
+- For a diff against the live camera, use `camera_plan` with `snapshot`.
+
+### 8. `library_save`
+
+Creates or replaces one item on this Mac. Never writes to the camera.
+
+- Input: `{ kind: "recipe"|"preset"|"snapshot"|"favourite"|"prefs"|"note"|"dump", name?: string, item?: object, from?: string }`.
+  - `snapshot` without `item` captures the camera now; `dump` writes a full Lab dump.
+  - `recipe` with `from: "cat:<id>"` copies a catalogue recipe into the library; `item` holds
+    the editor's fields, checked against the slot ranges.
+  - `favourite` adds a setting by name or code; `prefs` takes `{ theme, brand_mark, app_icon, keep_awake }`.
+  - `note` adds a line to the session log, with an optional change group.
+- Returns: `{ id, kind, replaced: boolean, warnings }`.
+- A replaced item keeps its previous version in `library/.trash/`.
+
+### 9. `library_delete`
+
+Deletes one stored item. It moves to `library/.trash/` for 30 days.
+
+- Input: `{ id: string }`. Refuses `cat:`, `slot:`, `history` and `prefs` ids.
+- Returns: `{ id, trashed_at }`.
+
+### 10. `recipe_parse`
+
+Parses recipe text or a recipe post's URL into slot settings. Stores nothing.
+
+- Best for: importing a recipe someone pasted or linked.
+- Input: `{ text?: string, url?: string }`, exactly one.
+- Returns: `{ name?, source_url?, settings, notes, warnings }`, the parser's shape
+  (`recipes::Parsed`). One review step before anything is kept.
+- Follow up with `library_save` (`kind: "recipe"`) to keep it, or `camera_plan` with the saved id
+  to write it to a slot.
+
+### 11. `catalog_label`
+
+Edits one property's entry in the model's catalog: name, menu, value labels, confidence, notes.
+
+- Best for: Lab mapping after `camera_watch` showed a code move.
+- Input: `{ code: string, name?: string, menu?: string, values?: { "<raw>": "<label>" }, confidence?: "confirmed"|"likely"|"guess", notes?: string }`.
+  An empty string clears a field; an empty label removes that value.
+- Returns: the updated entry and the catalog path.
+- Refuses `confidence: "confirmed"` unless this session's log shows the code changing (a
+  `camera` change group or a read-back write). The catalog drives write-gating, so the evidence
+  rule keeps an agent from un-gating a property by labelling it.
+- Refuses text that matches a value read from this camera (serials, owner strings), so the
+  catalog stays shareable.
+
+### `fake_camera` (fake builds only)
+
+Drives the fake camera: `{ action: "openMenu"|"closeMenu"|"movie"|"stills"|"powerOff"|"powerOn"|"unplug"|"nudge"|"autoOn"|"autoOff" }`.
+The server lists it only when `UKIYO_FAKE_CAMERA=1`.
+
+### Deviations from the bm proposal
+
+| bm proposal | This design | Reason (mcp-tool-design) |
+|---|---|---|
+| Resources for camera state and the catalogue | Tools `camera_status` and `library_search` | Tools first; live state is not stable context; a large corpus wants search then read. |
+| The CLI's verbs as MCP tools (about 25) | 11 tools | Shrink the surface; tools that return the same thing with other arguments are one tool. |
+| `props set`, `presets apply`, `snapshot restore`, `recipes write`, `owner set` | One `camera_plan` + `camera_apply` pair | Inspect, render, validate, apply for high-safety writes; one gate for every write. |
+| `props ls` and `props get` | One `settings_read` | Same result, different arguments. |
+| `presets/snapshots/recipes ls|show` | `library_search` + `library_read` with stable ids | Search then read; ids the caller already has. |
+| `snapshot diff` | `library_read` with `compare_to`, or `camera_plan` | No separate tool for a view of the same data. |
+| `props watch` (streaming) | `camera_watch` with a cursor and a bounded wait | A tool call must return; the cursor allows follow-up reads. |
+| `owner get|set` | CLI sugar only; MCP uses `settings_read` and `camera_plan` | Owner strings are properties; no sibling tool. |
+| The CLI opens the camera itself when the app is closed | The CLI spawns `ukiyo serve`, one owner for many calls | Not from the skill: the reconnect rule in docs/protocol.md. |
+
+## 5. Safety
+
+The core enforces every rule here. The front ends only show them.
+
+### Write-gating
+
+- A plan step is writable only when all hold:
+  - the descriptor says writable, and the code reads in the current mode (owner.rs `write`)
+  - the catalog entry is `confirmed`
+  - the value is in the descriptor's enum or range, and in the catalog's `values` if it has any
+- `allow_unconfirmed` (CLI `--allow-unconfirmed`) lifts only the `confirmed` rule. The MCP
+  server also needs `ukiyo mcp --allow-unconfirmed` at start, so a client config has to opt in.
+- The Lab's write box in the window is the one place that writes unconfirmed codes without a
+  flag. That is the mapping tool; agents use the flag instead.
+- Recipe slot fields (D18E-D1A5) are not yet confirmed by a write. Until they are, slot writes
+  need `allow_unconfirmed`.
+
+### Plan, then apply
+
+- Every camera write is a plan first. That includes one property, presets, snapshot restores,
+  owner strings and recipe slot writes.
+- A plan holds each step's `before`. Apply re-reads them and refuses with `plan_stale` if any
+  changed.
+- Plans live in the owner for 5 minutes and die with it.
+- `--dry-run` stops after the plan. A TTY prompt or `--yes` is needed to apply.
+- Steps run in plan order. A slot write is: select the slot (D18C), write the fields and name
+  (D18D), restore D18C. Apply stops at the first failure and returns an undo plan.
+
+### Read-back and the session log
+
+- The owner reads back every write at once (owner.rs). Apply reports `wanted` and `readback`
+  per step, and flags a step whose read-back differs (the camera enforces its own rules: ISO
+  125 forces D-Range 100).
+- After the last step, apply reports `side_effects`: other codes that changed during the apply.
+- Every request that writes goes to `sessions/*.jsonl`, with `actor`: `app`, `cli` or
+  `mcp:<client name>`. That includes plans applied, library saves, labels and notes.
+
+### Typed errors
+
+Each error has `code`, `message`, `hint`, and `walkthrough` where a mode switch fixes it. The
+walkthrough is the USB mode guidance (task-klgaidjz): `ukiyo help modes <mode>` in the CLI, and
+the Connect page's guide in the window.
+
+| Code | When | Hint |
+|---|---|---|
+| `not_connected` | No camera on the bus | Plug in the cable and turn the camera on. |
+| `camera_asleep` | Auto power off took the camera off USB | Turn the camera on. Keep-awake holds AUTO POWER OFF at OFF. |
+| `busy` | The camera answers 0x2019 | Wait; try again in a few seconds. |
+| `menu_open` | D22E = 3, or 0xA001 | Close the menu on the camera. |
+| `needs_tether` | Live settings in another mode | Switch to USB TETHER SHOOTING FIXED. |
+| `needs_rawconv` | Slot contents in another mode | Switch to USB RAW CONV./BACKUP RESTORE. |
+| `needs_stills`, `needs_movie` | A property of the other capture mode | Set the STILL/MOVIE switch. |
+| `owner_conflict` | A process outside ukiyo holds the USB device | Quit that process (PTPCamera is handled by the owner). |
+| `unconfirmed_property` | Gate | Confirm the property in the Lab, or pass `allow_unconfirmed`. |
+| `read_only`, `value_out_of_range`, `not_found`, `ambiguous` | Gate or lookup | Lists the valid values or candidates. |
+| `plan_stale`, `plan_expired` | Apply | Make a new plan. |
+
+### No power cycling, no reconnect loops
+
+- No tool and no command turns the camera off, resets USB on demand, or retries a connect.
+- `camera connect` only lifts the Lab's stopped state; the owner then follows its 3 s and 30 s
+  rules.
+- A client never retries a failed request in a loop. It reconnects to the socket once after
+  `owner_changed`, and spawns `serve` at most once per command.
+- Keep-awake writes D381 only through the owner, and the owner restores the old value on a
+  clean disconnect.
+
+## 6. Mapping: every UI feature
+
+| Page | Feature | CLI | MCP |
+|---|---|---|---|
+| Hub | Overview: model, firmware, battery, card, lens | `status` | `camera_status` |
+| Hub | History: shots per day and month, lenses seen, connect log | `status --history` | `camera_status {history}` |
+| Hub | Owner details: read | `owner get` | `settings_read {query: "owner"}` |
+| Hub | Owner details: edit | `owner set` | `camera_plan {set}` + `camera_apply` |
+| Recipes | Library list, search, filter | `recipes ls` | `library_search {kind: recipe}` |
+| Recipes | Recipe detail | `recipes show` | `library_read` |
+| Recipes | Editor: edit fields | `recipes edit` | `library_save {kind: recipe, item}` |
+| Recipes | Delete a recipe | `recipes rm` | `library_delete` |
+| Recipes | Read C1-C7 | `recipes slots` | `library_read {id: slot:Cn}` |
+| Recipes | Slot state (matches, edited, new) | `recipes slots` | `library_read {id: slot:Cn, compare_to}` |
+| Recipes | Write a recipe to a slot | `recipes write` | `camera_plan {recipe, slot}` + `camera_apply` |
+| Recipes | Import: paste text | `recipes import --text` | `recipe_parse {text}` + `library_save` |
+| Recipes | Import: paste a link | `recipes import --url` | `recipe_parse {url}` + `library_save` |
+| Recipes | Import: search the catalogue | `recipes ls --catalogue` | `library_search {kind: catalogue}` |
+| Recipes | Import: add from the catalogue | `recipes import cat:<id> --save` | `library_save {kind: recipe, from}` |
+| Settings | Menu tree | `settings --menus` | `settings_read {view: menus}` |
+| Settings | Search by name and meaning | `settings QUERY` | `settings_read {query}` |
+| Settings | Edit a setting | `settings set` | `camera_plan {set}` + `camera_apply` |
+| Settings | Favourites: view | `settings --favourites` | `settings_read {filter: favourites}` |
+| Settings | Favourites: add, remove | `settings fav add|rm` | `library_save {kind: favourite}`, `library_delete` |
+| Settings | Presets: list, show | `presets ls|show` | `library_search`, `library_read` |
+| Settings | Presets: save | `presets save` | `library_save {kind: preset}` |
+| Settings | Presets: apply | `presets apply` | `camera_plan {preset}` + `camera_apply` |
+| Settings | Presets: delete | `presets rm` | `library_delete` |
+| Settings | Snapshots: save | `snapshots save` | `library_save {kind: snapshot}` |
+| Settings | Snapshots: diff two | `snapshots diff A B` | `library_read {compare_to}` |
+| Settings | Snapshots: diff against the camera | `snapshots diff A` | `camera_plan {snapshot}` |
+| Settings | Snapshots: restore | `snapshots restore` | `camera_plan {snapshot}` + `camera_apply` |
+| Settings | Snapshots: delete | `snapshots rm` | `library_delete` |
+| Settings | Appearance: theme, brand mark, app icon | `prefs set` | `library_save {kind: prefs}` |
+| Connect | Mode guidance and walkthrough | `help modes` | `walkthrough` in every `needs_*` error |
+| Lab | Status bar: link, mode, timings | `status` | `camera_status` |
+| Lab | Property table | `settings --code`, `settings --unnamed` | `settings_read {codes, filter}` |
+| Lab | Change feed | `camera watch` | `camera_watch` |
+| Lab | Pin codes | `camera watch --code` | `camera_watch {codes}` |
+| Lab | Label panel | `catalog label` | `catalog_label` |
+| Lab | Write box | `settings set --allow-unconfirmed` | `camera_plan {set, allow_unconfirmed}` |
+| Lab | Note on a change group | `log note --group` | `library_save {kind: note}` |
+| Lab | Export dump | `camera export` | `library_save {kind: dump}` |
+| Lab | Keep awake | `prefs set keep-awake=on` | `library_save {kind: prefs}` |
+| Lab | Connect, disconnect | `camera connect|disconnect` | none: the owner connects on demand |
+| Lab | Fake camera bar | `dev fake` | `fake_camera` (fake builds) |
+| Roadmap | Rebuild a recipe from a photo | later: `recipes import --photo` | later: `recipe_parse {file}` |
+
+## 7. Open questions
+
+1. **Hand-off.** When the app starts while `ukiyo serve` holds the camera, should the app take
+   over at once (this design), or show "in use by the command line" and wait?
+2. **Confirming by agents.** May an agent set `confidence: confirmed` through `catalog_label`
+   under the evidence rule, or should only a person in the Lab confirm?
+3. **Unconfirmed writes over MCP.** Is the start flag plus a per-plan argument right, or should
+   MCP never write unconfirmed properties?
+4. **App icon from the CLI.** The Dock icon changes only while the app runs, and the Finder icon
+   means writing onto the signed bundle (task-rtkfi0hs). Should `prefs set app-icon` only store
+   the choice, for the app to apply at its next start?
+5. **Install path.** Is a symlink at `~/.local/bin/ukiyo` the right default, or a Homebrew cask
+   that installs the app and links the binary?
+
+## 8. Implementation stages
+
+Each stage ships on its own and keeps `cargo test` and clippy green. Start after the catalogue
+work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
+
+1. **Core crate.** Move the camera, catalog, recipes and Lab logic into `ukiyo-core`. Add the
+   `api` request and response enums. The app calls `api`; no behaviour changes.
+2. **Socket and read-only CLI.** The app takes `owner.lock` and serves `ukiyo.sock`. The `ukiyo`
+   binary ships with `status`, `settings` (read), `camera watch`, `catalog show`, `log show`,
+   `help modes`, `--json` and exit codes. It needs the app running.
+3. **Headless owner.** `ukiyo serve`, spawn on demand, idle exit, and the hand-off to the app.
+   The CLI now works with the app closed. `tools/ptp/` scripts check the lock.
+4. **Plans and gated writes.** The `plan` module, typed errors, the `actor` field in the
+   session log. CLI: `settings set`, `owner`, `plan`, `camera connect|disconnect|export`,
+   `log note`. The window's Lab write box moves onto plans too.
+5. **MCP server.** `ukiyo mcp` with `camera_status`, `camera_watch`, `settings_read`,
+   `camera_plan`, `camera_apply`, `catalog_label`, and `fake_camera` in fake builds.
+6. **Library.** Presets, favourites, snapshots, history and preferences in `ukiyo-core`, with
+   the trash. Preferences move out of the window's local storage into `settings.json`. CLI:
+   `presets`, `snapshots`, `settings fav`, `prefs`. MCP: `library_search`, `library_read`,
+   `library_save`, `library_delete`. The Settings and Hub pages switch from fixtures.
+7. **Recipes.** The user recipe library, catalogue search, `recipe_parse` with URLs, slot reads,
+   and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`.
+8. **Packaging.** The `externalBin` in the bundle, the "Install command line tool" button and
+   `ukiyo install`, and the MCP config snippet in the README.
