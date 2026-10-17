@@ -5,8 +5,8 @@ import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
 import { PageHead } from "../shell/PageHead";
 import { RefreshIcon } from "../shell/icons";
-import xt5Light from "../assets/camera/xt5-three-quarter.png";
-import xt5Dark from "../assets/camera/xt5-three-quarter-dark.png";
+import { cameraArt } from "../assets/camera";
+import { useCamera } from "../lib/camera";
 
 const n = (x: number) => x.toLocaleString("en-US");
 
@@ -60,16 +60,19 @@ export function Hub() {
 
 function CameraCard() {
   const { theme } = usePrefs();
+  const { status } = useCamera();
   const c = hubCamera;
+  const model = status?.model ?? c.model;
+  const art = cameraArt(model);
   return (
     <section className="card camera" aria-label="Camera">
       <div className="camera-art">
         <div className="sun" />
-        <img src={theme === "dark" ? xt5Dark : xt5Light} alt="Ink drawing of an X-T5 camera body" />
+        <img src={theme === "dark" ? art.dark : art.light} alt={art.alt} />
       </div>
       <div className="camera-facts">
         <div>
-          <div className="big-name">{c.model}</div>
+          <div className="big-name">{model}</div>
           <div className="small muted facts-line">
             Firmware {c.firmware} · Body serial <span className="mono">••••{c.serialTail}</span>
           </div>
