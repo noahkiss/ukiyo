@@ -13,6 +13,7 @@ formats. Logs go to local/wifi-test/<timestamp>/.
 """
 import argparse
 import datetime as dt
+import errno
 import hashlib
 import json
 import re
@@ -351,22 +352,27 @@ class Run:
 
     def local_network_probe(self, router):
         """macOS 15+ blocks LAN traffic until the terminal app has Local Network permission.
-        A blocked app gets EHOSTUNREACH at once. Sending one datagram also raises the prompt."""
+        A blocked app gets EHOSTUNREACH at once on a TCP connect; a UDP send to the router can
+        succeed while blocked, so the probe is TCP. Any other result (open, refused, timeout)
+        means the app may use the LAN. The attempt also raises the prompt."""
         if self.dry or not router:
             return {"tested": False}
-        u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        t = socket.socket()
+        t.settimeout(3)
         try:
-            u.sendto(b"ukiyo", (router, 9))
+            t.connect((router, 80))
             res = {"tested": True, "ok": True}
         except OSError as e:
-            res = {"tested": True, "ok": False, "error": str(e)}
+            blocked = getattr(e, "errno", None) == errno.EHOSTUNREACH
+            res = {"tested": True, "ok": not blocked, "error": str(e)}
         finally:
-            u.close()
+            t.close()
         if not res["ok"]:
             self.dlg.ask("local_network", "Local Network permission", [
                 "macOS blocks this terminal from the local network.",
                 "System Settings > Privacy & Security > Local Network.",
-                "Turn it on for your terminal app, then press Done.",
+                "Turn it on for your terminal app (or zellij), then press Done.",
+                "If it is not listed, Stop and start the run from Terminal.app.",
             ])
         return res
 
