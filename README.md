@@ -18,9 +18,10 @@ on-camera menus.
 
 Ukiyo is pre-release. There is no signed build or installer yet; build it from source.
 
-- Built: the USB connection core, the Lab, the CLI with gated setting writes, and the MCP
-  server. The Python tools in `tools/ptp/` read C1-C7.
-- In progress: the recipe library, C1-C7 reads and writes in the app, presets, snapshots, and packaging.
+- Built: the USB connection core, the Lab, the CLI with gated setting writes, the MCP
+  server, and the library: presets, snapshots, favourite settings and camera history, in the
+  app, the CLI and MCP. The Python tools in `tools/ptp/` read C1-C7.
+- In progress: the recipe library, C1-C7 reads and writes in the app, and packaging.
   `docs/roadmap.md` lists what comes next.
 
 Ukiyo writes only properties whose meaning is confirmed, and reads each one back after the
