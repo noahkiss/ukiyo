@@ -24,7 +24,10 @@ impl Mcp {
     fn start() -> Mcp {
         let cats = tempfile::tempdir().unwrap();
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog/x-t5.json");
-        std::fs::copy(repo, cats.path().join("x-t5.json")).unwrap();
+        // GrainEffect stands for an unconfirmed property, whatever the mapping has reached.
+        let mut cat: Value = serde_json::from_str(&std::fs::read_to_string(repo).unwrap()).unwrap();
+        cat["properties"]["0xd023"]["confidence"] = "likely".into();
+        std::fs::write(cats.path().join("x-t5.json"), serde_json::to_string_pretty(&cat).unwrap()).unwrap();
         let data = tempfile::tempdir().unwrap();
         let mut child = Command::new(EXE)
             .arg("mcp")

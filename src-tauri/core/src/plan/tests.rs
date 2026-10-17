@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 const APO: u16 = 0xD381; // AutoPowerOff, confirmed: 1 5 MIN, 2 2 MIN, 3 OFF ...
-const GRAIN: u16 = 0xD023; // GrainEffect, likely: 1 OFF, 2 WEAK SMALL ...
+const GRAIN: u16 = 0xD023; // GrainEffect, made likely in the test copy: 1 OFF, 2 WEAK SMALL ...
 
 struct Rig {
     lab: Arc<Lab>,
@@ -23,7 +23,10 @@ fn rig() -> Rig {
     let data = tempfile::tempdir().unwrap();
     let cats = tempfile::tempdir().unwrap();
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog/x-t5.json");
-    std::fs::copy(repo, cats.path().join("x-t5.json")).unwrap();
+    // GrainEffect stands for an unconfirmed property, whatever the mapping has reached.
+    let mut cat: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(repo).unwrap()).unwrap();
+    cat["properties"]["0xd023"]["confidence"] = "likely".into();
+    std::fs::write(cats.path().join("x-t5.json"), serde_json::to_string_pretty(&cat).unwrap()).unwrap();
     let lock = OwnerLock::try_acquire(&data.path().join("owner.lock")).unwrap();
     let lab = Lab::start(lock, data.path().into(), cats.path().into(), |_| {});
     // No random dial turns from the fake person: they would make plans stale.
