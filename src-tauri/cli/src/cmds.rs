@@ -277,7 +277,7 @@ fn status_event_text(v: &StatusView) -> String {
 }
 
 fn group_lines(g: &GroupView) -> Vec<String> {
-    let label = |l: &Option<String>, v: &Option<serde_json::Value>| l.clone().or_else(|| v.as_ref().map(json_text)).unwrap_or_else(|| "-".into());
+    let label = |l: &Option<String>, v: &Option<read::RawValue>| l.clone().or_else(|| v.as_ref().map(read::RawValue::text)).unwrap_or_else(|| "-".into());
     g.changes
         .iter()
         .map(|c| {
@@ -491,6 +491,14 @@ fn session_value(v: &serde_json::Value) -> String {
 }
 
 fn entry_summary(e: &serde_json::Value) -> String {
+    let s = entry_text(e);
+    match e["actor"].as_str() {
+        Some(a) => format!("[{a}] {s}"),
+        None => s,
+    }
+}
+
+fn entry_text(e: &serde_json::Value) -> String {
     match e["kind"].as_str().unwrap_or("") {
         "start" => if e["fake"].as_bool() == Some(true) { "session start, fake camera" } else { "session start" }.into(),
         "stop" => if e["clean"].as_bool() == Some(true) { "clean stop" } else { "stop, not clean" }.into(),
@@ -506,8 +514,15 @@ fn entry_summary(e: &serde_json::Value) -> String {
         }
         "write" => {
             let o = &e["outcome"];
-            format!("{} {} -> {} ({})", hex(&o["code"]), session_value(&o["before"]), session_value(&o["readback"]), o["result"].as_str().unwrap_or("?"))
+            let plan = e["plan"].as_str().map(|p| format!(", plan {p}")).unwrap_or_default();
+            format!("{} {} -> {} ({}{plan})", hex(&o["code"]), session_value(&o["before"]), session_value(&o["readback"]), o["result"].as_str().unwrap_or("?"))
         }
+        "apply" => match e["refused"].as_str() {
+            Some(r) => format!("plan {} refused: {r}", e["plan"].as_str().unwrap_or("?")),
+            None => format!("plan {}: {} applied, {} failed", e["plan"].as_str().unwrap_or("?"), e["applied"], e["failed"]),
+        },
+        "connect" => if e["on"].as_bool() == Some(true) { "connect switch on" } else { "disconnect" }.into(),
+        "keep_awake" => if e["on"].as_bool() == Some(true) { "keep-awake on" } else { "keep-awake off" }.into(),
         "export" => e["path"].as_str().unwrap_or("").into(),
         "label" => {
             let p = &e["patch"];
@@ -575,5 +590,8 @@ mod tests {
         let e = json!({ "kind": "write", "outcome": { "code": 53283, "ok": true, "result": "OK", "before": { "kind": "int", "v": 1 }, "readback": { "kind": "int", "v": 2 } } });
         assert_eq!(entry_summary(&e), "0xd023 1 -> 2 (OK)");
         assert_eq!(entry_summary(&json!({ "kind": "note", "group": 4, "text": "dial" })), "#4: dial");
+        let e = json!({ "kind": "write", "actor": "cli", "plan": "p-1a2b", "outcome": { "code": 54145, "ok": true, "result": "OK", "before": { "kind": "int", "v": 1 }, "readback": { "kind": "int", "v": 3 } } });
+        assert_eq!(entry_summary(&e), "[cli] 0xd381 1 -> 3 (OK, plan p-1a2b)");
+        assert_eq!(entry_summary(&json!({ "kind": "apply", "actor": "app", "plan": "p-1", "applied": 1, "failed": 0 })), "[app] plan p-1: 1 applied, 0 failed");
     }
 }

@@ -6,8 +6,8 @@
 //! -> {"jsonrpc":"2.0","id":2,"method":"subscribe"}
 //! <- {"jsonrpc":"2.0","id":2,"result":null}
 //! <- {"jsonrpc":"2.0","method":"event","params":{"event":"status","data":{...}}}
-//! -> {"jsonrpc":"2.0","id":3,"method":"lab_write","params":{"code":53283,"value":{"kind":"int","v":2}}}
-//! <- {"jsonrpc":"2.0","id":3,"result":{"code":53283,"ok":true,...}}
+//! -> {"jsonrpc":"2.0","id":3,"method":"plan_create","params":{"set":{"AutoPowerOff":"OFF"}}}
+//! <- {"jsonrpc":"2.0","id":3,"result":{"plan_id":"p-7f3a","steps":[...],...}}
 //! <- {"jsonrpc":"2.0","id":4,"error":{"code":"failed","message":"..."}}
 //! ```
 //!
@@ -15,7 +15,7 @@
 //!   `api::Response` (`null` for a method with no result); `error` is an `api::Error`.
 //! - `hello` and `subscribe` are the two methods outside `api`. `hello` is optional and names
 //!   the actor; `subscribe` makes the connection receive every `api::Event` from then on.
-//! - Replies may come back out of order (a `lab_write` waits on the camera), so match by `id`.
+//! - Replies may come back out of order (a `plan_apply` waits on the camera), so match by `id`.
 
 use crate::api::{Error, ErrorCode, Event, Request, Response};
 use serde::{Deserialize, Serialize};
@@ -58,11 +58,11 @@ pub enum Incoming {
 }
 
 pub fn bad_request(message: impl Into<String>) -> Error {
-    Error { code: ErrorCode::BadRequest, message: message.into() }
+    Error::new(ErrorCode::BadRequest, message)
 }
 
 pub fn unavailable(message: impl Into<String>) -> Error {
-    Error { code: ErrorCode::Unavailable, message: message.into() }
+    Error::new(ErrorCode::Unavailable, message)
 }
 
 pub fn parse_incoming(line: &str) -> Incoming {
@@ -166,15 +166,14 @@ pub fn parse_outgoing(line: &str) -> Outgoing {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::camera::owner::{Status, WriteOutcome};
-    use crate::camera::ptp::Value as PtpValue;
+    use crate::camera::owner::Status;
 
     #[test]
     fn requests_round_trip() {
-        let line = api_request_line(7, &Request::LabWrite { code: 0xD023, value: PtpValue::Int(2) });
+        let line = api_request_line(7, &Request::PlanApply { plan_id: "p-1".into() });
         let Incoming::Api(id, r) = parse_incoming(&line) else { panic!("{line}") };
         assert_eq!(id, json!(7));
-        assert!(matches!(*r, Request::LabWrite { code: 0xD023, value: PtpValue::Int(2) }));
+        assert!(matches!(*r, Request::PlanApply { ref plan_id } if plan_id == "p-1"));
         let Incoming::Api(_, r) = parse_incoming(&api_request_line(8, &Request::LabSnapshot)) else { panic!() };
         assert!(matches!(*r, Request::LabSnapshot));
         let Incoming::Hello(_, h) = parse_incoming(&request_line(1, HELLO, Some(json!({ "actor": "cli", "protocol": 1 })))) else { panic!() };
@@ -190,7 +189,7 @@ mod tests {
         for r in [
             Response::LabPin,
             Response::LabExport("/x.json".into()),
-            Response::LabWrite(WriteOutcome { code: 1, ok: true, result: "OK".into(), before: None, readback: None }),
+            Response::PlanDiscard,
         ] {
             let method = serde_json::to_value(&r).unwrap()["method"].as_str().unwrap().to_string();
             let line = result_line(&json!(5), response_result(&r));
@@ -198,7 +197,7 @@ mod tests {
             let back = response_from(&method, v).unwrap();
             assert_eq!(serde_json::to_value(&back).unwrap(), serde_json::to_value(&r).unwrap());
         }
-        let e = Error { code: ErrorCode::Failed, message: "no".into() };
+        let e = Error::new(ErrorCode::PlanStale, "no").hint("again");
         let Outgoing::Reply(9, Err(back)) = parse_outgoing(&error_line(&json!(9), &e)) else { panic!() };
         assert_eq!(back, e);
         let Outgoing::Event(ev) = parse_outgoing(&event_line(&Event::Status(Status::default()))) else { panic!() };

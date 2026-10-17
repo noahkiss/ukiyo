@@ -138,9 +138,9 @@ fn queue_puts_writes_first() {
     let (tx, _rx) = channel();
     q.push(Request::SetPinned(vec![1]));
     q.push(Request::Export(tx));
-    q.push(Request::Write { code: 1, value: Value::Int(1), reply: None });
+    q.push(Request::Write { code: 1, value: Value::Int(1), actor: None, reply: None });
     q.push(Request::KeepAwake(true));
-    q.push(Request::Write { code: 2, value: Value::Int(2), reply: None });
+    q.push(Request::Write { code: 2, value: Value::Int(2), actor: None, reply: None });
     let order: Vec<String> = std::iter::from_fn(|| q.pop())
         .map(|r| match r {
             Request::Write { code, .. } => format!("w{code}"),
@@ -160,7 +160,7 @@ fn a_write_runs_before_an_earlier_export() {
     let (etx, erx) = channel();
     let (wtx, wrx) = channel();
     r.tx.send(Request::Export(etx)).unwrap();
-    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(3), reply: Some(wtx) }).unwrap();
+    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(3), actor: None, reply: Some(wtx) }).unwrap();
     let t = r.now();
     r.owner.step();
     assert!(wrx.try_recv().is_ok(), "write answered on the first step");
@@ -179,7 +179,7 @@ fn every_write_is_read_back() {
     r.connect();
     let (wtx, wrx) = channel();
     let t = r.now();
-    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(4), reply: Some(wtx) }).unwrap();
+    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(4), actor: None, reply: Some(wtx) }).unwrap();
     r.owner.step();
     let out = wrx.recv().unwrap();
     assert!(out.ok);
@@ -193,7 +193,7 @@ fn every_write_is_read_back() {
     // A refused value is still read back.
     let (wtx, wrx) = channel();
     let t = r.now();
-    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(9), reply: Some(wtx) }).unwrap();
+    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(9), actor: None, reply: Some(wtx) }).unwrap();
     r.owner.step();
     let out = wrx.recv().unwrap();
     assert!(!out.ok);
@@ -207,7 +207,7 @@ fn read_only_properties_are_never_written() {
     r.connect();
     let (wtx, wrx) = channel();
     let t = r.now();
-    r.tx.send(Request::Write { code: SCREEN, value: Value::Int(2), reply: Some(wtx) }).unwrap();
+    r.tx.send(Request::Write { code: SCREEN, value: Value::Int(2), actor: None, reply: Some(wtx) }).unwrap();
     r.owner.step();
     let out = wrx.recv().unwrap();
     assert_eq!(out.result, "read-only");
@@ -229,7 +229,7 @@ fn an_open_menu_pauses_the_sweep_and_probes_slowly() {
     assert!(ops.len() <= 21, "{} probes in 10 s", ops.len());
     assert_eq!(r.groups().len(), groups, "no change events while paused");
     let (wtx, wrx) = channel();
-    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(3), reply: Some(wtx) }).unwrap();
+    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(3), actor: None, reply: Some(wtx) }).unwrap();
     r.owner.step();
     assert!(!wrx.recv().unwrap().ok, "writes refused in a menu");
     r.cam.close_menu();
@@ -354,4 +354,50 @@ fn shutdown_restores_auto_power_off() {
     assert!(r.owner.is_done());
     assert_eq!(r.cam.value(AUTO_POWER_OFF), Some(Value::Int(2)));
     assert_eq!(r.cam.with(|s| s.ops.last().map(|o| o.code)), Some(ptp::OP_CLOSE_SESSION));
+}
+
+/// After a half-press release the X-T5 answers writes 0x2019 for about 0.2 s: the owner
+/// waits and sends the same write again on the same session, and never reconnects.
+#[test]
+fn a_busy_write_is_retried_with_backoff() {
+    let mut r = rig();
+    r.connect();
+    let opens = r.cam.with(|s| s.opens.len());
+    r.cam.with(|s| s.write_busy = 2);
+    let (wtx, wrx) = channel();
+    let t = r.now();
+    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(3), actor: Some("cli".into()), reply: Some(wtx) }).unwrap();
+    r.owner.step();
+    let out = wrx.recv().unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!((out.attempts, out.rc), (3, Some(ptp::RC_OK)));
+    assert_eq!(out.readback, Some(Value::Int(3)));
+    let sets: Vec<_> = r.ops_since(t).into_iter().filter(|o| o.code == ptp::OP_SET_PROP_VALUE).collect();
+    assert_eq!(sets.len(), 3);
+    // 100 ms, then 200 ms between the tries.
+    assert!(sets[1].at - sets[0].at >= Duration::from_millis(100));
+    assert!(sets[2].at - sets[1].at >= Duration::from_millis(200));
+    assert_eq!(r.cam.with(|s| s.opens.len()), opens, "no reconnect");
+    let g = r.groups().into_iter().find(|g| g.source == ChangeSource::Write).unwrap();
+    assert_eq!(g.actor.as_deref(), Some("cli"), "the read-back group names the actor");
+}
+
+#[test]
+fn a_write_busy_for_too_long_fails_as_busy() {
+    let mut r = rig();
+    r.connect();
+    let opens = r.cam.with(|s| s.opens.len());
+    r.cam.with(|s| s.write_busy = 100);
+    let (wtx, wrx) = channel();
+    let t = r.now();
+    r.tx.send(Request::Write { code: 0xD023, value: Value::Int(3), actor: None, reply: Some(wtx) }).unwrap();
+    r.owner.step();
+    let out = wrx.recv().unwrap();
+    assert!(!out.ok);
+    assert_eq!((out.rc, out.attempts, out.result.as_str()), (Some(ptp::RC_DEVICE_BUSY), 6, "DeviceBusy"));
+    let spent = r.now() - t;
+    assert!(spent >= Duration::from_millis(3100) && spent < Duration::from_secs(4), "{spent:?}");
+    assert_eq!(r.cam.with(|s| s.opens.len()), opens, "no reconnect");
+    assert_eq!(r.owner.status().link, Link::Connected);
+    assert_eq!(out.readback, Some(Value::Int(1)), "read back anyway");
 }

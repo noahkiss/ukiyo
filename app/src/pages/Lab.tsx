@@ -9,7 +9,7 @@ import { StatusActions, StatusFacts } from "../views/StatusBar";
 import { FakeBar } from "../views/FakeBar";
 import { PropTable, type Filter } from "../views/PropTable";
 import { ChangeFeed } from "../views/ChangeFeed";
-import { LabelPanel, type LabelTarget } from "../views/LabelPanel";
+import { LabelPanel, type LabelTarget, type Writer } from "../views/LabelPanel";
 
 const PINNED_KEY = "ukiyo.pinned";
 const MENU_KEY = "ukiyo.lastMenu";
@@ -164,10 +164,23 @@ export function Lab({ active }: { active: boolean }) {
     [flash],
   );
 
-  const write = useCallback(async (code: number, value: Value) => {
-    const r = await commands.labWrite(code, value);
-    return r.status === "ok" ? r.data : { code, ok: false, result: r.error, before: null, readback: null };
-  }, []);
+  // The Lab is the mapping tool: its plans may write codes the catalog has not confirmed.
+  const writer = useMemo<Writer>(
+    () => ({
+      plan: async (code: number, value: Value) => {
+        const raw = value.kind === "int" ? String(value.v) : value.kind === "str" ? value.v : null;
+        if (raw === null) return "This value type cannot be written.";
+        const r = await commands.planCreate({ [`0x${code.toString(16).padStart(4, "0")}`]: raw }, true);
+        return r.status === "ok" ? r.data : r.error;
+      },
+      apply: async (planId: string) => {
+        const r = await commands.planApply(planId);
+        return r.status === "ok" ? r.data : r.error;
+      },
+      discard: (planId: string) => void commands.planDiscard(planId),
+    }),
+    [],
+  );
 
   const exportDump = useCallback(async () => {
     const r = await commands.labExport();
@@ -250,7 +263,7 @@ export function Lab({ active }: { active: boolean }) {
               lastMenu={lastMenu}
               connected={status?.link === "connected" && status.screen !== "menu"}
               onSave={saveLabel}
-              onWrite={write}
+              writer={writer}
               onClose={() => setTarget(null)}
             />
           )}

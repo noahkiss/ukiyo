@@ -298,7 +298,7 @@ fn read_loop(shared: &Arc<Shared>, conn: &Arc<Conn>, stream: UnixStream) {
 /// Methods that wait on the camera run on their own thread, so the same client's quick calls
 /// are not held behind them. Everything else is answered in order.
 fn slow(r: &Request) -> bool {
-    matches!(r, Request::LabWrite { .. } | Request::LabExport)
+    matches!(r, Request::PlanApply { .. } | Request::LabExport)
 }
 
 fn handle(shared: &Arc<Shared>, conn: &Arc<Conn>, line: &str) {
@@ -327,8 +327,9 @@ fn handle(shared: &Arc<Shared>, conn: &Arc<Conn>, line: &str) {
                 return conn.send(wire::error_line(&id, &wire::unavailable("serve is starting")));
             };
             let is_slow = slow(&req);
+            let actor = conn.actor.lock().unwrap().clone();
             let answer = move |conn: &Conn| {
-                let line = match api::dispatch(&lab, *req) {
+                let line = match api::dispatch(&lab, &actor, *req) {
                     Ok(r) => wire::result_line(&id, wire::response_result(&r)),
                     Err(e) => wire::error_line(&id, &e),
                 };

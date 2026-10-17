@@ -5,17 +5,18 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event as _;
 use ukiyo_core::api::{Event, Request, Response};
-use ukiyo_core::camera::owner::{Status, WriteOutcome};
-use ukiyo_core::camera::ptp::Value;
+use ukiyo_core::camera::owner::Status;
 use ukiyo_core::catalog::{Catalog, LabelPatch};
 use ukiyo_core::lab::{FakeAction, Snapshot};
+use ukiyo_core::plan::{Applied, Plan};
 use ukiyo_core::serve::client::{self, Client, SpawnFn};
 use ukiyo_core::{paths, recipes, serve};
 
 // The app is a client of `ukiyo serve`, the one camera owner (docs/agent-interface.md, "One
 // USB owner"). Each command sends its `api::Request` over the socket. The window's names and
-// types are the api's and did not change when the Lab moved into `serve`, so neither did
-// bindings.ts. Errors reach the window as their message. Every forwarded command runs off the
+// types are the api's. Errors reach the window as their message. The window writes only
+// through plans, like the CLI: `plan_create`, then `plan_apply`; `serve` logs each write with
+// the actor `app`. Every forwarded command runs off the
 // main thread, since a call may wait for `serve` to start; they take the `AppHandle` rather
 // than a borrowed `State` so they keep their plain return types.
 
@@ -55,15 +56,30 @@ async fn lab_snapshot(app: AppHandle) -> Snapshot {
     }
 }
 
-/// Writes one property and returns the read-back.
+/// Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing.
 #[tauri::command]
 #[specta::specta]
-async fn lab_write(app: AppHandle, code: u16, value: Value) -> Result<WriteOutcome, String> {
-    match forward(&app, Request::LabWrite { code, value }).await {
-        Ok(Response::LabWrite(out)) => Ok(out),
-        Ok(r) => Err(unexpected(r)),
-        Err(e) => Ok(WriteOutcome { code, ok: false, result: e, before: None, readback: None }),
+async fn plan_create(app: AppHandle, set: indexmap::IndexMap<String, String>, allow_unconfirmed: bool) -> Result<Plan, String> {
+    match forward(&app, Request::PlanCreate { set, allow_unconfirmed }).await? {
+        Response::PlanCreate(p) => Ok(*p),
+        r => Err(unexpected(r)),
     }
+}
+
+/// Applies a plan: re-checks it, writes each step, reads each back.
+#[tauri::command]
+#[specta::specta]
+async fn plan_apply(app: AppHandle, plan_id: String) -> Result<Applied, String> {
+    match forward(&app, Request::PlanApply { plan_id }).await? {
+        Response::PlanApply(a) => Ok(*a),
+        r => Err(unexpected(r)),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn plan_discard(app: AppHandle, plan_id: String) {
+    log_failure("plan_discard", forward(&app, Request::PlanDiscard { plan_id }).await)
 }
 
 #[tauri::command]
@@ -126,7 +142,6 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             lab_snapshot,
-            lab_write,
             lab_pin,
             lab_keep_awake,
             lab_connect,
@@ -135,6 +150,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             lab_note,
             lab_fake,
             recipe_parse,
+            plan_create,
+            plan_apply,
+            plan_discard,
         ])
         // The bundled recipe catalogue's shape; the window imports the JSON itself.
         .typ::<recipes::catalogue::RecipeCatalog>()

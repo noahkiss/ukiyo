@@ -44,6 +44,10 @@ pub struct Config {
     pub power_off_window: Duration,
     /// How often a status event goes out while nothing else changes.
     pub status_every: Duration,
+    /// The waits before each retry of a write the camera answered 0x2019 (busy). After a
+    /// half-press release the X-T5 answers writes busy for about 0.2 s (docs/protocol.md).
+    /// A busy write is retried on the same session; the owner never reconnects for it.
+    pub write_retry: Vec<Duration>,
 }
 
 impl Default for Config {
@@ -57,6 +61,8 @@ impl Default for Config {
             busy_after: 3,
             power_off_window: Duration::from_secs(5),
             status_every: Duration::from_millis(500),
+            // 100 ms doubling: five retries, 3.1 s in all.
+            write_retry: [100, 200, 400, 800, 1600].into_iter().map(Duration::from_millis).collect(),
         }
     }
 }
@@ -217,6 +223,10 @@ pub struct ChangeGroup {
     pub at: f64,
     pub source: ChangeSource,
     pub changes: Vec<Change>,
+    /// Who asked for the write (`app`, `cli`, `mcp:<client>`); `None` for a camera change
+    /// and for the owner's own writes (keep-awake).
+    #[serde(default)]
+    pub actor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -228,6 +238,30 @@ pub struct WriteOutcome {
     pub result: String,
     pub before: Option<Value>,
     pub readback: Option<Value>,
+    /// The camera's response code; `None` when nothing was sent.
+    #[serde(default)]
+    pub rc: Option<u16>,
+    /// SetDevicePropValue operations sent: 1, more when the camera answered busy.
+    #[serde(default)]
+    pub attempts: u32,
+}
+
+impl WriteOutcome {
+    /// A write refused before anything reached the camera.
+    pub fn refused(code: u16, why: impl Into<String>) -> WriteOutcome {
+        WriteOutcome { code, ok: false, result: why.into(), before: None, readback: None, rc: None, attempts: 0 }
+    }
+}
+
+/// Why the owner refused a write without sending it (`WriteOutcome::result`).
+pub mod refusal {
+    pub const NOT_CONNECTED: &str = "not connected";
+    pub const PAUSED: &str = "camera in menu or busy";
+    pub const UNKNOWN: &str = "unknown property";
+    pub const NO_DESCRIPTOR: &str = "no descriptor";
+    pub const READ_ONLY: &str = "read-only";
+    pub const UNAVAILABLE: &str = "not readable in this mode";
+    pub const LOST: &str = "connection lost";
 }
 
 /// A dump of every descriptor and value, like `tools/ptp/dump_props.py`.
@@ -242,7 +276,8 @@ pub struct Dump {
 }
 
 pub enum Request {
-    Write { code: u16, value: Value, reply: Option<Sender<WriteOutcome>> },
+    /// `actor` goes on the read-back's change group.
+    Write { code: u16, value: Value, actor: Option<String>, reply: Option<Sender<WriteOutcome>> },
     SetPinned(Vec<u16>),
     KeepAwake(bool),
     Export(Sender<Result<Dump, String>>),
@@ -478,8 +513,8 @@ impl Owner {
 
     fn handle(&mut self, r: Request) {
         match r {
-            Request::Write { code, value, reply } => {
-                let out = self.write(code, value);
+            Request::Write { code, value, actor, reply } => {
+                let out = self.write(code, value, actor);
                 if let Some(tx) = reply {
                     let _ = tx.send(out);
                 }
@@ -523,47 +558,59 @@ impl Owner {
         }
     }
 
-    fn write(&mut self, code: u16, value: Value) -> WriteOutcome {
-        let refuse = |code, why: &str| WriteOutcome { code, ok: false, result: why.into(), before: None, readback: None };
-        let Phase::Connected(s) = &mut self.phase else { return refuse(code, "not connected") };
+    fn write(&mut self, code: u16, value: Value, actor: Option<String>) -> WriteOutcome {
+        use refusal::*;
+        let refuse = |code: u16, why: &str| WriteOutcome::refused(code, why);
+        let Phase::Connected(s) = &mut self.phase else { return refuse(code, NOT_CONNECTED) };
         if !matches!(s.pause, Pause::None) {
-            return refuse(code, "camera in menu or busy");
+            return refuse(code, PAUSED);
         }
-        let Some(p) = s.props.get(&code) else { return refuse(code, "unknown property") };
-        let Some(desc) = p.desc.as_ref() else { return refuse(code, "no descriptor") };
+        let Some(p) = s.props.get(&code) else { return refuse(code, UNKNOWN) };
+        let Some(desc) = p.desc.as_ref() else { return refuse(code, NO_DESCRIPTOR) };
         if !desc.writable {
-            return refuse(code, "read-only");
+            return refuse(code, READ_ONLY);
         }
         if !p.available {
-            return refuse(code, "not readable in this mode");
+            return refuse(code, UNAVAILABLE);
         }
         let (before, datatype) = (p.value.clone(), desc.datatype);
         let bytes = match ptp::encode(datatype, &value) {
             Ok(b) => b,
             Err(e) => return refuse(code, &e.0),
         };
-        let r = self.op(ptp::OP_SET_PROP_VALUE, &[code as u32], Some(&bytes));
-        let rc = match r {
-            Ok(r) => r.rc,
-            Err(e) => {
-                self.lost(e);
-                return refuse(code, "connection lost");
+        // 0x2019 means "not now": wait and send the same write again, on the same session.
+        let mut attempts = 0u32;
+        let retry = self.cfg.write_retry.clone();
+        let rc = loop {
+            attempts += 1;
+            let rc = match self.op(ptp::OP_SET_PROP_VALUE, &[code as u32], Some(&bytes)) {
+                Ok(r) => r.rc,
+                Err(e) => {
+                    self.lost(e);
+                    return WriteOutcome { attempts, ..refuse(code, LOST) };
+                }
+            };
+            match retry.get(attempts as usize - 1) {
+                Some(wait) if rc == ptp::RC_DEVICE_BUSY => self.clock.sleep(*wait),
+                _ => break rc,
             }
         };
         // Always read back, whatever the answer.
-        let readback = self.read_value(code, ChangeSource::Write);
+        let readback = self.read_value(code, ChangeSource::Write, actor.clone());
+        let tries = if attempts > 1 { format!(", {attempts} tries") } else { String::new() };
+        let by = actor.as_deref().map(|a| format!(" by {a}")).unwrap_or_default();
         self.log(format!(
-            "write {code:#06x} {} -> {}: {} (read back {})",
+            "write {code:#06x}{by} {} -> {}: {}{tries} (read back {})",
             before.as_ref().map(Value::key).unwrap_or_default(),
             value.key(),
             ptp::rc_name(rc),
             readback.as_ref().map(Value::key).unwrap_or_else(|| "nothing".into())
         ));
-        WriteOutcome { code, ok: rc == ptp::RC_OK, result: ptp::rc_name(rc).into(), before, readback }
+        WriteOutcome { code, ok: rc == ptp::RC_OK, result: ptp::rc_name(rc).into(), before, readback, rc: Some(rc), attempts }
     }
 
     /// Reads one value now and reports a change as its own group.
-    fn read_value(&mut self, code: u16, source: ChangeSource) -> Option<Value> {
+    fn read_value(&mut self, code: u16, source: ChangeSource, actor: Option<String>) -> Option<Value> {
         let before = self.session()?.props.get(&code).and_then(|p| p.value.clone());
         let r = match self.op(ptp::OP_GET_PROP_VALUE, &[code as u32], None) {
             Ok(r) => r,
@@ -586,14 +633,14 @@ impl Owner {
             p.changed = Some(now);
             p.changed_wall = Some(wall);
             let change = Change { code, old: before, new: Some(v.clone()) };
-            self.emit_group(source, vec![change]);
+            self.emit_group(source, vec![change], actor);
         }
         Some(v)
     }
 
-    fn emit_group(&mut self, source: ChangeSource, changes: Vec<Change>) {
+    fn emit_group(&mut self, source: ChangeSource, changes: Vec<Change>, actor: Option<String>) {
         self.group_id += 1;
-        let g = ChangeGroup { id: self.group_id, at: self.clock.wall_ms() as f64, source, changes };
+        let g = ChangeGroup { id: self.group_id, at: self.clock.wall_ms() as f64, source, changes, actor };
         self.emit(Event::Changes(g));
     }
 
@@ -607,7 +654,7 @@ impl Owner {
         if cur == AUTO_POWER_OFF_OFF {
             return; // Already OFF; a previous value held from an earlier session stays.
         }
-        let out = self.write(AUTO_POWER_OFF, Value::Int(AUTO_POWER_OFF_OFF));
+        let out = self.write(AUTO_POWER_OFF, Value::Int(AUTO_POWER_OFF_OFF), None);
         if out.ok && out.readback == Some(Value::Int(AUTO_POWER_OFF_OFF)) && self.status.keep_awake.previous.is_none() {
             self.status.keep_awake.previous = Some(cur);
         }
@@ -618,7 +665,7 @@ impl Owner {
         if self.session().is_none() {
             return;
         }
-        let out = self.write(AUTO_POWER_OFF, Value::Int(prev));
+        let out = self.write(AUTO_POWER_OFF, Value::Int(prev), None);
         if out.ok {
             self.status.keep_awake.previous = None;
         }
@@ -1040,7 +1087,7 @@ impl Owner {
         self.status.cycle_ms = cycle.as_secs_f64() * 1000.0;
         self.status.op_ms = op_ms;
         if !changes.is_empty() {
-            self.emit_group(ChangeSource::Camera, changes);
+            self.emit_group(ChangeSource::Camera, changes, None);
         }
     }
 

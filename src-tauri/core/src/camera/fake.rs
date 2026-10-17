@@ -99,6 +99,12 @@ pub struct FakeState {
     /// Every `Connector::present` call.
     pub presence_checks: Vec<Duration>,
     pub ops: Vec<OpRecord>,
+    /// SetDevicePropValue answers 0x2019 (busy) this many times before it works, as the
+    /// X-T5 does just after a half-press release.
+    pub write_busy: u32,
+    /// After a write of one of these codes the camera holds this value instead, as a camera
+    /// rule would (ISO 125 forces D-Range 100): the read-back differs from the write.
+    pub write_coerce: BTreeMap<u16, Value>,
     /// The session generation: a transport from an earlier claim is dead.
     generation: u64,
     seed: u64,
@@ -193,6 +199,8 @@ impl FakeCamera {
             opens: Vec::new(),
             presence_checks: Vec::new(),
             ops: Vec::new(),
+            write_busy: 0,
+            write_coerce: BTreeMap::new(),
             generation: 0,
             seed: 0x9E37_79B9_7F4A_7C15,
         };
@@ -461,6 +469,11 @@ impl Transport for FakeTransport {
                             if !allowed {
                                 return rc(0x201D); // InvalidDevicePropValue
                             }
+                            if s.write_busy > 0 {
+                                s.write_busy -= 1;
+                                return rc(ptp::RC_DEVICE_BUSY);
+                            }
+                            let v = s.write_coerce.get(&prop).cloned().unwrap_or(v);
                             s.props.get_mut(&prop).unwrap().value = v;
                             ok(Vec::new())
                         }

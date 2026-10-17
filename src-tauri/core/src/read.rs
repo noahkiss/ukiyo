@@ -9,7 +9,7 @@ use crate::catalog::{self, Catalog, Confidence, Entry};
 use crate::lab::Snapshot;
 use crate::modes;
 use crate::serve::wire::Welcome;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// Why the camera cannot answer a request now, with what fixes it.
@@ -113,6 +113,37 @@ pub fn parse_code(s: &str) -> Option<u16> {
     let h = s.trim();
     let h = h.strip_prefix("0x").or_else(|| h.strip_prefix("0X")).unwrap_or(h);
     (!h.is_empty() && h.len() <= 4).then(|| u16::from_str_radix(h, 16).ok()).flatten()
+}
+
+/// A value as plain JSON, typed for the window: a number, a string, an array of numbers, or
+/// `"0x<hex>"` for bytes of an unknown datatype. The same JSON as [`raw_json`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(untagged)]
+pub enum RawValue {
+    Int(i64),
+    Str(String),
+    Array(Vec<i64>),
+}
+
+impl RawValue {
+    /// As text: the number, the string (`""` when empty), or the array as JSON.
+    pub fn text(&self) -> String {
+        match self {
+            RawValue::Int(n) => n.to_string(),
+            RawValue::Str(s) if s.is_empty() => "\"\"".into(),
+            RawValue::Str(s) => s.clone(),
+            RawValue::Array(a) => serde_json::to_string(a).unwrap_or_default(),
+        }
+    }
+}
+
+pub fn raw_value(v: &Value) -> RawValue {
+    match v {
+        Value::Int(n) => RawValue::Int(*n),
+        Value::Str(s) => RawValue::Str(s.clone()),
+        Value::Array(a) => RawValue::Array(a.clone()),
+        Value::Raw(h) => RawValue::Str(format!("0x{h}")),
+    }
 }
 
 /// A value as plain JSON: a number, a string, an array of numbers, or `"0x<hex>"` for bytes
@@ -395,12 +426,12 @@ pub fn menus(snap: &Snapshot) -> Vec<MenuCount> {
 }
 
 /// One change in a group, with its catalog name and labels.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ChangeView {
     pub code: String,
     pub name: Option<String>,
-    pub old: Option<serde_json::Value>,
-    pub new: Option<serde_json::Value>,
+    pub old: Option<RawValue>,
+    pub new: Option<RawValue>,
     pub old_label: Option<String>,
     pub new_label: Option<String>,
 }
@@ -420,8 +451,8 @@ pub fn change_view(cat: Option<&Catalog>, c: &Change) -> ChangeView {
     ChangeView {
         code: code_text(c.code),
         name: e.and_then(|e| e.name.clone()),
-        old: c.old.as_ref().map(raw_json),
-        new: c.new.as_ref().map(raw_json),
+        old: c.old.as_ref().map(raw_value),
+        new: c.new.as_ref().map(raw_value),
         old_label: c.old.as_ref().and_then(|v| value_label(e, v)),
         new_label: c.new.as_ref().and_then(|v| value_label(e, v)),
     }
@@ -431,7 +462,51 @@ pub fn change_view(cat: Option<&Catalog>, c: &Change) -> ChangeView {
 /// `None` when no change is left.
 pub fn group_view(cat: Option<&Catalog>, g: &ChangeGroup, codes: &[u16]) -> Option<GroupView> {
     let changes: Vec<ChangeView> = g.changes.iter().filter(|c| codes.is_empty() || codes.contains(&c.code)).map(|c| change_view(cat, c)).collect();
-    (!changes.is_empty()).then(|| GroupView { id: g.id, at: g.at, source: g.source, changes })
+    (!changes.is_empty()).then_some(GroupView { id: g.id, at: g.at, source: g.source, changes })
+}
+
+/// The owner strings `ukiyo owner` reads and sets: its field names and the catalog names they
+/// stand for. None is confirmed yet, so setting one needs `--allow-unconfirmed`.
+pub const OWNER_FIELDS: &[(&str, &str)] = &[("copyright", "Copyright"), ("author", "CopyrightAuthor"), ("prefix", "FileNamePrefix1"), ("device-name", "DeviceName")];
+
+/// The catalog name for an owner field (`copyright`), any case.
+pub fn owner_field(field: &str) -> Option<&'static str> {
+    OWNER_FIELDS.iter().find(|(f, _)| f.eq_ignore_ascii_case(field.trim())).map(|(_, n)| *n)
+}
+
+/// One owner string as the camera holds it now.
+#[derive(Debug, Clone, Serialize)]
+pub struct OwnerField {
+    pub field: &'static str,
+    pub name: &'static str,
+    /// `None` when the catalog has no code by that name.
+    pub code: Option<String>,
+    pub value: Option<String>,
+    pub confidence: Option<Confidence>,
+    pub available: bool,
+}
+
+pub fn owner_view(snap: &Snapshot) -> Vec<OwnerField> {
+    let cat = snap.catalog.as_ref();
+    OWNER_FIELDS
+        .iter()
+        .map(|(field, name)| {
+            let found = cat.and_then(|c| c.properties.iter().find(|(_, e)| e.name.as_deref() == Some(*name)));
+            let code = found.and_then(|(k, _)| parse_code(k));
+            let row = code.and_then(|c| snap.rows.iter().find(|r| r.code == c));
+            OwnerField {
+                field,
+                name,
+                code: code.map(code_text),
+                value: row.filter(|r| r.available).and_then(|r| r.value.as_ref()).map(|v| match v {
+                    Value::Str(s) => s.clone(),
+                    v => v.key(),
+                }),
+                confidence: found.and_then(|(_, e)| e.confidence),
+                available: row.is_some_and(|r| r.available),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -469,6 +544,16 @@ mod tests {
             fake: true,
             noisy: vec![],
         }
+    }
+
+    #[test]
+    fn owner_fields_map_to_catalog_names() {
+        assert_eq!(owner_field("Copyright"), Some("Copyright"));
+        assert_eq!(owner_field("device-name"), Some("DeviceName"));
+        assert_eq!(owner_field("nickname"), None);
+        let v = owner_view(&snap());
+        assert_eq!(v.len(), OWNER_FIELDS.len());
+        assert!(v.iter().all(|f| f.code.is_none() && !f.available), "the test catalog has none of them");
     }
 
     #[test]

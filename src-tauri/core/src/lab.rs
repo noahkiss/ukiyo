@@ -1,26 +1,31 @@
 //! The Lab: the front ends' side of the connection owner. It mirrors what the owner reports
 //! for the window, writes the session log, and holds the catalog the person labels into.
-//! Front ends reach it through `api`; its events go out as `api::Event`.
+//! Front ends reach it through `api`; its events go out as `api::Event`. It also stores the
+//! plans (`plan`) and applies them: the only path from a front end to a camera write.
+//!
+//! Every line a request writes to the session log names its `actor` (`app`, `cli`,
+//! `mcp:<client>`).
 //!
 //! Files: the catalog lives in the repo's `catalog/` in a dev build (so labels can be
 //! committed), `UKIYO_CATALOG_DIR` when set, else the app data dir. Session logs, dumps and
 //! settings always go to the app data dir.
 
-use crate::api;
+use crate::api::{self, Error, ErrorCode};
 use crate::camera::clock::{Clock, RealClock};
 use crate::camera::fake::{FakeCamera, FakeHandle, FakeMode};
 use crate::camera::owner::{self, ChangeGroup, Config, Event, Link, PropRow, Request, Status, WriteOutcome};
 use crate::camera::ptp::{self, Value};
+use crate::plan::{self, Applied, Plan, PlanInput, Raw, Stored};
 use crate::camera::transport::Connector;
 use crate::camera::usb::UsbConnector;
 use crate::catalog::{Catalog, LabelPatch};
 use crate::serve::OwnerLock;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -89,6 +94,9 @@ pub struct Lab {
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
     /// Held from before the USB open until the owner thread has closed the session.
     lock: Mutex<Option<OwnerLock>>,
+    /// Plans by id, until applied, discarded or expired.
+    plans: Mutex<HashMap<String, Stored>>,
+    next_plan: AtomicU32,
 }
 
 fn wall_ms() -> i64 {
@@ -192,6 +200,8 @@ impl Lab {
             catalog_dir,
             thread: Mutex::new(Some(thread)),
             lock: Mutex::new(Some(lock)),
+            plans: Mutex::new(HashMap::new()),
+            next_plan: AtomicU32::new(1),
         })
     }
 
@@ -217,17 +227,12 @@ impl Lab {
         }
     }
 
-    pub fn write(&self, code: u16, value: Value) -> WriteOutcome {
+    /// One write through the owner, which reads it back; logged with its actor and plan.
+    fn write(&self, code: u16, value: Value, actor: &str, plan_id: &str) -> WriteOutcome {
         let (tx, rx) = std::sync::mpsc::channel();
-        self.send(Request::Write { code, value, reply: Some(tx) });
-        let out = rx.recv_timeout(Duration::from_secs(15)).unwrap_or(WriteOutcome {
-            code,
-            ok: false,
-            result: "no answer from the camera thread".into(),
-            before: None,
-            readback: None,
-        });
-        self.log_line(serde_json::json!({ "kind": "write", "outcome": out }));
+        self.send(Request::Write { code, value, actor: Some(actor.into()), reply: Some(tx) });
+        let out = rx.recv_timeout(Duration::from_secs(15)).unwrap_or_else(|_| WriteOutcome::refused(code, "no answer from the camera thread"));
+        self.log_line(serde_json::json!({ "kind": "write", "actor": actor, "plan": plan_id, "outcome": out }));
         out
     }
 
@@ -235,31 +240,140 @@ impl Lab {
         self.send(Request::SetPinned(codes));
     }
 
-    pub fn keep_awake(&self, on: bool) {
+    pub fn keep_awake(&self, actor: &str, on: bool) {
         self.send(Request::KeepAwake(on));
         let s = Settings { keep_awake: on };
         let _ = std::fs::write(self.data_dir.join("settings.json"), serde_json::to_string_pretty(&s).unwrap_or_default());
+        self.log_line(serde_json::json!({ "kind": "keep_awake", "actor": actor, "on": on }));
     }
 
-    pub fn connect(&self, on: bool) {
+    /// The Lab's connect switch. Off closes the session cleanly (AUTO POWER OFF restored) and
+    /// keeps the owner off USB; on lets the owner look again under its 3 s and 30 s rules.
+    pub fn connect(&self, actor: &str, on: bool) {
         self.send(if on { Request::Connect } else { Request::Disconnect });
+        self.log_line(serde_json::json!({ "kind": "connect", "actor": actor, "on": on }));
     }
 
-    pub fn export(&self) -> Result<String, String> {
+    pub fn export(&self, actor: &str) -> Result<String, Error> {
+        let snap = self.snapshot();
+        plan::ready(&snap)?;
+        let failed = |m: String| Error::new(ErrorCode::Failed, m);
         let (tx, rx) = std::sync::mpsc::channel();
         self.send(Request::Export(tx));
-        let dump = rx.recv_timeout(Duration::from_secs(60)).map_err(|_| "no answer from the camera thread".to_string())??;
+        let dump = rx.recv_timeout(Duration::from_secs(60)).map_err(|_| failed("no answer from the camera thread".into()))?.map_err(failed)?;
         let dir = self.data_dir.join("dumps");
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&dir).map_err(|e| failed(e.to_string()))?;
         let mode = serde_json::to_value(dump.mode).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
         let path = dir.join(format!("{}-{mode}-{}.json", crate::catalog::slug(&dump.model), stamp()));
-        std::fs::write(&path, serde_json::to_string_pretty(&dump).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        self.log_line(serde_json::json!({ "kind": "export", "path": path.display().to_string() }));
+        let text = serde_json::to_string_pretty(&dump).map_err(|e| failed(e.to_string()))?;
+        std::fs::write(&path, text).map_err(|e| failed(e.to_string()))?;
+        self.log_line(serde_json::json!({ "kind": "export", "actor": actor, "path": path.display().to_string() }));
         Ok(path.display().to_string())
     }
 
+    // ---- plans ----
+
+    /// Stores a plan under a fresh id, dropping expired ones.
+    fn store(&self, mut s: Stored) -> Plan {
+        let mut plans = self.plans.lock().unwrap();
+        plans.retain(|_, p| !p.expired());
+        let id = loop {
+            let n = self.next_plan.fetch_add(1, Ordering::Relaxed);
+            let x = (n.wrapping_mul(0x9E37_79B9) ^ std::process::id().wrapping_mul(0x85EB_CA6B) ^ wall_ms() as u32) & 0xFFFF;
+            let id = format!("p-{x:04x}");
+            if !plans.contains_key(&id) {
+                break id;
+            }
+        };
+        s.plan.plan_id = id.clone();
+        let view = s.view();
+        plans.insert(id, s);
+        view
+    }
+
+    /// Builds and stores a plan against the camera now. Writes nothing.
+    pub fn plan(&self, input: PlanInput) -> Result<Plan, Error> {
+        let snap = self.snapshot();
+        let (plan, raw) = plan::build(&snap, &input)?;
+        Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now() }))
+    }
+
+    fn gone(plan_id: &str) -> Error {
+        Error::new(ErrorCode::PlanExpired, format!("no plan {plan_id}: plans last 5 minutes, apply once, and end when ukiyo serve stops")).hint("Make a new plan.")
+    }
+
+    pub fn plan_show(&self, plan_id: &str) -> Result<Plan, Error> {
+        let plans = self.plans.lock().unwrap();
+        plans.get(plan_id).filter(|p| !p.expired()).map(Stored::view).ok_or_else(|| Self::gone(plan_id))
+    }
+
+    pub fn discard(&self, plan_id: &str) -> Result<(), Error> {
+        self.plans.lock().unwrap().remove(plan_id).filter(|p| !p.expired()).map(|_| ()).ok_or_else(|| Self::gone(plan_id))
+    }
+
+    /// Applies a stored plan: re-checks it, writes each step in order (the owner reads each
+    /// back), and stops at the first failed step. Returns the steps, an undo plan for what
+    /// was written, and other codes that changed meanwhile. A plan applies once; a camera
+    /// that cannot take writes now leaves the plan stored, to apply later.
+    pub fn apply(&self, actor: &str, plan_id: &str) -> Result<Applied, Error> {
+        let stored = self.plans.lock().unwrap().remove(plan_id).filter(|p| !p.expired()).ok_or_else(|| Self::gone(plan_id))?;
+        let snap = self.snapshot();
+        if let Err(e) = plan::ready(&snap) {
+            self.plans.lock().unwrap().insert(plan_id.into(), stored);
+            return Err(e);
+        }
+        if let Some(e) = plan::stale(&snap, &stored) {
+            self.log_line(serde_json::json!({ "kind": "apply", "actor": actor, "plan": plan_id, "refused": e.code }));
+            return Err(e);
+        }
+        let since = snap.groups.first().map_or(0, |g| g.id);
+        let mut steps = vec![];
+        let mut undo: Vec<Raw> = vec![];
+        let mut not_attempted = 0;
+        for (i, r) in stored.raw.iter().enumerate() {
+            let out = self.write(r.code, r.after.clone(), actor, plan_id);
+            let link = self.mirror.lock().unwrap().status.link;
+            let step = plan::applied_step(&snap, r, &out, link);
+            if out.rc == Some(ptp::RC_OK) {
+                if let (Some(before), Some(now)) = (r.before.clone(), out.readback.clone()) {
+                    undo.push(Raw { code: r.code, before: Some(now), after: before });
+                }
+            }
+            let ok = step.ok;
+            steps.push(step);
+            if !ok {
+                not_attempted = (stored.raw.len() - i - 1) as u32;
+                break;
+            }
+        }
+        let after = self.snapshot();
+        let planned: Vec<u16> = stored.raw.iter().map(|r| r.code).collect();
+        let side_effects = plan::side_effects(after.catalog.as_ref(), &after.groups, since, &planned);
+        let undo_plan_id = (!undo.is_empty()).then(|| {
+            let steps = undo.iter().map(|r| plan::step_view(&after, r.code, r.before.as_ref(), &r.after, "undo")).collect();
+            let p = Plan {
+                plan_id: String::new(),
+                expires_in_s: 0,
+                requires: stored.plan.requires.clone(),
+                steps,
+                skipped: vec![],
+                blocked: vec![],
+                allow_unconfirmed: true,
+            };
+            self.store(Stored { plan: p, raw: undo, mode: after.status.mode, capture: after.status.capture, created: std::time::Instant::now() }).plan_id
+        });
+        let applied = steps.iter().filter(|s| s.ok).count() as u32;
+        let failed = steps.len() as u32 - applied;
+        let out = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects };
+        self.log_line(serde_json::json!({
+            "kind": "apply", "actor": actor, "plan": plan_id, "applied": out.applied, "failed": out.failed,
+            "not_attempted": out.not_attempted, "undo": out.undo_plan_id,
+        }));
+        Ok(out)
+    }
+
     /// Applies a label and saves the catalog file.
-    pub fn label(&self, patch: LabelPatch) -> Result<Catalog, String> {
+    pub fn label(&self, actor: &str, patch: LabelPatch) -> Result<Catalog, String> {
         let mut m = self.mirror.lock().unwrap();
         let model = m.status.model.clone().or_else(|| m.catalog_model.clone()).ok_or("no camera model known yet")?;
         let datatype = m.rows.get(&patch.code).map(|r| ptp::type_name(r.datatype).to_string());
@@ -280,13 +394,18 @@ impl Lab {
         cat.save(&path).map_err(|e| e.to_string())?;
         let out = cat.clone();
         drop(m);
-        self.log_line(serde_json::json!({ "kind": "label", "patch": patch }));
+        self.log_line(serde_json::json!({ "kind": "label", "actor": actor, "patch": patch }));
         Ok(out)
     }
 
     /// Text the person typed about what they just changed, tied to a change group.
-    pub fn note(&self, group: Option<u32>, text: String) {
-        self.log_line(serde_json::json!({ "kind": "note", "group": group, "text": text }));
+    pub fn note(&self, actor: &str, group: Option<u32>, text: String) {
+        self.log_line(serde_json::json!({ "kind": "note", "actor": actor, "group": group, "text": text }));
+    }
+
+    /// The fake camera's handle, for tests that play the person at the camera.
+    pub fn fake_handle(&self) -> Option<FakeHandle> {
+        self.fake.as_ref().map(|(h, _)| h.clone())
     }
 
     pub fn fake(&self, a: FakeAction) -> Result<(), String> {
@@ -409,7 +528,7 @@ mod tests {
         assert_eq!(snap.status.model.as_deref(), Some("X-T5"));
 
         let cat = lab
-            .label(LabelPatch {
+            .label("test", LabelPatch {
                 code: 0xD1B2,
                 name: Some("JpegHeif".into()),
                 values: vec![("7".into(), "JPEG".into())],
@@ -421,9 +540,12 @@ mod tests {
         assert_eq!(saved.properties["0xd1b2"].values["7"], "JPEG");
         assert_eq!(saved.firmware, ["9.99"]);
 
-        let out = lab.write(0xD023, Value::Int(2));
-        assert!(out.ok, "{out:?}");
-        let path = lab.export().unwrap();
+        let mut set = indexmap::IndexMap::new();
+        set.insert("0xd023".to_string(), "2".to_string());
+        let p = lab.plan(PlanInput { set, allow_unconfirmed: true }).unwrap();
+        let out = lab.apply("test", &p.plan_id).unwrap();
+        assert_eq!(out.applied, 1, "{out:?}");
+        let path = lab.export("test").unwrap();
         let dump: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(dump["model"], "X-T5");
 

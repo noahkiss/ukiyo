@@ -33,9 +33,11 @@ pub fn exit_for(code: &str) -> i32 {
     match code {
         "usage" | "not_found" | "ambiguous" => 2,
         "not_connected" | "camera_asleep" => 3,
-        "busy" | "menu_open" => 4,
+        "busy" | "menu_open" | "owner_conflict" => 4,
         c if c.starts_with("needs_") => 4,
         "unconfirmed_property" | "read_only" | "value_out_of_range" => 5,
+        "plan_stale" | "plan_expired" => 6,
+        "readback_mismatch" => 7,
         _ => 1,
     }
 }
@@ -64,9 +66,10 @@ impl From<Problem> for Fail {
 
 impl From<api::Error> for Fail {
     fn from(e: api::Error) -> Fail {
-        let code = serde_json::to_value(e.code).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| "failed".into());
-        let f = Fail::new(&code, e.message);
-        if code == "unavailable" {
+        let code = e.code.name();
+        let mut f = Fail::new(code, e.message);
+        f.more = Box::new(More { hint: e.hint, walkthrough: e.walkthrough, mode: e.mode });
+        if code == "unavailable" && f.more.hint.is_none() {
             f.hint("ukiyo serve owns the camera; its log is serve.log in the data folder.")
         } else {
             f
@@ -142,7 +145,7 @@ pub fn table(rows: &[Vec<String>]) -> Vec<String> {
 mod tests {
     #[test]
     fn exit_codes() {
-        for (code, exit) in [("usage", 2), ("not_connected", 3), ("camera_asleep", 3), ("needs_tether", 4), ("busy", 4), ("unavailable", 1), ("failed", 1), ("not_found", 2)] {
+        for (code, exit) in [("usage", 2), ("not_connected", 3), ("camera_asleep", 3), ("needs_tether", 4), ("busy", 4), ("unavailable", 1), ("failed", 1), ("not_found", 2), ("unconfirmed_property", 5), ("plan_stale", 6), ("readback_mismatch", 7)] {
             assert_eq!(super::exit_for(code), exit, "{code}");
         }
     }

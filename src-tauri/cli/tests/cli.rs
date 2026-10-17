@@ -1,4 +1,4 @@
-//! The read-only CLI as real processes. Every run uses the fake camera (`UKIYO_FAKE_CAMERA=1`)
+//! The CLI as real processes. Every run uses the fake camera (`UKIYO_FAKE_CAMERA=1`)
 //! in a temp data folder, so the `serve` it spawns never touches USB.
 
 use serde_json::Value;
@@ -270,4 +270,135 @@ fn log_show_reads_the_session() {
     assert_eq!(kinds.last(), Some(&"stop"));
     let o = env.run(&["log", "show"]);
     assert!(text(&o).contains("clean stop"), "{}", text(&o));
+}
+
+/// A plan, then its apply: `--dry-run`, `--yes`, no terminal, `plan show|apply|discard`.
+#[test]
+fn settings_set_goes_through_a_plan() {
+    let env = Env::new();
+    // A known start: AUTO POWER OFF at 5 MIN.
+    let (code, v) = env.json(&["settings", "set", "AutoPowerOff=5 MIN", "--yes"]);
+    assert!(code == 0, "{v}");
+    let pid = env.pid();
+
+    let (code, v) = env.json(&["settings", "set", "AUTO POWER OFF=OFF", "--dry-run"]);
+    assert_eq!(code, 6, "a dry run is not applied: {v}");
+    let plan = &v["data"]["plan"];
+    let id = plan["plan_id"].as_str().unwrap().to_string();
+    assert_eq!(plan["steps"][0]["before"], "5 MIN");
+    assert_eq!(plan["steps"][0]["after"], "OFF");
+    assert_eq!(plan["requires"]["mode"], "tether");
+    assert!(v["data"]["result"].is_null());
+
+    let (code, v) = env.json(&["plan", "show", &id]);
+    assert_eq!((code, v["data"]["plan_id"].as_str()), (0, Some(id.as_str())));
+    // No terminal and no --yes: the plan is shown, not applied.
+    let (code, _) = env.json(&["plan", "apply", &id]);
+    assert_eq!(code, 6);
+    let o = env.run(&["plan", "apply", &id]);
+    assert_eq!(o.status.code(), Some(6));
+    assert!(text(&o).contains("AutoPowerOff  5 MIN -> OFF"), "{}", text(&o));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("no terminal"));
+
+    let (code, v) = env.json(&["plan", "apply", &id, "--yes"]);
+    assert_eq!(code, 0, "{v}");
+    let r = &v["data"]["result"];
+    assert_eq!((r["applied"].as_u64(), r["failed"].as_u64()), (Some(1), Some(0)));
+    assert_eq!(r["steps"][0]["readback"], "OFF");
+    let undo = r["undo_plan_id"].as_str().unwrap().to_string();
+    let (code, v) = env.json(&["plan", "apply", &id, "--yes"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (6, Some("plan_expired")));
+
+    let o = env.run(&["plan", "apply", &undo, "--yes"]);
+    assert_eq!(o.status.code(), Some(0));
+    assert!(text(&o).contains("AutoPowerOff  5 MIN  read back 5 MIN  OK"), "{}", text(&o));
+    assert!(text(&o).contains("Applied 1 of 1. Undo: ukiyo plan apply p-"), "{}", text(&o));
+
+    // Already at the value: nothing to change, exit 0.
+    let o = env.run(&["settings", "set", "AutoPowerOff=5 MIN", "--yes"]);
+    assert_eq!(o.status.code(), Some(0));
+    assert!(text(&o).contains("Nothing to change."));
+    let (code, v) = env.json(&["settings", "set", "AutoPowerOff=OFF", "--dry-run"]);
+    assert_eq!(code, 6);
+    let id = v["data"]["plan"]["plan_id"].as_str().unwrap().to_string();
+    assert_eq!(env.json(&["plan", "discard", &id]).0, 0);
+    assert_eq!(env.json(&["plan", "show", &id]).1["error"]["code"], "plan_expired");
+
+    // Lookups and gates, with their exit codes.
+    let (code, v) = env.json(&["settings", "set", "NoSuchThing=1"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (2, Some("not_found")));
+    let (code, v) = env.json(&["settings", "set", "AutoPowerOff=SOMETIMES"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (2, Some("not_found")));
+    assert!(v["error"]["hint"].as_str().unwrap().contains("OFF (3)"));
+    let (code, v) = env.json(&["settings", "set", "nonsense"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (2, Some("usage")));
+    let (code, v) = env.json(&["settings", "set", "GrainEffect=WEAK SMALL", "--yes"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (5, Some("unconfirmed_property")), "{v}");
+    let (code, v) = env.json(&["settings", "set", "GrainEffect=WEAK SMALL", "--yes", "--allow-unconfirmed"]);
+    assert_eq!(code, 0, "{v}");
+    assert_eq!(v["data"]["plan"]["steps"][0]["gate"], "unconfirmed_allowed");
+
+    // Every write is in the session log with its actor and plan.
+    let (_, log) = env.json(&["log", "show"]);
+    let writes: Vec<&Value> = log["data"]["entries"].as_array().unwrap().iter().filter(|e| e["kind"] == "write").collect();
+    assert_eq!(writes.len(), 4);
+    assert!(writes.iter().all(|w| w["actor"] == "cli" && w["plan"].as_str().is_some_and(|p| p.starts_with("p-"))));
+    assert!(text(&env.run(&["log", "show"])).contains("[cli] 0xd381"));
+
+    // `settings QUERY` still reads; `set` is the only word taken.
+    assert!(text(&env.run(&["settings", "auto", "power"])).contains("AutoPowerOff"));
+    env.finish(pid);
+}
+
+#[test]
+fn owner_strings_are_gated() {
+    let env = Env::new();
+    let (code, v) = env.json(&["owner", "get"]);
+    assert_eq!(code, 0, "{v}");
+    let fields = v["data"]["fields"].as_array().unwrap();
+    assert_eq!(fields.iter().map(|f| f["field"].as_str().unwrap()).collect::<Vec<_>>(), ["copyright", "author", "prefix", "device-name"]);
+    assert_eq!(fields[0]["code"], "0xd215");
+    let (code, v) = env.json(&["owner", "set", "copyright=A. Person", "--yes"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (5, Some("unconfirmed_property")));
+    let (code, v) = env.json(&["owner", "set", "copyright=A. Person", "--yes", "--allow-unconfirmed"]);
+    assert_eq!(code, 0, "{v}");
+    assert_eq!(v["data"]["result"]["steps"][0]["readback"], "A. Person");
+    let (_, v) = env.json(&["owner", "get"]);
+    assert_eq!(v["data"]["fields"][0]["value"], "A. Person");
+    let (code, v) = env.json(&["owner", "set", "nickname=x"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (2, Some("usage")));
+    env.finish(env.pid());
+}
+
+#[test]
+fn connect_disconnect_export_and_notes() {
+    let env = Env::new();
+    // No serve yet: a note has no session to go into, and nothing is started for it.
+    let (code, v) = env.json(&["log", "note", "hello"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (1, Some("unavailable")));
+    let (code, v) = env.json(&["camera", "disconnect"]);
+    assert_eq!((code, v["data"]["serve"].as_bool()), (0, Some(false)));
+    assert!(!paths::socket_path(env.data.path()).exists(), "neither started serve");
+
+    let pid = env.pid();
+    let (code, v) = env.json(&["camera", "export"]);
+    assert_eq!(code, 0, "{v}");
+    assert!(Path::new(v["data"]["path"].as_str().unwrap()).is_file());
+    assert_eq!(env.json(&["log", "note", "turned the dial", "--group", "2"]).0, 0);
+
+    let (code, _) = env.json(&["camera", "disconnect"]);
+    assert_eq!(code, 0);
+    let (_, s) = env.json(&["status"]);
+    assert_eq!(s["data"]["link"], "stopped");
+    let (code, v) = env.json(&["settings", "set", "AutoPowerOff=OFF", "--yes"]);
+    assert_eq!((code, v["error"]["code"].as_str()), (3, Some("not_connected")));
+    assert_eq!(env.json(&["camera", "connect"]).0, 0);
+    wait_until("reconnected", 15, || env.json(&["status"]).1["data"]["link"] == "connected");
+
+    let (_, log) = env.json(&["log", "show"]);
+    let e = log["data"]["entries"].as_array().unwrap();
+    assert!(e.iter().any(|l| l["kind"] == "note" && l["actor"] == "cli" && l["group"] == 2));
+    assert!(e.iter().any(|l| l["kind"] == "export" && l["actor"] == "cli"));
+    assert!(e.iter().any(|l| l["kind"] == "connect" && l["on"] == false));
+    env.finish(pid);
 }

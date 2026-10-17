@@ -9,6 +9,7 @@
 //! - `read`: read-only views (status, settings rows, menus, change groups) for the CLI and MCP.
 //! - `modes`: the USB mode walkthrough.
 //! - `session`: reading the session logs back.
+//! - `plan`: change plans: build, gate, check, and the shapes of an applied plan.
 //! - `serve`: the shared owner (`ukiyo serve`), its socket protocol, and the client.
 
 pub mod api;
@@ -17,6 +18,7 @@ pub mod catalog;
 pub mod lab;
 pub mod modes;
 pub mod paths;
+pub mod plan;
 pub mod read;
 pub mod recipes;
 pub mod serve;

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { Confidence, LabelPatch, PropRow, Value, WriteOutcome } from "../bindings";
+import type { Applied, Confidence, LabelPatch, Plan, PropRow, Value } from "../bindings";
 import { display, formValues, hex, rawText, TYPE_NAMES, valueKey, type Catalog, type Entry } from "../lib/decode";
 import { CloseIcon } from "../shell/icons";
 
@@ -13,8 +13,15 @@ type Props = {
   lastMenu: string;
   connected: boolean;
   onSave: (p: LabelPatch) => void;
-  onWrite: (code: number, v: Value) => Promise<WriteOutcome>;
+  writer: Writer;
   onClose: () => void;
+};
+
+/** Writes go through plans, as in the CLI: make one, show its step, then apply it. */
+export type Writer = {
+  plan: (code: number, v: Value) => Promise<Plan | string>;
+  apply: (planId: string) => Promise<Applied | string>;
+  discard: (planId: string) => void;
 };
 
 const CONFIDENCE: Array<[Confidence, string]> = [
@@ -23,7 +30,7 @@ const CONFIDENCE: Array<[Confidence, string]> = [
   ["guess", "Guess"],
 ];
 
-export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, onSave, onWrite, onClose }: Props) {
+export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, onSave, writer, onClose }: Props) {
   const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(entry?.name ?? "");
   const [menu, setMenu] = useState(entry?.menu ?? lastMenu);
@@ -141,19 +148,26 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
         </div>
         {entry?.source && <p className="muted small">Source: {entry.source}</p>}
       </form>
-      {row && row.writable && row.available && <WriteBox row={row} entry={entry} connected={connected} onWrite={onWrite} />}
+      {row && row.writable && row.available && <WriteBox key={row.code} row={row} entry={entry} connected={connected} writer={writer} />}
     </section>
   );
 }
 
-function WriteBox({ row, entry, connected, onWrite }: { row: PropRow; entry: Entry | undefined; connected: boolean; onWrite: (code: number, v: Value) => Promise<WriteOutcome> }) {
+/** Why a plan has no step: what blocked or skipped it. */
+function planProblem(p: Plan): string | null {
+  if (p.steps.length) return null;
+  const left = p.blocked[0] ?? p.skipped[0];
+  return left ? left.message : "Nothing to write.";
+}
+
+function WriteBox({ row, entry, connected, writer }: { row: PropRow; entry: Entry | undefined; connected: boolean; writer: Writer }) {
   const options = formValues(row);
   const range = row.form.form === "range" ? row.form : null;
   const isString = row.datatype === 0xffff;
   const [choice, setChoice] = useState<string>(valueKey(row.value));
-  const [confirming, setConfirming] = useState(false);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<WriteOutcome | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const chosen: Value | null = (() => {
     if (options.length) return options.find((v) => valueKey(v) === choice) ?? null;
@@ -165,12 +179,42 @@ function WriteBox({ row, entry, connected, onWrite }: { row: PropRow; entry: Ent
   })();
   const same = chosen != null && valueKey(chosen) === valueKey(row.value);
 
-  const go = async () => {
+  const cancel = () => {
+    if (plan) writer.discard(plan.plan_id);
+    setPlan(null);
+  };
+
+  const makePlan = async () => {
     if (!chosen) return;
     setBusy(true);
-    setResult(await onWrite(row.code, chosen));
+    setResult(null);
+    const p = await writer.plan(row.code, chosen);
     setBusy(false);
-    setConfirming(false);
+    if (typeof p === "string") return setResult({ ok: false, text: p });
+    const problem = planProblem(p);
+    if (problem) {
+      writer.discard(p.plan_id);
+      return setResult({ ok: false, text: problem });
+    }
+    setPlan(p);
+  };
+
+  const go = async () => {
+    if (!plan) return;
+    setBusy(true);
+    const a = await writer.apply(plan.plan_id);
+    setBusy(false);
+    setPlan(null);
+    if (typeof a === "string") return setResult({ ok: false, text: a });
+    const s = a.steps[0];
+    if (!s) return setResult({ ok: false, text: "Nothing written" });
+    const back = `read back ${s.readback ?? "nothing"}`;
+    setResult(s.ok ? { ok: true, text: `Written · ${back}` } : { ok: false, text: `Not written: ${s.error ?? s.result} (${s.result}) · ${back}` });
+  };
+
+  const choose = (v: string) => {
+    setChoice(v);
+    cancel();
   };
 
   if (options.length === 1 && !range) return null;
@@ -179,7 +223,7 @@ function WriteBox({ row, entry, connected, onWrite }: { row: PropRow; entry: Ent
       <h3>Write a value</h3>
       <div className="write-row">
         {options.length ? (
-          <select value={choice} onChange={(e) => (setChoice(e.target.value), setConfirming(false))} aria-label="New value">
+          <select value={choice} onChange={(e) => choose(e.target.value)} aria-label="New value">
             {options.map((v) => (
               <option key={valueKey(v)} value={valueKey(v)}>
                 {display(entry, v)}
@@ -194,22 +238,22 @@ function WriteBox({ row, entry, connected, onWrite }: { row: PropRow; entry: Ent
             max={range.max.v}
             step={range.step.v || 1}
             value={choice}
-            onChange={(e) => (setChoice(e.target.value), setConfirming(false))}
+            onChange={(e) => choose(e.target.value)}
             aria-label="New value"
           />
         ) : (
-          <input value={choice} onChange={(e) => (setChoice(e.target.value), setConfirming(false))} aria-label="New value" />
+          <input value={choice} onChange={(e) => choose(e.target.value)} aria-label="New value" />
         )}
-        {!confirming ? (
-          <button type="button" className="btn primary" disabled={!connected || !chosen || same || busy} onClick={() => setConfirming(true)} data-action="write">
+        {!plan ? (
+          <button type="button" className="btn primary" disabled={!connected || !chosen || same || busy} onClick={makePlan} data-action="write">
             Write…
           </button>
         ) : (
           <>
             <button type="button" className="btn primary" disabled={busy} onClick={go} data-action="confirm-write">
-              Write {display(entry, row.value)} → {chosen ? display(entry, chosen) : ""}
+              Write {plan.steps[0].before} → {plan.steps[0].after}
             </button>
-            <button type="button" className="btn text" onClick={() => setConfirming(false)}>
+            <button type="button" className="btn text" onClick={cancel}>
               Cancel
             </button>
           </>
@@ -221,9 +265,10 @@ function WriteBox({ row, entry, connected, onWrite }: { row: PropRow; entry: Ent
           {range.step.kind === "int" && range.step.v > 1 ? `, step ${range.step.v}` : ""}
         </p>
       )}
+      {plan && plan.steps[0].gate !== "ok" && <p className="muted small">Not confirmed in the catalog.</p>}
       {result && (
         <p className={result.ok ? "result ok" : "result bad"} role="status">
-          {result.ok ? "Written" : `Not written: ${result.result}`} · read back {result.readback ? display(entry, result.readback) : "nothing"}
+          {result.text}
         </p>
       )}
     </section>

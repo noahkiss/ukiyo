@@ -9,8 +9,6 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 /** Commands */
 export const commands = {
 	labSnapshot: () => __TAURI_INVOKE<Snapshot_Serialize>("lab_snapshot"),
-	/**  Writes one property and returns the read-back. */
-	labWrite: (code: number, value: Value) => typedError<WriteOutcome, string>(__TAURI_INVOKE("lab_write", { code, value })),
 	labPin: (codes: number[]) => __TAURI_INVOKE<void>("lab_pin", { codes }),
 	labKeepAwake: (on: boolean) => __TAURI_INVOKE<void>("lab_keep_awake", { on }),
 	labConnect: (on: boolean) => __TAURI_INVOKE<void>("lab_connect", { on }),
@@ -20,6 +18,11 @@ export const commands = {
 	labFake: (action: FakeAction) => typedError<null, string>(__TAURI_INVOKE("lab_fake", { action })),
 	/**  Parses pasted recipe text into slot settings, notes and per-field warnings. */
 	recipeParse: (text: string) => __TAURI_INVOKE<Parsed_Serialize>("recipe_parse", { text }),
+	/**  Builds a plan: setting names or `0x` codes to value labels or raw values. Writes nothing. */
+	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean) => typedError<Plan, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed })),
+	/**  Applies a plan: re-checks it, writes each step, reads each back. */
+	planApply: (planId: string) => typedError<Applied, string>(__TAURI_INVOKE("plan_apply", { planId })),
+	planDiscard: (planId: string) => __TAURI_INVOKE<void>("plan_discard", { planId }),
 };
 
 /** Events */
@@ -36,6 +39,36 @@ export type Alternative = {
 	sensor: string,
 	label: string,
 	value: string,
+};
+
+export type Applied = {
+	plan_id: string,
+	applied: number,
+	failed: number,
+	not_attempted: number,
+	/**  A plan that writes back what this one changed. Apply it to revert. */
+	undo_plan_id: string | null,
+	steps: AppliedStep[],
+	/**  Other codes that changed while the plan was applied. */
+	side_effects: ChangeView[],
+};
+
+/**  One step as applied. */
+export type AppliedStep = {
+	code: string,
+	name: string | null,
+	wanted: string,
+	/**  The value read back right after the write; `None` when the read failed. */
+	readback: string | null,
+	wanted_value: RawValue,
+	readback_value: RawValue | null,
+	ok: boolean,
+	/**  The camera's answer (`OK`, `DeviceBusy`), or why nothing was sent. */
+	result: string,
+	/**  The typed error of a failed step: `readback_mismatch`, `busy`, `menu_open` ... */
+	error: ErrorCode | null,
+	/**  Writes sent: more than 1 when the camera answered busy first. */
+	attempts: number,
 };
 
 export type Capture = "stills" | "movie";
@@ -123,6 +156,11 @@ export type ChangeGroup = {
 	at: number | null,
 	source: ChangeSource,
 	changes: Change[],
+	/**
+	 *  Who asked for the write (`app`, `cli`, `mcp:<client>`); `None` for a camera change
+	 *  and for the owner's own writes (keep-awake).
+	 */
+	actor?: string | null,
 };
 
 export type ChangeSource = 
@@ -130,6 +168,16 @@ export type ChangeSource =
 "camera" | 
 /**  The read-back after a write from the app. */
 "write";
+
+/**  One change in a group, with its catalog name and labels. */
+export type ChangeView = {
+	code: string,
+	name: string | null,
+	old: RawValue | null,
+	new: RawValue | null,
+	old_label: string | null,
+	new_label: string | null,
+};
 
 export type Confidence = "confirmed" | "likely" | "guess";
 
@@ -170,6 +218,35 @@ export type Entry_Serialize = {
 	modes?: string[],
 	notes?: string | null,
 };
+
+/**  Why a request failed (docs/agent-interface.md, section 5, "Typed errors"). */
+export type ErrorCode = 
+/**  The request ran and did not succeed; the message says why. */
+"failed" | 
+/**  A fake-camera method in a session with the real camera. */
+"no_fake_camera" | 
+/**  A socket line that is not a known request (`serve::wire`). */
+"bad_request" | 
+/**  No `ukiyo serve` to answer: it did not start, or the connection dropped mid-request. */
+"unavailable" | 
+/**  No camera on the bus, or the Lab's connect switch is off. */
+"not_connected" | 
+/**  Auto power off took the camera off USB. */
+"camera_asleep" | 
+/**  The camera answered 0x2019 for longer than the owner retries. */
+"busy" | 
+/**  A menu is open on the camera. */
+"menu_open" | "needs_tether" | "needs_rawconv" | "needs_stills" | "needs_movie" | 
+/**  A process outside ukiyo holds the USB device. */
+"owner_conflict" | 
+/**  The catalog does not mark the code `confirmed`, and the plan does not allow it. */
+"unconfirmed_property" | "read_only" | "value_out_of_range" | "not_found" | "ambiguous" | 
+/**  A planned code changed since the plan was made. */
+"plan_stale" | 
+/**  No such plan: expired (5 minutes), applied, discarded, or `serve` restarted. */
+"plan_expired" | 
+/**  The write was accepted but the camera holds another value. */
+"readback_mismatch";
 
 /**  What the person at the fake camera does (`UKIYO_FAKE_CAMERA=1` only). */
 export type FakeAction = "openMenu" | "closeMenu" | "movie" | "stills" | "powerOff" | "powerOn" | "unplug" | "nudge" | "autoOn" | "autoOff";
@@ -220,6 +297,20 @@ export type LabelPatch = {
 	notes: string | null,
 };
 
+/**  A requested change the plan will not make. */
+export type Left = {
+	code: string,
+	name: string | null,
+	/**  The value asked for, as given. */
+	value: string,
+	/**
+	 *  An error code (`needs_movie`, `unconfirmed_property`, `value_out_of_range`,
+	 *  `read_only` ...) or `unchanged`.
+	 */
+	reason: string,
+	message: string,
+};
+
 /**  Where the connection stands. */
 export type Link = 
 /**  No camera on the bus; looking every 3 s. */
@@ -265,6 +356,18 @@ export type Parsed_Serialize = {
 	alternatives?: Alternative[],
 	/**  The sensor the first value is for, when the text names it. */
 	sensor?: string | null,
+};
+
+export type Plan = {
+	plan_id: string,
+	expires_in_s: number,
+	requires: Requires,
+	steps: Step[],
+	/**  Not written in this camera state, or already at the value. */
+	skipped: Left[],
+	/**  Refused by a gate. */
+	blocked: Left[],
+	allow_unconfirmed: boolean,
 };
 
 /**
@@ -349,6 +452,12 @@ export type Publication_Serialize = {
 	differs?: string[],
 };
 
+/**
+ *  A value as plain JSON, typed for the window: a number, a string, an array of numbers, or
+ *  `"0x<hex>"` for bytes of an unknown datatype. The same JSON as [`raw_json`].
+ */
+export type RawValue = number | string | number[];
+
 /**  `catalog/recipes/catalog.json`. */
 export type RecipeCatalog = RecipeCatalog_Serialize | RecipeCatalog_Deserialize;
 
@@ -379,6 +488,13 @@ export type RedditCount = {
 	threads: number,
 	/**  The threads' scores, summed. */
 	score: number,
+};
+
+/**  The camera state a plan was made in, and needs at apply. */
+export type Requires = {
+	/**  `tether`, `rawconv` ... (`ukiyo help modes`). */
+	mode: string | null,
+	capture: Capture | null,
 };
 
 export type Screen = "shooting" | "playback" | "menu" | "unknown";
@@ -523,6 +639,24 @@ export type Status = {
 	keepAwake: KeepAwake,
 };
 
+/**  One write the plan will make. */
+export type Step = {
+	code: string,
+	name: string | null,
+	menu: string | null,
+	/**  The value now, as the camera shows it. */
+	before: string,
+	after: string,
+	before_value: RawValue | null,
+	after_value: RawValue,
+	confidence: Confidence | null,
+	/**
+	 *  `ok`; `unconfirmed_allowed` when only the plan's flag lets it through; `undo` in an
+	 *  undo plan.
+	 */
+	gate: string,
+};
+
 export type Usb = {
 	vendor: string,
 	product: string,
@@ -564,15 +698,6 @@ export type WarningKind =
 "unlabelled" | 
 /**  A setting given twice; the first value is kept. */
 "duplicate";
-
-export type WriteOutcome = {
-	code: number,
-	ok: boolean,
-	/**  The response code's name, or why nothing was sent. */
-	result: string,
-	before: Value | null,
-	readback: Value | null,
-};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

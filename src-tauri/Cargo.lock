@@ -4337,6 +4337,7 @@ dependencies = [
 name = "ukiyo"
 version = "0.1.0"
 dependencies = [
+ "indexmap 2.14.2",
  "serde",
  "serde_json",
  "specta",
@@ -4355,6 +4356,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
+ "indexmap 2.14.2",
  "libc",
  "serde",
  "serde_json",

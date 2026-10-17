@@ -5,7 +5,6 @@ use super::server::{Options, Server, StartError};
 use super::*;
 use crate::api::{ErrorCode, Event, Request, Response};
 use crate::camera::owner::Link;
-use crate::camera::ptp::Value;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -101,6 +100,15 @@ fn two_serves_one_wins() {
     assert!(!crate::paths::socket_path(d.data.path()).exists(), "idle exit removes the socket");
 }
 
+/// One write, the only way there is: a plan, then its apply.
+fn write_via_plan(c: &Client, code: &str, value: &str) -> crate::plan::Applied {
+    let mut set = indexmap::IndexMap::new();
+    set.insert(code.to_string(), value.to_string());
+    let Response::PlanCreate(p) = c.call(Request::PlanCreate { set, allow_unconfirmed: true }).unwrap() else { panic!() };
+    let Response::PlanApply(out) = c.call(Request::PlanApply { plan_id: p.plan_id.clone() }).unwrap() else { panic!() };
+    *out
+}
+
 #[test]
 fn requests_and_errors_over_the_socket() {
     let d = dirs();
@@ -114,8 +122,8 @@ fn requests_and_errors_over_the_socket() {
     let w = c.welcome().unwrap();
     assert!(w.fake);
     assert_eq!((w.protocol, w.pid), (wire::PROTOCOL, std::process::id()));
-    let Response::LabWrite(out) = c.call(Request::LabWrite { code: 0xD023, value: Value::Int(2) }).unwrap() else { panic!() };
-    assert!(out.ok, "{out:?}");
+    let out = write_via_plan(&c, "0xd023", "2");
+    assert_eq!(out.applied, 1, "{out:?}");
     assert!(matches!(c.call(Request::LabPin { codes: vec![0xD023] }).unwrap(), Response::LabPin));
     let Response::LabExport(path) = c.call(Request::LabExport).unwrap() else { panic!() };
     assert!(Path::new(&path).is_file());
@@ -175,8 +183,10 @@ fn events_reach_every_subscriber() {
     for log in &seen {
         log.lock().unwrap().clear();
     }
-    let Response::LabWrite(out) = cli.call(Request::LabWrite { code: 0xD023, value: Value::Int(3) }).unwrap() else { panic!() };
-    assert!(out.ok, "{out:?}");
+    let out = write_via_plan(&cli, "0xd023", "3");
+    assert_eq!(out.applied, 1, "{out:?}");
+    let log = std::fs::read_to_string(crate::session::files(d.data.path()).pop().unwrap()).unwrap();
+    assert!(log.lines().any(|l| l.contains("\"kind\":\"write\"") && l.contains("\"actor\":\"cli\"")), "the write names its client's actor: {log}");
     for (i, log) in seen.iter().enumerate() {
         wait_until(&format!("subscriber {i} hears status and the write's change group"), 5, || {
             let l = log.lock().unwrap();
