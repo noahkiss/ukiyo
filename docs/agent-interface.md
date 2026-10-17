@@ -840,7 +840,7 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    `library_save`, `library_delete`. The Settings and Hub pages switch from fixtures.
 7. **Recipes.** The user recipe library, catalogue search, `recipe_parse` with URLs, slot reads,
    and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`.
-8. **Packaging,** on QuadCam's pattern (`~/develop/quadcam`, its cask in the owner's tap):
+8. **Packaging,** on the pattern of [QuadCam](https://github.com/noahkiss/quadcam) (its cask in the owner's tap):
    - `ukiyo-cli` is an `externalBin` in `Contents/MacOS/`, beside the app's own binary
      (`ukiyo`). The app may then spawn it as `serve` instead of itself; either works.
    - The cask in the tap installs the whole thing: `app "Ukiyo.app"`, `binary
