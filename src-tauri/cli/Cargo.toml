@@ -1,7 +1,7 @@
 [package]
 name = "ukiyo-cli"
 version = "0.1.0"
-description = "The ukiyo command line tool: today only `serve`, the shared camera owner"
+description = "The ukiyo command line tool: status, settings, the change feed, the catalog and the session log, plus `serve`, the shared camera owner"
 edition = "2021"
 license = "MIT"
 rust-version = "1.89"
@@ -15,7 +15,11 @@ path = "src/main.rs"
 
 [dependencies]
 ukiyo-core = { path = "../core" }
+clap = { version = "4.6", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+libc = "0.2"
+chrono = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
-libc = "0.2"

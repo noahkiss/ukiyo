@@ -25,7 +25,7 @@ pub enum LockError {
 impl std::fmt::Display for LockError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LockError::Held => f.write_str("another ukiyo serve owns the camera (owner.lock is held)"),
+            LockError::Held => f.write_str("another process owns the camera (owner.lock is held by another ukiyo serve or a tools/ptp script)"),
             LockError::Io(e) => write!(f, "owner.lock: {e}"),
         }
     }

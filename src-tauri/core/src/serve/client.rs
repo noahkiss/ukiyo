@@ -236,6 +236,9 @@ impl Client {
         let lock_file = paths::lock_path(&self.opts.data_dir);
         let deadline = Instant::now() + self.opts.wait;
         let mut spawned = false;
+        // The lock held and the socket silent the whole wait: an owner that is stuck, or a
+        // `tools/ptp` script holding the camera.
+        let mut held_throughout = true;
         loop {
             if let Ok(stream) = UnixStream::connect(&socket) {
                 match self.handshake(stream) {
@@ -246,7 +249,9 @@ impl Client {
                     Err(_) => {}
                 }
             }
-            if !spawned && lock::is_free(&lock_file) {
+            let free = lock::is_free(&lock_file);
+            held_throughout &= !free;
+            if !spawned && free {
                 let Some(spawn) = &self.opts.spawn else {
                     return Err(wire::unavailable("ukiyo serve is not running"));
                 };
@@ -265,6 +270,13 @@ impl Client {
                 spawn().map_err(|e| wire::unavailable(format!("could not start ukiyo serve: {e}")))?;
             }
             if Instant::now() >= deadline {
+                if held_throughout && !spawned {
+                    return Err(wire::unavailable(format!(
+                        "{} is held but nothing answers on {}: another process owns the camera (a tools/ptp script, or a ukiyo serve that is stuck)",
+                        lock_file.display(),
+                        socket.display()
+                    )));
+                }
                 return Err(wire::unavailable(format!("ukiyo serve did not answer on {} within {} s", socket.display(), self.opts.wait.as_secs())));
             }
             std::thread::sleep(Duration::from_millis(25));

@@ -53,7 +53,7 @@ pub enum StartError {
 impl std::fmt::Display for StartError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StartError::Owned => f.write_str("another ukiyo serve owns the camera"),
+            StartError::Owned => f.write_str("another process owns the camera (owner.lock is held by another ukiyo serve or a tools/ptp script)"),
             StartError::Io(e) => write!(f, "{e}"),
         }
     }

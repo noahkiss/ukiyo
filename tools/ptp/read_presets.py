@@ -13,6 +13,8 @@ import sys
 import usb.core
 import usb.util
 
+import owner_lock
+
 VENDOR = 0x04CB
 NAMES = {
     0xD18D: "Name", 0xD18E: "ImageSize", 0xD18F: "ImageQuality", 0xD190: "DynamicRange%",
@@ -27,6 +29,7 @@ NAMES = {
 
 class PTP:
     def __init__(self):
+        owner_lock.hold()  # before any USB access; refuses while Ukiyo owns the camera
         self.dev = usb.core.find(idVendor=VENDOR)
         if self.dev is None:
             sys.exit("no Fujifilm camera found")

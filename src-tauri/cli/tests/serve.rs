@@ -64,7 +64,7 @@ fn two_serve_processes_one_owner() {
     assert_eq!(owner, winner.id());
     let (code, err) = stderr(loser);
     assert_eq!(code, 1, "{err}");
-    assert!(err.contains("another ukiyo serve owns the camera"), "{err}");
+    assert!(err.contains("another process owns the camera"), "{err}");
 
     c.close();
     let (code, err) = stderr(winner);

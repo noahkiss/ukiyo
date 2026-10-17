@@ -6,12 +6,18 @@
 //! - `lab`: the mirror of the owner's state, the session log, export and labels.
 //! - `api`: the requests, responses and events every front end speaks.
 //! - `paths`: the data folder, `owner.lock` and `ukiyo.sock`.
+//! - `read`: read-only views (status, settings rows, menus, change groups) for the CLI and MCP.
+//! - `modes`: the USB mode walkthrough.
+//! - `session`: reading the session logs back.
 //! - `serve`: the shared owner (`ukiyo serve`), its socket protocol, and the client.
 
 pub mod api;
 pub mod camera;
 pub mod catalog;
 pub mod lab;
+pub mod modes;
 pub mod paths;
+pub mod read;
 pub mod recipes;
 pub mod serve;
+pub mod session;

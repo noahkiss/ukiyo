@@ -1,7 +1,8 @@
 # Agent interface: CLI and MCP
 
 A design for the `ukiyo` command line tool and its MCP server. Stage 1 (the core crate and
-`api`) and stage 2 (the shared owner, `ukiyo serve`) are built; the rest is not (section 8). The
+`api`), stage 2 (the shared owner, `ukiyo serve`) and stage 3 (the read-only CLI) are built;
+the rest is not (section 8). The
 bm task is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool
 surface, search then read, and plan then apply for every camera write.
 
@@ -38,7 +39,10 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
 - The core holds `camera/`, `catalog.rs`, `recipes/` (with `examples/recipes_refresh.rs`),
   `lab.rs`, `paths.rs` (the data folder, its move from `app.ukiyo`, `owner.lock`, `ukiyo.sock`)
   and `serve/` (the shared owner, its socket protocol and the client; "One USB owner" below).
-  Three more modules are planned or built:
+  Stage 3 added `read.rs` (the read-only views: status, settings rows, menus, change groups,
+  and why the camera cannot answer), `modes.rs` (the USB mode walkthrough) and `session.rs`
+  (reading the session logs back). The CLI prints them; the MCP server will return the same
+  shapes. Three more modules are planned or built:
   - `library` (stage 6): presets, favourites, snapshots, user recipes, camera history, and
     preferences.
   - `plan` (stage 4): builds, checks and applies multi-property changes.
@@ -126,8 +130,10 @@ Rules:
 6. Each connection names its `actor` (`app`, `cli`, `mcp:<client name>`) in `hello`. Stage 4
    writes it into the session log and the events, so the window can show "changed by an
    agent".
-7. Nothing else touches USB. `tools/ptp/` scripts check `owner.lock` and refuse to run while
-   it is held.
+7. Nothing else touches USB. `tools/ptp/` scripts take `owner.lock` (`tools/ptp/owner_lock.py`,
+   called before any USB access) and refuse to run while it is held. A script keeps the lock
+   until it exits, so `serve` cannot start meanwhile; a client then reports that the lock is
+   held but nothing answers.
 
 In code, `Lab::start` takes the held `OwnerLock`, so no path opens USB without the lock.
 
@@ -187,7 +193,7 @@ ukiyo status                                   link, mode, model, battery, card,
 ukiyo camera  watch [--code C]... [--for 60s]  the change feed, live
               connect | disconnect             the Lab's connect switch
               export                           write a full dump to dumps/
-ukiyo settings [QUERY] [--menu PATH] [--code C]... [--favourites] [--unnamed] [--menus]
+ukiyo settings [QUERY] [--menu PATH] [--code C]... [--favourites] [--unnamed] [--unconfirmed] [--menus]
               set NAME=VALUE...                one or more settings, through a plan
               fav add|rm NAME...
 ukiyo presets ls | show ID | save NAME [--from-snapshot ID | NAME...] | apply ID | rm ID
@@ -198,7 +204,7 @@ ukiyo recipes ls [QUERY] [--catalogue] [--sensor S] [--sim F]
               slots                            read C1-C7 (RAW CONV. mode)
               write SLOT ID                    write a recipe to a slot, through a plan
 ukiyo owner   get | set FIELD=VALUE...         copyright, author, prefix, device-name
-ukiyo catalog show [CODE] | label CODE [--name N] [--menu M] [--value K=LABEL]...
+ukiyo catalog show [CODE] [--model M] | label CODE [--name N] [--menu M] [--value K=LABEL]...
                                 [--confidence C] [--notes T]
 ukiyo prefs   get | set KEY=VALUE...           theme, brand-mark, app-icon, keep-awake
 ukiyo plan    show ID | apply ID | discard ID
@@ -215,7 +221,7 @@ ukiyo serve [--idle-exit S]                    the headless owner (spawned on de
 
 | Flag | Effect |
 |---|---|
-| `--json` | One JSON document on stdout, nothing else. Errors too. |
+| `--json` | One JSON document on stdout, nothing else. Errors too. `camera watch` is the exception: one JSON object per line. |
 | `--dry-run` | Build and print the plan; apply nothing. Only on commands that write. |
 | `--yes` | Apply a plan without the y/N prompt. Without a TTY and without `--yes`, a write prints the plan and exits 6. |
 | `--allow-unconfirmed` | Lets a plan include properties whose catalog confidence is not `confirmed`. |
@@ -237,10 +243,25 @@ Every command returns one envelope:
 `data` uses the same shapes as the MCP `structuredContent` in section 4. Key shapes:
 
 ```jsonc
-// status
+// status (link, mode, capture and screen use the window's names: "rawConv", "cardReader")
 { "link": "connected", "reason": null, "model": "X-T5", "firmware": "x.yy", "mode": "tether",
-  "capture": "stills", "screen": "shooting", "battery": "...", "card": "...", "lens": "...",
-  "owner": "app", "available": { "settings": true, "slots": false, "movie_props": false } }
+  "capture": "stills", "screen": "shooting", "battery": null, "card": null, "lens": null,
+  "owner": "serve", "pid": 4242, "fake": false, "keep_awake": false,
+  "available": { "settings": true, "slots": false, "movie_props": false } }
+
+// settings
+{ "rows": [ { "code": "0xd381", "name": "AutoPowerOff", "menu": "SET UP > POWER MANAGEMENT > AUTO POWER OFF",
+              "value": 1, "value_label": "5 MIN", "options": [ { "value": 1, "label": "5 MIN" } ],
+              "writable": true, "confidence": "confirmed", "available": true } ],
+  "total": 1, "has_more": false }
+// settings --menus
+{ "menus": [ { "path": "SET UP > POWER MANAGEMENT", "depth": 1, "count": 1 } ] }
+
+// camera watch: one object per line, a status first, then every change group
+{ "event": "status", "data": { ...the status shape } }
+{ "event": "changes", "data": { "id": 12, "at": 1792266821137.0, "source": "camera",
+  "changes": [ { "code": "0xd381", "name": "AutoPowerOff", "old": 1, "new": 3,
+                 "old_label": "5 MIN", "new_label": "OFF" } ] } }
 
 // a plan (settings set, presets apply, snapshots restore, recipes write, owner set)
 { "plan_id": "p-7f3a", "expires_in_s": 300, "requires": { "mode": "tether", "capture": "stills" },
@@ -257,6 +278,9 @@ Every command returns one envelope:
 
 ### Exit codes
 
+The error codes are section 5's, plus `usage` (exit 2), `unavailable` (no `serve` answered,
+exit 1) and `not_built` (a flag for a later stage, exit 1).
+
 | Code | Meaning |
 |---|---|
 | 0 | Done. |
@@ -272,12 +296,20 @@ Every command returns one envelope:
 
 ```console
 $ ukiyo status
-X-T5 · tether, stills, shooting · battery ... · owner: app
+X-T5 · firmware 9.99 · tether, stills, shooting · owner: serve (pid 4242)
 Works now: settings, presets, snapshots, owner strings, Lab
 Needs RAW CONV.: recipe slots (ukiyo help modes rawconv)
+Needs MOVIE: movie settings (ukiyo help modes movie)
 
-$ ukiyo settings "eye focus"
-AF/MF > FACE/EYE DETECTION SETTING   FaceEyeDetection   Face on, eye auto   confirmed
+$ ukiyo settings power off
+0xd364  CustomAutoPowerOff  0      likely
+    range: 0 to 255, step 1
+0xd381  AutoPowerOff        2 MIN  confirmed  SET UP > POWER MANAGEMENT > AUTO POWER OFF
+    options: 5 MIN (1), 2 MIN (2), OFF (3), 1 MIN (4), 30 SEC (5), 15 SEC (6)
+
+$ ukiyo camera watch
+15:53:35  status  connected, X-T5, tether, stills, shooting
+15:53:36  camera #15  0xd171 FocusPosition  119 -> 126
 
 $ ukiyo settings set "AUTO POWER OFF=OFF" --dry-run
 Plan p-7f3a (expires in 5 min), needs tether + stills
@@ -296,6 +328,39 @@ $ echo $?
 $ ukiyo snapshots save before-trip && ukiyo snapshots diff before-trip
 12 settings differ from the camera ...
 ```
+
+### The read-only commands as built (stage 3)
+
+`cli/src/` in `src-tauri/`: `main.rs` (clap), `cmds.rs`, `conn.rs` (the socket client),
+`out.rs` (envelope, errors, exit codes). Tests: `cli/tests/cli.rs`.
+
+- **Camera reads go through `serve`.** `status`, `settings` and `camera watch` connect to
+  `ukiyo.sock` as actor `cli` and spawn `serve` (this binary) when none runs, so they work
+  with the app open or closed. A command that just started `serve`, or finds a connect in
+  progress, waits up to 8 s for the link to settle. Then it disconnects, and `serve` idles out
+  120 s later. The CLI refuses a data folder whose socket path is longer than macOS allows
+  (103 bytes), with exit 2.
+- **`status` exits 0** whenever `serve` answered, camera or not; `link` and `reason` say where
+  the camera stands. `battery` and `card` show the catalog's BatteryLevel and CaptureRemaining
+  rows when the camera reports them (raw values; both are `likely`, and the X-T5 reads them
+  in movie mode only). `lens` stays `null`: D36D carries the lens name with its serial.
+- **`settings` needs tether mode** (`needs_tether`, exit 4), except with `--code`, which reads
+  any connected mode, like the Lab's table. No camera is exit 3. `QUERY` words must all appear
+  in the code, the name (CamelCase split into words), the menu path or the notes; keywords
+  ("eye focus" finding FACE/EYE DETECTION) need catalog keywords, which do not exist yet.
+  `--menu` is a path prefix. `options` appear when 10 rows or fewer match. `--favourites`
+  fails with `not_built` until the library (stage 6).
+- **`camera watch`** subscribes and prints a status line, then every change group, until
+  Ctrl-C (a clean exit 0) or `--for`. A status line repeats when the link, mode, capture or
+  screen changes. `--code` filters the output; it does not pin, because the owner's pinned set
+  is shared and would replace the window's pins. Per-client pins come with stage 4.
+- **Local reads need no `serve`.** `catalog show` reads the catalog folder (as `serve` does:
+  `UKIYO_CATALOG_DIR`, the repo's `catalog/` in a dev build, else the data folder). Its model
+  is `--model`, else the camera's when a `serve` already runs (it never spawns one), else the
+  only catalog there. `CODE` is a code or a catalog name. `log show` reads
+  `sessions/*.jsonl`: the newest session, or with `--since` (`10m`, `2h`, `2026-10-17`,
+  `"2026-10-17 14:30"`, RFC 3339) every line since then; `--json` gives each line as written,
+  plus `session`. `help modes` prints `modes.rs`.
 
 ## 4. MCP
 
@@ -330,7 +395,7 @@ Reports the connection, the USB mode, and which features work in that mode.
 - Best for: the first call in any camera task, and after any `needs_*` error.
 - Input: `{ history?: boolean }`.
 - Returns: link, reason, model, firmware, mode, capture, screen, battery, card space, lens,
-  owner process (`app` or `serve`), and `available` per feature with the missing requirement.
+  the owner (`serve`, its pid, fake or real camera), and `available` per feature with the missing requirement.
   With `history: true`: shot counts per day and month, lenses seen, the connect log.
 - Not for property values: use `settings_read`.
 
@@ -614,7 +679,9 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    `core/src/serve/`, `src-tauri/cli/`, section 2. The `tools/ptp/` lock check stays in stage 3.
 3. **Read-only CLI.** `status`, `settings` (read), `camera watch`, `catalog show`, `log show`,
    `help modes`, `--json` and exit codes, working with the app open or closed. `tools/ptp/`
-   scripts check the lock.
+   scripts check the lock. Done 2026-10-17: section 3, "The read-only commands as built".
+   Left for later: `settings --favourites` (stage 6), per-client pins for `camera watch
+   --code` (stage 4), `lens` in `status`, and search keywords in the catalog.
 4. **Plans and gated writes.** The `plan` module, typed errors, the `actor` field in the
    session log. CLI: `settings set`, `owner`, `plan`, `camera connect|disconnect|export`,
    `log note`. The window's Lab write box moves onto plans too.
