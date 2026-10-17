@@ -1,0 +1,112 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.9451,0.89412,0.80392,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.05098,0.05882,0.06667,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Centre",
+      "layers": [
+        {
+          "name": "centre",
+          "image-name-specializations": [
+            {
+              "value": "centre-light.png"
+            },
+            {
+              "appearance": "dark",
+              "value": "centre-dark.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular": true
+    },
+    {
+      "name": "Blades",
+      "layers": [
+        {
+          "name": "blades",
+          "image-name-specializations": [
+            {
+              "value": "blades-light.png"
+            },
+            {
+              "appearance": "dark",
+              "value": "blades-dark.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular": true
+    },
+    {
+      "name": "Enso",
+      "layers": [
+        {
+          "name": "enso",
+          "image-name-specializations": [
+            {
+              "value": "enso-light.png"
+            },
+            {
+              "appearance": "dark",
+              "value": "enso-dark.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular-specializations": [
+        {
+          "value": false
+        },
+        {
+          "appearance": "tinted",
+          "value": true
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

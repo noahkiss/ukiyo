@@ -13,6 +13,8 @@
 #                  the default rendition, on the macOS icon grid, for the window icon
 #                  and other platforms
 # Run it after any change to AppIcon.icon, and commit the outputs.
+# The Appearance alternates in src-tauri/icons/alternates/ (tools/art/app_icon_alternates.py)
+# are sources only; nothing compiles or ships them yet.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
