@@ -60,7 +60,7 @@ cd ../app && pnpm build
 | `tools/catalog/seed_xt5.py` | Seeds `catalog/x-t5.json` and the fake camera's shape from local dumps |
 
 The app writes session logs (`sessions/*.jsonl`), exports (`dumps/`) and `settings.json` to
-`~/Library/Application Support/app.ukiyo/`. In a dev build, labels go to the repo's
+`~/Library/Application Support/com.nkmkdigital.ukiyo/`. In a dev build, labels go to the repo's
 `catalog/` so they can be committed; `UKIYO_CATALOG_DIR` points them elsewhere.
 
 ## Credits

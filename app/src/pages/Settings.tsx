@@ -62,7 +62,7 @@ export function Settings({ sub }: { sub: string | null }) {
 
   return (
     <div className="page settings" data-component="settings">
-      <PageHead title="Settings" sub={section === APPEARANCE ? "How ukiyo looks on this Mac." : "The camera's menus. A change writes to the camera at once."}>
+      <PageHead title="Settings" sub={section === APPEARANCE ? "How Ukiyo looks on this Mac." : "The camera's menus. A change writes to the camera at once."}>
         <CameraChip />
         <button type="button" className="btn" onClick={() => notBuilt("Snapshots")}>
           <CameraIcon />

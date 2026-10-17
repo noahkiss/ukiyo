@@ -9,7 +9,7 @@ import { cameraArt } from "../assets/camera";
 const MODES = [
   { id: "tether", name: "USB TETHER SHOOTING FIXED", tag: "Hub, Settings, Lab", text: "Read and change settings. The camera keeps working." },
   { id: "rawConv", name: "USB RAW CONV./BACKUP RESTORE", tag: "Recipes", text: "Read and write slots C1 to C7. The camera is locked until you unplug." },
-  { id: "cardReader", name: "USB CARD READER", tag: "Not supported", text: "Files only. ukiyo cannot read settings in this mode." },
+  { id: "cardReader", name: "USB CARD READER", tag: "Not supported", text: "Files only. Ukiyo cannot read settings in this mode." },
 ] as const;
 
 /** How to set the camera's USB mode, and where the connection stands now. */
@@ -24,7 +24,7 @@ export function Connect() {
 
   return (
     <div className="page connect" data-component="connect" data-state={state}>
-      <PageHead title="Connect your camera" sub="Set the USB mode on the camera first. ukiyo can't change it for you." />
+      <PageHead title="Connect your camera" sub="Set the USB mode on the camera first. Ukiyo can't change it for you." />
 
       {state === "wrongMode" && (
         <div className="banner warn big" role="status">
@@ -85,7 +85,7 @@ export function Connect() {
             <span className="step-n" aria-hidden="true">4</span>
             <div className="step-body">
               <span className="step-title">Plug the cable into this Mac</span>
-              <span className="small muted">ukiyo finds the camera on its own.</span>
+              <span className="small muted">Ukiyo finds the camera on its own.</span>
             </div>
           </li>
         </ol>

@@ -44,7 +44,7 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
 AGENTS.md says one process owns the USB connection. The design keeps that rule with a lock file
 and a socket.
 
-| File (in `~/Library/Application Support/app.ukiyo/`) | Purpose |
+| File (in `~/Library/Application Support/com.nkmkdigital.ukiyo/`) | Purpose |
 |---|---|
 | `owner.lock` | An exclusive `flock`. The process that holds it is the owner. |
 | `ukiyo.sock` | The owner's Unix socket, mode 0600. Newline-delimited JSON-RPC carrying `api` requests. |
@@ -91,7 +91,7 @@ session for all of them.
 ### Where the binary lives
 
 - The app bundle ships the binary as a Tauri `externalBin`:
-  `ukiyo.app/Contents/MacOS/ukiyo-cli`. It is signed and notarized with the app.
+  `Ukiyo.app/Contents/MacOS/ukiyo-cli`. It is signed and notarized with the app.
 - Settings > Command line has one button, "Install command line tool". It symlinks
   `~/.local/bin/ukiyo` to the bundled binary, and shows the path if that directory is not on
   `PATH`. `ukiyo install --prefix DIR` does the same from a shell.
@@ -550,9 +550,9 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`.
 8. **Packaging,** on QuadCam's pattern (`~/develop/quadcam`, its cask in the owner's tap):
    - `ukiyo` is an `externalBin` in `Contents/MacOS/`, beside the app's own binary.
-   - The cask in the tap installs the whole thing: `app "ukiyo.app"`, `binary
-     "#{appdir}/ukiyo.app/Contents/MacOS/ukiyo"`, `depends_on arch: :arm64`, and a `zap`
-     covering `~/Library/Application Support/app.ukiyo` and the app's caches.
+   - The cask in the tap installs the whole thing: `app "Ukiyo.app"`, `binary
+     "#{appdir}/Ukiyo.app/Contents/MacOS/ukiyo"`, `depends_on arch: :arm64`, and a `zap`
+     covering `~/Library/Application Support/com.nkmkdigital.ukiyo` and the app's caches.
    - Self-updates through tauri-plugin-updater, so the cask sets `auto_updates true`.
    - GitHub releases ship an arm64 zip, and livecheck follows them.
    - Also from QuadCam: one `api` method table that generates the socket/MCP dispatch and the

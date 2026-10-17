@@ -207,7 +207,7 @@ function TextTab({ onRead }: { onRead: (p: ParsedRecipe) => void }) {
   const [error, setError] = useState<string | null>(null);
   const read = async () => {
     if (!inTauri) {
-      setError("Reading pasted text needs the ukiyo app.");
+      setError("Reading pasted text needs the Ukiyo app.");
       return;
     }
     const p = await commands.recipeParse(text);
