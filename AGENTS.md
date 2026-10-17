@@ -12,7 +12,7 @@ what comes next.
 - `docs/agent-interface.md` — the planned `ukiyo` CLI and MCP server: owner hand-off, tools, safety.
 - `app/` — the window: React + TypeScript + Vite (pnpm, Node from `.node-version`).
   `src/App.tsx` the shell and hash routes (`#/hub`, `#/settings/appearance`), `src/shell/`
-  (Sidebar with the brand-mark slot, page head, camera chip, icons), `src/pages/` (Hub, Recipes,
+  (Sidebar with the brand-mark slot, page head, camera chip, icons, ModeNotice: the wrong-USB-mode notice and the switch walkthrough), `src/pages/` (Hub, Recipes,
   Settings with Appearance, Connect, and Lab: Lab state and keys; it stays mounted while hidden),
   `src/views/` (the Lab's StatusBar, PropTable, ChangeFeed, LabelPanel with the write box,
   FakeBar), `src/lib/` (`camera.tsx` live status for every page, `prefs.tsx` theme, brand mark
