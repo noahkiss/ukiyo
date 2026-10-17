@@ -1,0 +1,104 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.93725,0.88627,0.79216,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.05098,0.05882,0.07059,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Text",
+      "layers": [
+        {
+          "name": "text",
+          "image-name-specializations": [
+            {
+              "value": "text-light.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular": true
+    },
+    {
+      "name": "Seal",
+      "layers": [
+        {
+          "name": "seal",
+          "image-name-specializations": [
+            {
+              "value": "seal-light.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular": true
+    },
+    {
+      "name": "Enso",
+      "layers": [
+        {
+          "name": "enso",
+          "image-name-specializations": [
+            {
+              "value": "enso-light.png"
+            },
+            {
+              "appearance": "dark",
+              "value": "enso-dark.png"
+            }
+          ],
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "lighting": "combined",
+      "specular-specializations": [
+        {
+          "value": false
+        },
+        {
+          "appearance": "tinted",
+          "value": true
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}
