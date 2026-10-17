@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { FILM_SIMS, recipes as recipeFixture, slots as slotFixture, TONE_RANGES, WHITE_BALANCES, type Recipe, type Slot } from "../fixtures/recipes";
 import { useCamera } from "../lib/camera";
-import { catalogEntries, entryRecipe, filterEntries, fmtDate, publisher, type CatalogEntry } from "../lib/catalog";
+import { entryRecipe, filterCards, fmtDate, pickVariant, publisher, sensorOf, sortCards, useCatalog, type CatalogCard as Card, type CatalogEntry, type CatalogSort } from "../lib/catalog";
 import { href } from "../lib/router";
 import { useNotBuilt } from "../lib/toast";
 import { CameraChip } from "../shell/CameraChip";
@@ -15,7 +15,11 @@ type Collection = "mine" | "catalog";
 /** Catalogue cards shown before "Show more". */
 const CATALOG_PAGE = 60;
 
-const catalogById = new Map(catalogEntries.map((e) => [e.id, e]));
+const SORTS: Array<[CatalogSort, string]> = [
+  ["popular", "Popular"],
+  ["newest", "Newest"],
+  ["az", "A–Z"],
+];
 
 const signed = (x: number) => (x > 0 ? "+" : "") + x;
 
@@ -37,6 +41,8 @@ export function Recipes() {
   const notBuilt = useNotBuilt();
   const [library, setLibrary] = useState<Recipe[]>(recipeFixture);
   const [selectedId, setSelectedId] = useState("r3");
+  const data = useCatalog();
+  const catalogById = data?.byId ?? new Map<string, CatalogEntry>();
   const find = (id: string): Recipe => {
     if (id === "new") return NEW_C7;
     const e = catalogById.get(id);
@@ -53,6 +59,10 @@ export function Recipes() {
   const [sim, setSim] = useState("");
   const [source, setSource] = useState("");
   const [catalogLimit, setCatalogLimit] = useState(CATALOG_PAGE);
+  const [sort, setSort] = useState<CatalogSort>("popular");
+  /** A version the user opened on a card, by card id; otherwise the camera decides. */
+  const [opened, setOpened] = useState<Record<string, string>>({});
+  const cameraSensor = sensorOf(status?.model);
   const changes = diff(saved, draft);
 
   const select = (id: string) => {
@@ -60,7 +70,8 @@ export function Recipes() {
     setDraft(find(id));
   };
 
-  const catalogShown = useMemo(() => filterEntries(catalogEntries, { q: search, sensor, sim, source, show }), [search, sensor, sim, source, show]);
+  const catalogShown = useMemo(() => (data ? sortCards(filterCards(data.cards, { q: search, sensor, sim, source, show }), sort) : []), [data, search, sensor, sim, source, show, sort]);
+  const shownVariant = (c: Card) => c.variants.find((v) => v.id === opened[c.id]) ?? pickVariant(c, cameraSensor);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -184,16 +195,36 @@ export function Recipes() {
                 }}
               />
               <span className="tiny muted grow">
-                {catalogShown.length} of {catalogEntries.length} recipes
+                {data ? `${catalogShown.length} of ${data.cards.length} recipes` : "Loading the catalogue…"}
               </span>
+              <div className="seg" role="group" aria-label="Sort">
+                {SORTS.map(([k, label]) => (
+                  <button key={k} type="button" aria-pressed={sort === k} onClick={() => setSort(k)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {collection === "catalog" ? (
             <div className="library-grid">
-              {catalogShown.slice(0, catalogLimit).map((e) => (
-                <CatalogCard key={e.id} e={e} on={e.id === selectedId} onSelect={() => select(e.id)} />
-              ))}
-              {catalogShown.length === 0 && <p className="muted">No recipes match.</p>}
+              {catalogShown.slice(0, catalogLimit).map((c) => {
+                const e = shownVariant(c);
+                return (
+                  <CatalogCard
+                    key={c.id}
+                    card={c}
+                    e={e}
+                    on={c.variants.some((v) => v.id === selectedId)}
+                    onSelect={() => select(e.id)}
+                    onOpen={(v) => {
+                      setOpened({ ...opened, [c.id]: v.id });
+                      select(v.id);
+                    }}
+                  />
+                );
+              })}
+              {data && catalogShown.length === 0 && <p className="muted">No recipes match.</p>}
               {catalogShown.length > catalogLimit && (
                 <button type="button" className="btn more-btn" onClick={() => setCatalogLimit(catalogLimit + CATALOG_PAGE)}>
                   Show more ({catalogShown.length - catalogLimit})
@@ -240,18 +271,23 @@ export function Recipes() {
   );
 }
 
-/** A catalogue card: the recipe, its first publisher and a link to the post. */
-function CatalogCard({ e, on, onSelect }: { e: CatalogEntry; on: boolean; onSelect: () => void }) {
+type CardProps = { card: Card; e: CatalogEntry; on: boolean; onSelect: () => void; onOpen: (v: CatalogEntry) => void };
+
+/** A catalogue card: the version shown, its first publisher and a link to the post, and
+ * the other sensors' versions. */
+function CatalogCard({ card, e, on, onSelect, onOpen }: CardProps) {
   const r = entryRecipe(e);
+  const others = card.variants.filter((v) => v.id !== e.id);
   return (
     <div className="recipe-card catalog-card">
       <button type="button" className="catalog-card-main" aria-pressed={on} onClick={onSelect}>
         <Tones tones={r.tones} tall />
         <span className="recipe-body">
           <span className="recipe-top">
-            <span className="recipe-name">{r.name}</span>
-            {e.sensor && <span className="badge">{e.sensor}</span>}
+            <span className="recipe-name">{card.title}</span>
+            {card.popular && <span className="badge ink">Popular</span>}
           </span>
+          {e.sensor && <span className="tiny muted">{e.sensor}</span>}
           <span className="small muted">
             {r.sim}
             {e.video && " · Video"}
@@ -259,6 +295,15 @@ function CatalogCard({ e, on, onSelect }: { e: CatalogEntry; on: boolean; onSele
           <span className="mono tiny muted">{summary(r)}</span>
         </span>
       </button>
+      {others.length > 0 && (
+        <span className="variant-chips">
+          {others.map((v) => (
+            <button key={v.id} type="button" className="chip" onClick={() => onOpen(v)}>
+              {v.sensor ? `${v.sensor} version` : "Other version"}
+            </button>
+          ))}
+        </span>
+      )}
       <span className="recipe-credit tiny muted">
         <span>
           From {publisher(e.credit)} · {fmtDate(e.credit.date)}
@@ -311,7 +356,7 @@ type EditorProps = {
 
 function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }: EditorProps) {
   const set = <K extends keyof Recipe>(k: K, v: Recipe[K]) => setDraft({ ...draft, [k]: v });
-  const where = draft.slot ? `In slot ${draft.slot}` : catalogById.has(draft.id) ? "From the catalogue" : "In library";
+  const where = draft.slot ? `In slot ${draft.slot}` : draft.id.startsWith("cat:") ? "From the catalogue" : "In library";
   return (
     <aside className="card editor" aria-labelledby="ed">
       <div className="editor-head">
@@ -400,7 +445,7 @@ function Editor({ draft, saved, changes, setDraft, onWrite, onSave, onDiscard }:
           {draft.slot ? `Write to slot ${draft.slot}` : "Write to a slot"}
         </button>
         <div className="actions-pair">
-          <button type="button" className="btn" onClick={onSave} disabled={changes === 0 && draft.id !== "new" && !catalogById.has(draft.id)}>
+          <button type="button" className="btn" onClick={onSave} disabled={changes === 0 && draft.id !== "new" && !draft.id.startsWith("cat:")}>
             Save to library
           </button>
           <button type="button" className="btn text" onClick={onDiscard} disabled={changes === 0}>

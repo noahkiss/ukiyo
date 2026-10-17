@@ -3,7 +3,8 @@ import { commands } from "../bindings";
 import { fxwPasteResult } from "../fixtures/fxw";
 import { FILM_SIMS, TONE_RANGES, WB_SHIFT_RANGE, wbOnBody, type Recipe, type Slot } from "../fixtures/recipes";
 import { inTauri } from "../lib/camera";
-import { catalogEntries, catalogSensors, catalogSims, catalogSources, filterEntries, fmtDate, isMono, publisher, simTones, toParsed, type CatalogEntry, type ParsedRecipe } from "../lib/catalog";
+import { useCamera } from "../lib/camera";
+import { filterCards, fmtDate, isMono, pickVariant, publisher, sensorOf, simTones, toParsed, useCatalog, type CatalogEntry, type ParsedRecipe } from "../lib/catalog";
 import { CloseIcon, SearchIcon } from "../shell/icons";
 
 type Tab = "search" | "link" | "text";
@@ -84,9 +85,13 @@ function SearchTab({ onPick }: { onPick: (r: CatalogEntry) => void }) {
   const [sensor, setSensor] = useState("");
   const [sim, setSim] = useState("");
   const [source, setSource] = useState("");
-  // The bundled catalogue; nothing is fetched.
-  const all = useMemo(() => filterEntries(catalogEntries, { q, sensor, sim, source }), [q, sensor, sim, source]);
-  const results = all.slice(0, RESULT_LIMIT);
+  // The bundled catalogue, popular first; nothing is fetched. One line per card, showing the
+  // version for the connected camera's sensor, or the filtered sensor.
+  const data = useCatalog();
+  const { status } = useCamera();
+  const want = sensor || sensorOf(status?.model);
+  const all = useMemo(() => (data ? filterCards(data.cards, { q, sensor, sim, source }) : []), [data, q, sensor, sim, source]);
+  const results = all.slice(0, RESULT_LIMIT).map((c) => ({ card: c, r: pickVariant(c, want) }));
   return (
     <div className="sheet-body">
       <div className="filter-line">
@@ -98,18 +103,21 @@ function SearchTab({ onPick }: { onPick: (r: CatalogEntry) => void }) {
         <CatalogFilters sensor={sensor} setSensor={setSensor} sim={sim} setSim={setSim} source={source} setSource={setSource} />
       </div>
       <p className="tiny muted">
-        {all.length > RESULT_LIMIT ? `${RESULT_LIMIT} of ${all.length} recipes` : `${all.length} ${all.length === 1 ? "recipe" : "recipes"}`}
+        {!data ? "Loading the catalogue…" : all.length > RESULT_LIMIT ? `${RESULT_LIMIT} of ${all.length} recipes` : `${all.length} ${all.length === 1 ? "recipe" : "recipes"}`}
       </p>
       <ul className="rows results">
-        {results.map((r) => (
-          <li key={r.id} className="result-line">
+        {results.map(({ card, r }) => (
+          <li key={card.id} className="result-line">
             <span className="result-swatch tones" aria-hidden="true">
               {r.tones.map((c, i) => (
                 <span key={i} style={{ background: c }} />
               ))}
             </span>
             <span className="stack result-text">
-              <span className="strong">{r.name}</span>
+              <span className="strong">
+                {card.title}
+                {card.popular && <span className="badge ink result-badge">Popular</span>}
+              </span>
               <span className="small muted">
                 From {publisher(r.credit)} · {fmtDate(r.credit.date)} · {r.parsed.sim}
                 {r.video && " · Video"}
@@ -124,7 +132,7 @@ function SearchTab({ onPick }: { onPick: (r: CatalogEntry) => void }) {
             </button>
           </li>
         ))}
-        {results.length === 0 && <li className="empty">No recipes match.</li>}
+        {data && results.length === 0 && <li className="empty">No recipes match.</li>}
       </ul>
     </div>
   );
@@ -134,13 +142,14 @@ type Filters = { sensor: string; setSensor: (s: string) => void; sim: string; se
 
 /** Source, sensor and film simulation filters over the bundled catalogue. "" is any. */
 export function CatalogFilters({ sensor, setSensor, sim, setSim, source, setSource }: Filters) {
+  const data = useCatalog();
   return (
     <>
       <label>
         <span className="visually-hidden">Source</span>
         <select className="select narrow" value={source} onChange={(e) => setSource(e.target.value)}>
           <option value="">All sources</option>
-          {catalogSources.map(([id, name]) => (
+          {(data?.sources ?? []).map(([id, name]) => (
             <option key={id} value={id}>
               {name}
             </option>
@@ -151,7 +160,7 @@ export function CatalogFilters({ sensor, setSensor, sim, setSim, source, setSour
         <span className="visually-hidden">Sensor</span>
         <select className="select narrow" value={sensor} onChange={(e) => setSensor(e.target.value)}>
           <option value="">All sensors</option>
-          {catalogSensors.map((s) => (
+          {(data?.sensors ?? []).map((s) => (
             <option key={s}>{s}</option>
           ))}
         </select>
@@ -160,7 +169,7 @@ export function CatalogFilters({ sensor, setSensor, sim, setSim, source, setSour
         <span className="visually-hidden">Film simulation</span>
         <select className="select narrow" value={sim} onChange={(e) => setSim(e.target.value)}>
           <option value="">All film simulations</option>
-          {catalogSims.map((s) => (
+          {(data?.sims ?? []).map((s) => (
             <option key={s}>{s}</option>
           ))}
         </select>

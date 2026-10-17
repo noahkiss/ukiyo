@@ -25,7 +25,8 @@ A row's link is the creator's original post when the sheet gives one, else the s
 - `catalog/recipes/sources/<id>.json` — one per source, the recipes as that site published
   them: `schema`, `id`, `name`, `homepage`, `credit`, `fetchedAt`, `recipes`.
 - `catalog/recipes/catalog.json` — the merge the app loads: `schema`, `builtAt`,
-  `sources`, `recipes`.
+  `sources`, `families`, `recipes`. The app loads it in its own chunk on first use.
+- `catalog/recipes/reddit.json` — Reddit thread counts for the top cards (Popularity).
 
 Both put one recipe per line, so a refresh diffs by recipe.
 
@@ -40,9 +41,12 @@ A source recipe:
 | `settings` | The slot settings (below); a setting the post does not give is absent |
 | `notes` | Settings a slot cannot hold: ISO, exposure compensation, Interframe NR, filters |
 | `warnings` | Lines the parser could not use: unknown label, unreadable value, unlabelled line, duplicate |
+| `variantOf` | For another sensor's version given in the same post: the first recipe's id |
+| `comments`, `mentions`, `links` | The post's comment count, how many other read posts link to it, and the catalogued posts it links to |
 
 A catalogue recipe has `id` (`<source>:<source id>` of its credit), `name`, `sensor`,
-`video`, `settings`, `notes`, `warnings`, `hash`, `credit` and `alsoPublishedBy`. A credit
+`video`, `settings`, `notes`, `warnings`, `hash`, `credit`, `alsoPublishedBy` and
+`popularity`. A credit
 or later publication is `source`, `name`, `url`, `date` and `author`.
 
 Settings use FilmKit's field names (`filmSimulation`, `dynamicRange`, `dRangePriority`,
@@ -71,6 +75,50 @@ differently (`differs`). An unknown date sorts last.
 
 Recipes whose settings differ in one field stay separate. The build summary lists them as
 near-duplicates, with the field.
+
+## Families
+
+A family is one recipe made for several sensors (`recipes::family`). The library shows one
+card per family, with the version for the connected camera's sensor, and chips for the
+others. A camera model maps to its sensor in `app/src/lib/catalog.ts`. With no camera, the
+card shows the newest version; with no exact match, the newest version the camera can take.
+
+Two recipes for different sensor generations join when their settings differ only in
+sensor-dependent fields (Color Chrome FX Blue, Clarity, Color Chrome, Smooth Skin, D-Range
+Priority, grain size; Highlight or Shadow by at most one step; a film simulation the older
+sensor lacks, never colour against monochrome) and one of these holds:
+
+- one post gave both: "Color Chrome FX Blue: Off (X-Trans V); Weak (X-Trans IV)" yields two
+  recipes, the second with `variantOf`;
+- the names match once sensor words are removed ("for X-Trans IV", camera models);
+- one post links to the other.
+
+Settings one field apart with different names and no link do not join: on the real data
+that paired unrelated recipes. Bodies of one generation with fewer settings (X-T3 and X-T30
+lack Color Chrome FX Blue and Clarity) are not told apart, so their versions stay separate
+cards. `families` lists each family's `id`, `title`, `variants` (sensor and recipe id,
+newest sensor first) and `popularity`; the recipes stay as they are.
+
+## Popularity
+
+No source publishes downloads or favourites, so ukiyo has no download count. The score
+uses three signals:
+
+| Signal | From | Coverage |
+|---|---|---|
+| `comments` | `slash:comments` in the cached feeds | Fuji X Weekly; film.recipes mostly 0; none for the database |
+| `mentions` | Other posts in the cached Fuji X Weekly and film.recipes feeds that link to the recipe's post, roundups included | Posts on those two sites |
+| `reddit` | One hn-app search per card ("<name> fujifilm recipe"), top 100 cards by the first two signals; threads that name the recipe, and their summed score | Top 100 only; a search returns at most 10 threads |
+
+A post holding several recipes splits its comments and mentions evenly among them. A family
+sums its versions. The score:
+
+    score = ln(1 + comments) + 2 ln(1 + mentions) + 1.5 ln(1 + Reddit threads)
+            + 0.5 ln(1 + Reddit score / 10)
+
+Logs keep one heavily discussed post from drowning the rest; mentions weigh most because
+each is someone choosing to point at the recipe. The library sorts by score by default
+(Popular, then Newest and A–Z) and marks the top tenth of cards "Popular".
 
 ## Refresh
 

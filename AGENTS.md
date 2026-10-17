@@ -30,16 +30,16 @@ what comes next.
   connection thread: queue, polling, pause, power-off, reconnect rules), `owner_tests`.
 - `src-tauri/src/recipes/` — the recipe text parser (`mod`, `values`), recipe blocks in post
   HTML (`html`), name and sensor from a post title (`post`), the catalogue formats and the
-  de-duplicating merge (`catalogue`), one adapter per recipe site (`sources/`), `tests` on
-  real sample blocks. `docs/recipes.md` covers it and the credits.
+  de-duplicating merge and popularity (`catalogue`), sensor families (`family`), one adapter
+  per recipe site (`sources/`), `tests` on real sample blocks. `docs/recipes.md` covers it and the credits.
 - `src-tauri/examples/recipes_refresh.rs` — reads each source's feed into
   `catalog/recipes/sources/<id>.json` and merges them into `catalog/recipes/catalog.json`;
   caches pages in `local/recipe-feeds/<id>/`.
 - `src-tauri/src/catalog.rs` — catalog load, label, save. `src-tauri/src/lab.rs` — the Lab
   (mirror, session log, export, settings, fake controls). `src-tauri/src/lib.rs` — Tauri commands
   and `specta_builder`.
-- `catalog/recipes/` — the bundled recipe catalogue: `sources/<id>.json` per site and the
-  merged `catalog.json`. Settings and links only, no photos or post text.
+- `catalog/recipes/` — the bundled recipe catalogue: `sources/<id>.json` per site, the
+  merged `catalog.json`, and `reddit.json` (Reddit counts for the popularity score). Settings and links only, no photos or post text.
 - `catalog/<model>.json` — the shareable property catalog. Dev builds write labels here;
   `UKIYO_CATALOG_DIR` overrides.
 - `tools/catalog/seed_xt5.py LOCAL_DIR [--force]` — seeds `catalog/x-t5.json` and the fake shape

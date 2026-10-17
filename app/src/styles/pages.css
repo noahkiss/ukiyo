@@ -560,6 +560,33 @@
   cursor: pointer;
 }
 
+.variant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.variant-chips .chip {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.variant-chips .chip:hover {
+  background: var(--line-strong);
+}
+
+.result-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  padding: 0 7px;
+}
+
 .recipe-credit {
   display: flex;
   justify-content: space-between;
