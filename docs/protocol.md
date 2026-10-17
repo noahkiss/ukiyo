@@ -46,6 +46,8 @@ Recipe slot *contents* (D18E-D1A5) read only in RAW CONV. mode. Tether mode retu
 
 - While a menu is open, every property returns 0xA001. Poll again after D22E returns to 1.
   Observed 2026-10-17 (fw 4.31): opening the menu first gave one 0x2019 (busy), then D22E = 3.
+- Writes can answer 0xA001 while reads work and D22E still reads 1 (owner in a menu, 2026-10-17).
+  Treat 0xA001 on a write as menu-open and retry later.
 - Polling does not reset the auto power off timer. With D381 = 2 min, the camera powered off
   2:00 after the session opened while properties were read continuously (2026-10-17). Keeping it
   awake needs the D381 write; reopening sessions to reset the timer is the reconnect pattern
