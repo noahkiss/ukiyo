@@ -6,7 +6,7 @@ pub mod fujixweekly;
 pub mod hpchavaz;
 
 use super::catalogue::{SourceInfo, SourceRecipe};
-use super::{html, parse_text, post, split_recipes};
+use super::{html, parse_text, post, split_recipes, variant, Parsed};
 
 /// A WordPress RSS item, as the refresh tool reads it.
 #[derive(Debug, Clone, Default)]
@@ -17,6 +17,8 @@ pub struct FeedItem {
     pub date: String,
     /// `dc:creator`.
     pub creator: String,
+    /// `slash:comments`, when the feed gives it.
+    pub comments: Option<u32>,
     pub tags: Vec<String>,
     /// `content:encoded`: the post HTML. Only its settings leave the adapter.
     pub html: String,
@@ -69,15 +71,15 @@ pub(crate) fn post_recipes(item: &FeedItem, base_name: String, sensor: Option<St
     blocks
         .iter()
         .enumerate()
-        .map(|(i, b)| {
+        .flat_map(|(i, b)| {
             let p = parse_text(&b.text);
             let name = match (&b.heading, many) {
-                (Some(h), true) if h.to_lowercase().contains(&base_name.to_lowercase()) => h.clone(),
+                (Some(h), true) if h.to_lowercase().contains(&base_name.to_lowercase()) || base_name.chars().count() > 40 => h.clone(),
                 (Some(h), true) => format!("{base_name}: {h}"),
                 (None, true) if i > 0 => format!("{base_name} ({})", i + 1),
                 _ => base_name.clone(),
             };
-            SourceRecipe {
+            let r = SourceRecipe {
                 id: if i == 0 { base_id.clone() } else { format!("{base_id}-{}", i + 1) },
                 name,
                 title: title.clone(),
@@ -86,10 +88,43 @@ pub(crate) fn post_recipes(item: &FeedItem, base_name: String, sensor: Option<St
                 author: author.clone(),
                 sensor: sensor.clone(),
                 video,
-                settings: p.settings,
-                notes: p.notes,
-                warnings: p.warnings,
-            }
+                comments: item.comments,
+                ..SourceRecipe::default()
+            };
+            with_variants(r, p)
         })
         .collect()
+}
+
+/// The recipe, plus one recipe per other sensor its text gives values for. Each variant
+/// names the first in `variant_of`; the first takes the sensor its values are for.
+pub(crate) fn with_variants(mut r: SourceRecipe, p: Parsed) -> Vec<SourceRecipe> {
+    let mut sensors: Vec<&str> = p.alternatives.iter().map(|a| a.sensor.as_str()).collect();
+    sensors.dedup();
+    sensors.sort();
+    sensors.dedup();
+    let variants: Vec<SourceRecipe> = sensors
+        .iter()
+        .filter(|s| p.sensor.as_deref() != Some(**s))
+        .map(|s| {
+            let alts: Vec<_> = p.alternatives.iter().filter(|a| a.sensor == *s).collect();
+            SourceRecipe {
+                id: format!("{}--{}", r.id, s.to_lowercase().replace(' ', "-")),
+                sensor: Some(s.to_string()),
+                settings: variant(&p.settings, &alts),
+                notes: p.notes.clone(),
+                variant_of: Some(r.id.clone()),
+                ..r.clone()
+            }
+        })
+        .collect();
+    if !variants.is_empty() {
+        r.sensor = p.sensor.clone().or(r.sensor);
+    }
+    r.settings = p.settings;
+    r.notes = p.notes;
+    r.warnings = p.warnings;
+    let mut out = vec![r];
+    out.extend(variants);
+    out
 }

@@ -193,8 +193,10 @@ fn variants_seen_in_the_full_feed() {
     assert_eq!((s.sharpness, s.highlight_tone, s.shadow_tone, s.color), (Some(-2.0), Some(2.0), Some(2.0), Some(4.0)));
     assert_eq!((s.monochromatic_color_wc, s.monochromatic_color_mg), (Some(0.0), Some(0.0)));
     assert_eq!(p.notes.len(), 1);
-    let labels: Vec<&str> = p.warnings.iter().map(|w| w.label.as_str()).collect();
-    assert_eq!(labels, vec!["Color Chrome FX Blue", "Grain Effect"], "{:?}", p.warnings);
+    // Values for other cameras are variants, not warnings.
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+    let alts: Vec<(&str, &str)> = p.alternatives.iter().map(|a| (a.label.as_str(), a.sensor.as_str())).collect();
+    assert_eq!(alts, vec![("Color Chrome FX Blue", "X-Trans IV"), ("Grain Effect", "X-Trans IV")]);
 }
 
 #[test]
@@ -243,7 +245,7 @@ fn src(id: &str, recipes: Vec<catalogue::SourceRecipe>) -> catalogue::SourceFile
 
 fn rec(id: &str, date: &str, text: &str) -> catalogue::SourceRecipe {
     let p = parse_text(text);
-    catalogue::SourceRecipe { id: id.into(), name: id.into(), title: id.into(), url: format!("https://example.com/{id}"), date: date.into(), author: None, sensor: None, video: false, settings: p.settings, notes: p.notes, warnings: p.warnings }
+    catalogue::SourceRecipe { id: id.into(), name: id.into(), title: id.into(), url: format!("https://example.com/{id}"), date: date.into(), author: None, sensor: None, video: false, settings: p.settings, notes: p.notes, warnings: p.warnings, ..Default::default() }
 }
 
 #[test]
@@ -252,7 +254,7 @@ fn merge_keeps_the_earliest_credit_and_flags_near_duplicates() {
     let a = rec("gold", "2022-01-10", "Film Simulation: Classic Chrome\nDynamic Range: DR200\nWhite Balance: Daylight, +2 Red & -4 Blue\nHighlight: -1");
     let b = rec("gold-copy", "2020-05-01", "Classic Chrome\nDynamic Range: DR200\nWhite Balance: Fine, +2 Red, -4 Blue\nHighlight: -1\nClarity: 0\nGrain Effect: Off, Large");
     let c = rec("gold-warm", "2023-01-01", "Film Simulation: Classic Chrome\nDynamic Range: DR200\nWhite Balance: Daylight, +3 Red & -4 Blue\nHighlight: -1");
-    let (cat, report) = catalogue::merge(&[src("one", vec![a, c]), src("two", vec![b])], "2026-10-17");
+    let (cat, report) = catalogue::merge(&[src("one", vec![a, c]), src("two", vec![b])], "2026-10-17", &Default::default());
     assert_eq!(cat.recipes.len(), 2);
     let gold = cat.recipes.iter().find(|r| r.also_published_by.len() == 1).unwrap();
     assert_eq!((gold.credit.source.as_str(), gold.credit.name.as_str()), ("two", "gold-copy"));
@@ -286,7 +288,7 @@ fn compilation_rows_yield_to_the_post_they_link_to() {
     // Transcribed differently, but it links to the post.
     let mut typo = rec("row-typo", "2022-01-10", "Classic Chrome\nDR400\nHighlight: -1");
     typo.url = "http://www.example.com/gold/".into();
-    let (cat, report) = catalogue::merge(&[src("site", vec![post]), src("compiled", vec![early, typo])], "2026-10-17");
+    let (cat, report) = catalogue::merge(&[src("site", vec![post]), src("compiled", vec![early, typo])], "2026-10-17", &Default::default());
     assert_eq!(cat.recipes.len(), 1);
     let r = &cat.recipes[0];
     assert_eq!(r.credit.source, "site");
@@ -305,4 +307,44 @@ fn settings_on_one_line_and_long_comments() {
     let long = "a comment that goes on ".repeat(10);
     let p = parse_text(&format!("White Balance: Auto\nISO: {long}"));
     assert!(p.notes[0].value.chars().count() <= 101);
+}
+
+#[test]
+fn per_sensor_alternatives_become_variants() {
+    let p = parse_text("Film Simulation: Classic Chrome\nColor Chrome FX Blue: Off (X-Trans V); Weak (X-Trans IV)\nClarity: 0 — N/A for X-T3/X-T30\nDynamic Range: DR400");
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+    assert_eq!(p.sensor.as_deref(), Some("X-Trans V"));
+    assert_eq!(p.settings.color_chrome_fx_blue.as_deref(), Some("Off"));
+    let iv: Vec<&Alternative> = p.alternatives.iter().filter(|a| a.sensor == "X-Trans IV").collect();
+    assert_eq!(iv.len(), 2, "{:?}", p.alternatives);
+    let v = variant(&p.settings, &iv);
+    assert_eq!((v.color_chrome_fx_blue.as_deref(), v.clarity), (Some("Weak"), None));
+}
+
+#[test]
+fn sensor_versions_form_a_family() {
+    let mut v = rec("gold-v", "2023-01-01", "Film Simulation: Classic Chrome\nColor Chrome FX Blue: Off\nClarity: -2\nShadow: 0.5\nDynamic Range: DR400");
+    v.name = "Kodak Gold for X-Trans V".into();
+    v.sensor = Some("X-Trans V".into());
+    let mut iv = rec("gold-iv", "2021-01-01", "Film Simulation: Classic Chrome\nColor Chrome FX Blue: Weak\nClarity: -2\nShadow: 0\nDynamic Range: DR400");
+    iv.name = "Kodak Gold".into();
+    iv.sensor = Some("X-Trans IV".into());
+    // A different look that happens to be one field apart, for the same sensor: not a family.
+    let mut other = rec("other", "2022-01-01", "Film Simulation: Classic Chrome\nColor Chrome FX Blue: Strong\nClarity: -2\nShadow: 0\nDynamic Range: DR400");
+    other.sensor = Some("X-Trans IV".into());
+    let (cat, _) = catalogue::merge(&[src("site", vec![v, iv, other])], "2026-10-17", &Default::default());
+    assert_eq!(cat.families.len(), 1);
+    let f = &cat.families[0];
+    assert_eq!(f.title, "Kodak Gold for X-Trans V");
+    assert_eq!(f.variants.iter().map(|x| x.sensor.as_str()).collect::<Vec<_>>(), vec!["X-Trans V", "X-Trans IV"]);
+    assert_eq!(super::family::stem("Kodak Gold for X-Trans V"), "kodak gold");
+}
+
+#[test]
+fn popularity_score_is_a_log_blend() {
+    use catalogue::{Popularity, RedditCount};
+    assert_eq!(Popularity::score_of(0, 0, None), 0.0);
+    let s = Popularity::score_of(10, 5, Some(&RedditCount { threads: 3, score: 90 }));
+    let want = (11f64).ln() + 2.0 * (6f64).ln() + 1.5 * (4f64).ln() + 0.5 * (10f64).ln();
+    assert!((s - (want * 100.0).round() / 100.0).abs() < 1e-9);
 }

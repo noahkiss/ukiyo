@@ -3,7 +3,7 @@
 //! `catalog/recipes/catalog.json`, one entry per distinct set of settings. Settings, names
 //! and links only: photos and post text stay their authors'.
 
-use super::{Note, Settings, Warning};
+use super::{family, Note, Settings, Warning};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::BTreeMap;
@@ -28,7 +28,7 @@ pub struct SourceInfo {
 }
 
 /// A recipe as one source published it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceRecipe {
     /// The post's URL slug, with `-2`, `-3` for further recipes in the same post.
@@ -51,6 +51,22 @@ pub struct SourceRecipe {
     pub notes: Vec<Note>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<Warning>,
+    /// For another sensor's version given in the same post: the id of the first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_of: Option<String>,
+    /// The post's comment count, from the feed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comments: Option<u32>,
+    /// How many other posts in the read feeds link to this post.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub mentions: u32,
+    /// Posts of other catalogued recipes that this post links to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<String>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// `catalog/recipes/sources/<id>.json`.
@@ -105,6 +121,41 @@ pub struct CatalogRecipe {
     /// Later publications of the same settings.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also_published_by: Vec<Publication>,
+    pub popularity: Popularity,
+}
+
+/// Reddit threads that name a recipe, from the hn-app search (`catalog/recipes/reddit.json`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
+pub struct RedditCount {
+    pub threads: u32,
+    /// The threads' scores, summed.
+    pub score: u32,
+}
+
+/// How much a recipe is talked about. No source publishes downloads or favourites, so there
+/// is no download count.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
+pub struct Popularity {
+    /// Comments on its posts. A post holding several recipes splits its count among them.
+    pub comments: u32,
+    /// Other posts in the read feeds that link to its posts, split the same way.
+    pub mentions: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reddit: Option<RedditCount>,
+    /// `score_of`.
+    pub score: f64,
+}
+
+impl Popularity {
+    /// `ln(1 + comments) + 2 ln(1 + mentions) + 1.5 ln(1 + Reddit threads) + 0.5 ln(1 + Reddit
+    /// score / 10)`, to two decimals. Logs, so a recipe with 400 comments does not drown
+    /// everything else; mentions weigh most, as a deliberate choice by others.
+    pub fn score_of(comments: u32, mentions: u32, reddit: Option<&RedditCount>) -> f64 {
+        let l = |x: f64| (1.0 + x).ln();
+        let (t, s) = reddit.map_or((0.0, 0.0), |r| (f64::from(r.threads), f64::from(r.score)));
+        let v = l(f64::from(comments)) + 2.0 * l(f64::from(mentions)) + 1.5 * l(t) + 0.5 * l(s / 10.0);
+        (v * 100.0).round() / 100.0
+    }
 }
 
 /// `catalog/recipes/catalog.json`.
@@ -116,6 +167,9 @@ pub struct RecipeCatalog {
     pub built_at: String,
     pub sources: Vec<SourceInfo>,
     pub recipes: Vec<CatalogRecipe>,
+    /// Recipes that are one recipe made for several sensors.
+    #[serde(default)]
+    pub families: Vec<family::Family>,
 }
 
 /// The settings as named fields with every absent setting at the camera default, so a post
@@ -167,6 +221,12 @@ pub fn settings_hash(s: &Settings) -> String {
     format!("{h:016x}")
 }
 
+/// A post URL as compared: https, no "www.", no query, fragment or trailing slash.
+pub fn canonical_url(u: &str) -> String {
+    let u = u.split(['#', '?']).next().unwrap_or(u);
+    u.trim().trim_end_matches('/').replace("://www.", "://").replace("http://", "https://")
+}
+
 /// Two recipes whose settings differ in exactly one field. They stay separate entries.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NearDuplicate {
@@ -184,6 +244,8 @@ pub struct MergeReport {
     pub merged_across_sources: usize,
     /// Compilation rows whose settings differ from the post they link to, folded into it.
     pub matched_by_link: usize,
+    /// Every pair joined into a family, why, and the fields they differ in.
+    pub family_joins: Vec<(String, String, family::Reason, Vec<&'static str>)>,
     /// Publications with no film simulation are left out: a slot cannot be set from them.
     /// They stay in their source file, with their warnings.
     pub left_out_without_sim: usize,
@@ -195,7 +257,10 @@ pub struct MergeReport {
 /// "also published by". A compilation's publication is the credit only when no other
 /// source has the recipe. Video recipes only merge with video recipes. Publications with no
 /// film simulation are left out.
-pub fn merge(sources: &[SourceFile], built_at: &str) -> (RecipeCatalog, MergeReport) {
+/// One recipe's publications: (source index, the source's recipe).
+type Pubs<'a> = Vec<(usize, &'a SourceRecipe)>;
+
+pub fn merge(sources: &[SourceFile], built_at: &str, reddit: &BTreeMap<String, RedditCount>) -> (RecipeCatalog, MergeReport) {
     let mut report = MergeReport::default();
     let mut groups: BTreeMap<String, Vec<(usize, &SourceRecipe)>> = BTreeMap::new();
     for (si, f) in sources.iter().enumerate() {
@@ -213,7 +278,7 @@ pub fn merge(sources: &[SourceFile], built_at: &str) -> (RecipeCatalog, MergeRep
     // A compilation row that links to a post another source read is that post's recipe, even
     // when its settings were transcribed differently: fold it into the closest recipe there,
     // when that is at most LINK_MATCH_MAX_DIFF fields apart.
-    let link = |u: &str| u.trim_end_matches('/').replace("://www.", "://").replace("http://", "https://");
+    let link = |u: &str| canonical_url(u);
     let compiled = |si: usize| sources[si].source.compilation;
     let mut by_url: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (key, pubs) in &groups {
@@ -250,7 +315,7 @@ pub fn merge(sources: &[SourceFile], built_at: &str) -> (RecipeCatalog, MergeRep
         }
     }
 
-    let mut recipes: Vec<CatalogRecipe> = groups
+    let mut built: Vec<(CatalogRecipe, Pubs)> = groups
         .into_values()
         .map(|mut pubs| {
             // An unknown date sorts last: it cannot claim to be first.
@@ -272,7 +337,7 @@ pub fn merge(sources: &[SourceFile], built_at: &str) -> (RecipeCatalog, MergeRep
                     report.merged_across_sources += 1;
                 }
             }
-            CatalogRecipe {
+            let recipe = CatalogRecipe {
                 id: format!("{}:{}", sources[psi].source.id, primary.id),
                 name: primary.name.clone(),
                 sensor: primary.sensor.clone(),
@@ -283,11 +348,54 @@ pub fn merge(sources: &[SourceFile], built_at: &str) -> (RecipeCatalog, MergeRep
                 hash: settings_hash(&primary.settings),
                 credit: publication(psi, primary),
                 also_published_by: pubs[1..].iter().map(|(si, r)| publication(*si, r)).collect(),
-            }
+                popularity: Popularity::default(),
+            };
+            (recipe, pubs)
         })
         .collect();
-    recipes.sort_by(|a, b| b.credit.date.cmp(&a.credit.date).then_with(|| a.id.cmp(&b.id)));
+    built.sort_by(|(a, _), (b, _)| b.credit.date.cmp(&a.credit.date).then_with(|| a.id.cmp(&b.id)));
+    let (mut recipes, pubs): (Vec<CatalogRecipe>, Vec<Pubs>) = built.into_iter().unzip();
     report.recipes = recipes.len();
+
+    // Each recipe's links, the posts they link to, and its signals, counted once per post.
+    let urls: Vec<Vec<String>> = pubs.iter().map(|p| p.iter().map(|(_, r)| link(&r.url)).collect::<std::collections::BTreeSet<_>>().into_iter().collect()).collect();
+    let links: Vec<Vec<String>> = pubs.iter().map(|p| p.iter().flat_map(|(_, r)| r.links.iter().map(|l| link(l))).collect()).collect();
+    // A post's comments and mentions are split evenly among the recipes it holds.
+    let mut share: BTreeMap<String, u32> = BTreeMap::new();
+    for u in &urls {
+        for x in u {
+            *share.entry(x.clone()).or_default() += 1;
+        }
+    }
+    for (r, p) in recipes.iter_mut().zip(&pubs) {
+        let mut per_post: BTreeMap<String, (u32, u32)> = BTreeMap::new();
+        for (_, s) in p {
+            let e = per_post.entry(link(&s.url)).or_default();
+            e.0 = e.0.max(s.comments.unwrap_or(0));
+            e.1 = e.1.max(s.mentions);
+        }
+        let split = |u: &String, v: u32| (f64::from(v) / f64::from(share[u].max(1))).round() as u32;
+        r.popularity.comments = per_post.iter().map(|(u, v)| split(u, v.0)).sum();
+        r.popularity.mentions = per_post.iter().map(|(u, v)| split(u, v.1)).sum();
+        r.popularity.reddit = reddit.get(&r.id).cloned();
+        r.popularity.score = Popularity::score_of(r.popularity.comments, r.popularity.mentions, r.popularity.reddit.as_ref());
+    }
+    let index: BTreeMap<(usize, &str), usize> = pubs.iter().enumerate().flat_map(|(i, p)| p.iter().map(move |(si, r)| ((*si, r.id.as_str()), i))).collect();
+    let variant_of: Vec<(usize, usize)> = pubs
+        .iter()
+        .enumerate()
+        .flat_map(|(i, p)| p.iter().filter_map(|(si, r)| r.variant_of.as_deref().and_then(|v| index.get(&(*si, v))).map(|&j| (j, i))).collect::<Vec<_>>())
+        .filter(|(a, b)| a != b)
+        .collect();
+    let (mut families, joins) = family::group(&recipes, &urls, &links, &variant_of);
+    report.family_joins = joins.into_iter().map(|(a, b, reason, diff)| (recipes[a].id.clone(), recipes[b].id.clone(), reason, diff)).collect();
+    let by_id: BTreeMap<&str, &CatalogRecipe> = recipes.iter().map(|r| (r.id.as_str(), r)).collect();
+    for f in &mut families {
+        let members: Vec<&CatalogRecipe> = f.variants.iter().filter_map(|v| by_id.get(v.recipe.as_str()).copied()).collect();
+        let (c, m) = (members.iter().map(|r| r.popularity.comments).sum(), members.iter().map(|r| r.popularity.mentions).sum());
+        let rd = reddit.get(&f.id).cloned();
+        f.popularity = Popularity { comments: c, mentions: m, score: Popularity::score_of(c, m, rd.as_ref()), reddit: rd };
+    }
 
     let norm: Vec<Vec<(&'static str, String)>> = recipes.iter().map(|r| normalised(&r.settings)).collect();
     for i in 0..recipes.len() {
@@ -301,6 +409,6 @@ pub fn merge(sources: &[SourceFile], built_at: &str) -> (RecipeCatalog, MergeRep
             }
         }
     }
-    let catalog = RecipeCatalog { schema: SCHEMA, built_at: built_at.to_string(), sources: sources.iter().map(|f| f.source.clone()).collect(), recipes };
+    let catalog = RecipeCatalog { schema: SCHEMA, built_at: built_at.to_string(), sources: sources.iter().map(|f| f.source.clone()).collect(), recipes, families };
     (catalog, report)
 }

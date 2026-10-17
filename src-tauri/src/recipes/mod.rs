@@ -5,6 +5,7 @@
 //! parser does not know, or a value it cannot read, becomes a warning on that field.
 
 pub mod catalogue;
+pub mod family;
 pub mod html;
 pub mod post;
 pub mod sources;
@@ -110,6 +111,37 @@ pub struct Parsed {
     pub settings: Settings,
     pub notes: Vec<Note>,
     pub warnings: Vec<Warning>,
+    /// Values the text gives for other sensors: "Off (X-Trans V); Weak (X-Trans IV)". The
+    /// settings hold the first; each of these is one setting of another sensor's variant.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<Alternative>,
+    /// The sensor the first value is for, when the text names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensor: Option<String>,
+}
+
+/// One setting's value for another sensor.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+pub struct Alternative {
+    pub sensor: String,
+    pub label: String,
+    pub value: String,
+}
+
+/// Applies alternative lines to a copy of the settings: another sensor's variant. A
+/// not-applicable value ("N/A") clears the setting.
+pub fn variant(settings: &Settings, alts: &[&Alternative]) -> Settings {
+    let mut s = settings.clone();
+    for a in alts {
+        if let Some(field) = field_for(&a.label) {
+            if values::not_applicable(&a.value) {
+                values::clear(&mut s, field);
+            } else {
+                let _ = values::apply(&mut s, field, &a.value);
+            }
+        }
+    }
+    s
 }
 
 /// What a label names.
@@ -307,6 +339,16 @@ pub fn parse_text(text: &str) -> Parsed {
                 continue;
             }
             seen.push(field);
+            let value = match values::sensor_alternatives(&value) {
+                Some((first, first_sensor, others)) => {
+                    if out.sensor.is_none() {
+                        out.sensor = first_sensor;
+                    }
+                    out.alternatives.extend(others.into_iter().map(|(sensor, v)| Alternative { sensor, label: label.clone(), value: v }));
+                    first
+                }
+                None => value.clone(),
+            };
             if let Err(message) = values::apply(&mut out.settings, field, &value) {
                 out.warnings.push(Warning { kind: WarningKind::BadValue, label: label.clone(), value: value.clone(), message });
             }

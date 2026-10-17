@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 static XTRANS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bx[- ]?trans(?:\s+sensor)?\s*(iv|v|iii|ii|i|5|4|3|2|1)\b").unwrap());
 /// "Fifth-Generation Cameras", "5th-Gen", "4th Gen".
 static GENERATION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(fifth|fourth|third|second|first|5th|4th|3rd|2nd|1st)[- ]gen(?:eration)?\b").unwrap());
-static RECIPE_COLON: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\brecipes?\s*[:–—-]\s*").unwrap());
+static RECIPE_COLON: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(?:recipes?|film simulation)\s*:\s*|\brecipes?\s*[–—-]\s*").unwrap());
 static DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+[–—-]\s+").unwrap());
 static CAMERA_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(?:my\s+)?(?:fujifilm\s+|fuji\s+)?(?:(?:x-?trans\s+\w+|bayer|gfx\s*\w*|x-?[a-z]{1,3}\d+\w*|x100\w*|x70|xf10)(?:\s*(?:\+|&|and|/|,)\s*)?)*\s*").unwrap()
@@ -133,7 +133,7 @@ pub fn sensor_in_text(text: &str) -> Option<String> {
 /// "CineStill 800T v2"; "My Fujifilm X-T30 Kodachrome 64 Film Simulation Recipe" ->
 /// "Kodachrome 64". Falls back to the whole title.
 pub fn recipe_name(title: &str) -> String {
-    let t = decode_entities(title);
+    let t = decode_entities(title).replace('\u{a0}', " ");
     let t = t.trim();
     let tidy = |s: &str| s.trim().trim_matches(['"', '“', '”', '\'', '‘', '’']).trim().to_string();
     if let Some(m) = RECIPE_COLON.find_iter(t).last() {

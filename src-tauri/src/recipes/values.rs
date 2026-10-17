@@ -63,6 +63,52 @@ fn tone(value: &str) -> Result<(f64, Option<String>), String> {
     Ok((n, (!rest.is_empty()).then(|| format!("Read {n}; ignored \"{rest}\""))))
 }
 
+static ALT_SPLIT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*(?:;|\s—\s|\s–\s|\s-\s|\sor\s)\s*").unwrap());
+static SENSOR_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\s*(?:\([^)]*\)|\bfor\b.*)$").unwrap());
+
+/// The first value, the sensor it is for, and (sensor, value) for each other sensor.
+pub(crate) type SensorAlternatives = (String, Option<String>, Vec<(String, String)>);
+
+/// Per-sensor alternatives in one value: "Off (X-Trans V); Weak (X-Trans IV)", "Strong —
+/// Weak for X-Trans V", "Strong (X-Trans IV), Weak (X-Trans V)". Returns the first value, the
+/// sensor it is for (if named) and the others by sensor. `None` when no later part names a
+/// sensor: then the value is read as it is.
+pub(crate) fn sensor_alternatives(value: &str) -> Option<SensorAlternatives> {
+    let v = ascii_minus(value);
+    let mut parts: Vec<&str> = ALT_SPLIT.split(&v).filter(|p| !p.trim().is_empty()).collect();
+    let sensor = |p: &str| crate::recipes::post::sensor_in_text(p);
+    if parts.len() < 2 || parts[1..].iter().all(|p| sensor(p).is_none()) {
+        let commas: Vec<&str> = v.split(", ").collect();
+        if commas.len() >= 2 && commas.iter().all(|p| sensor(p).is_some()) {
+            parts = commas;
+        } else {
+            return None;
+        }
+    }
+    let clean = |p: &str| SENSOR_TAG.replace(p.trim(), "").trim().to_string();
+    let others: Vec<(String, String)> = parts[1..].iter().filter_map(|p| sensor(p).map(|s| (s, clean(p)))).collect();
+    if others.is_empty() {
+        return None;
+    }
+    Some((clean(parts[0]), sensor(parts[0]), others))
+}
+
+/// Unsets a field: a variant's "N/A".
+pub(crate) fn clear(s: &mut Settings, field: Field) {
+    match field {
+        Field::FilmSimulation => s.film_simulation = None,
+        Field::DynamicRange => s.dynamic_range = None,
+        Field::DRangePriority => s.d_range_priority = None,
+        Field::Grain => s.grain_effect = None,
+        Field::GrainSize => s.grain_size = None,
+        Field::ColorChrome => s.color_chrome = None,
+        Field::ColorChromeFxBlue => s.color_chrome_fx_blue = None,
+        Field::SmoothSkin => s.smooth_skin = None,
+        Field::Clarity => s.clarity = None,
+        _ => {}
+    }
+}
+
 /// Text after the first of several alternatives: "Off (X-Trans V); Weak (X-Trans IV)",
 /// "Strong — Weak for X-Trans V", "Off or N/A". Returns the first alternative and the rest.
 fn first_alternative(value: &str) -> (String, Option<String>) {
@@ -365,7 +411,7 @@ pub(crate) fn film_sim(phrase: &str) -> Option<String> {
 }
 
 /// "N/A", "-", "/": the setting does not apply to the camera the recipe was written for.
-fn not_applicable(value: &str) -> bool {
+pub(crate) fn not_applicable(value: &str) -> bool {
     let n = norm(value);
     !value.trim().is_empty() && (n.is_empty() || matches!(n.as_str(), "n a" | "na" | "not available" | "none given"))
 }

@@ -1,0 +1,407 @@
+{
+ "fetchedAt": "2026-10-17",
+ "query": "<name> fujifilm recipe",
+ "counts": {
+  "fam:fujixweekly:kodachrome-64-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 10,
+   "score": 144
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-kodak-tri-x-400": {
+   "threads": 8,
+   "score": 213
+  },
+  "fam:fujixweekly:kodak-portra-400-v2-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 9,
+   "score": 2269
+  },
+  "fam:fujixweekly:pacific-blues-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 9,
+   "score": 4736
+  },
+  "fujixweekly:my-fujifilm-x-pro2-kodachrome-ii-film-simulation-recipe": {
+   "threads": 6,
+   "score": 218
+  },
+  "fujixweekly:my-fujifilm-x100f-vintage-kodachrome-film-simulation-recipe": {
+   "threads": 7,
+   "score": 373
+  },
+  "fujixweekly:my-fujifilm-x100f-classic-chrome-film-simulation-recipe": {
+   "threads": 2,
+   "score": 175
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-kodak-portra-400": {
+   "threads": 8,
+   "score": 299
+  },
+  "fujixweekly:my-fujifilm-x-t30-kodak-gold-200-film-simulation-recipe": {
+   "threads": 8,
+   "score": 232
+  },
+  "fujixweekly:my-fujifilm-x-t30-kodachrome-64-film-simulation-recipe": {
+   "threads": 10,
+   "score": 503
+  },
+  "fujixweekly:reala-ace-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 5,
+   "score": 506
+  },
+  "fujixweekly:1970s-summer-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 1,
+   "score": 7
+  },
+  "fam:fujixweekly:cinestill-800t-fujifilm-x-trans-v-film-simulation-recipe": {
+   "threads": 10,
+   "score": 2502
+  },
+  "fujixweekly:fujifilm-x-trans-iv-film-simulation-recipe-reggies-portra": {
+   "threads": 7,
+   "score": 710
+  },
+  "fujixweekly:my-fujifilm-x-t30-kodacolor-film-simulation-recipe": {
+   "threads": 7,
+   "score": 1362
+  },
+  "fam:fujixweekly:fujicolor-superia-100-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 3,
+   "score": 38
+  },
+  "fujixweekly:my-fujifilm-x100f-fujicolor-superia-800-film-simulation-recipe-pro-neg-std": {
+   "threads": 1,
+   "score": 10
+  },
+  "fujixweekly:my-fujifilm-x-t30-kodak-vision3-250d-film-simulation-recipe": {
+   "threads": 5,
+   "score": 456
+  },
+  "fujixweekly:my-fujifilm-x-t30-kodak-portra-160-film-simulation-recipe": {
+   "threads": 3,
+   "score": 48
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-the-rockwell-velvia": {
+   "threads": 4,
+   "score": 117
+  },
+  "fam:fujixweekly:fujicolor-reala-100-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 5,
+   "score": 109
+  },
+  "fujixweekly:my-fujifilm-x100f-velvia-film-simulation-recipe": {
+   "threads": 5,
+   "score": 316
+  },
+  "fujixweekly:my-fujifilm-x100f-kodak-portra-400-film-simulation-recipe": {
+   "threads": 8,
+   "score": 3471
+  },
+  "fam:fujixweekly:superia-xtra-400-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 9,
+   "score": 2578
+  },
+  "fujixweekly:pro-negative-160c-fujifilm-x100vi-film-simulation-recipe": {
+   "threads": 6,
+   "score": 442
+  },
+  "fujixweekly:my-fujifilm-x100f-cinestill-800t-film-simulation-recipe": {
+   "threads": 9,
+   "score": 2353
+  },
+  "fam:fujixweekly:kodak-ultramax-400-a-film-simulation-recipe-for-the-fujifilm-x-t5-x-trans-v": {
+   "threads": 5,
+   "score": 764
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-fujicolor-superia-800": {
+   "threads": 4,
+   "score": 40
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-kodak-ektar-100": {
+   "threads": 7,
+   "score": 164
+  },
+  "fam:fujixweekly:fujicolor-natura-1600-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 4,
+   "score": 1397
+  },
+  "fujixweekly:my-fujifilm-x100f-agfa-scala-film-simulation-recipe": {
+   "threads": 7,
+   "score": 716
+  },
+  "fujixweekly:kodak-gold-200-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 8,
+   "score": 377
+  },
+  "fujixweekly:fujifilm-x100v-x-trans-iv-film-simulation-recipe-vintage-color": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:fujifilm-x100v-x-trans-iv-film-simulation-recipe-xpro-62": {
+   "threads": 7,
+   "score": 98
+  },
+  "fujixweekly:my-fujifilm-x-t30-eterna-film-simulation-recipe": {
+   "threads": 9,
+   "score": 270
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-preet": {
+   "threads": 2,
+   "score": 268
+  },
+  "fujixweekly:my-fujifilm-x-t30-velvia-film-simulation-recipe": {
+   "threads": 5,
+   "score": 314
+  },
+  "fam:fujixweekly:fujicolor-superia-1600-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 2,
+   "score": 36
+  },
+  "fujixweekly:my-fujifilm-x100f-cross-process-film-simulation-recipe": {
+   "threads": 3,
+   "score": 47
+  },
+  "fujixweekly:my-fujifilm-x100f-kodak-ektar-100-film-simulation-recipe": {
+   "threads": 7,
+   "score": 172
+  },
+  "fujixweekly:aerochrome-v2-fujifilm-x-t4-es-full-spectrum-infrared-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:my-fujifilm-x-t30-fujicolor-100-industrial-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:my-fujifilm-x-t1-x-trans-ii-kodachrome-64-film-simulation-recipe": {
+   "threads": 10,
+   "score": 507
+  },
+  "fujixweekly:nostalgic-americana-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 1,
+   "score": 10
+  },
+  "fujixweekly:my-fujifilm-x-t30-dramatic-monochrome-film-simulation-recipe": {
+   "threads": 4,
+   "score": 55
+  },
+  "fam:fujixweekly:kodak-portra-800-v3-fujifilm-x-t5-x-trans-v-x-e4-x-trans-iv-film-simulation-recipe": {
+   "threads": 6,
+   "score": 580
+  },
+  "fujixweekly:my-fujifilm-x-t20-kodak-ektachrome-100sw-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:my-fujifilm-x-pro2-vintage-agfacolor-film-simulation-recipe": {
+   "threads": 4,
+   "score": 226
+  },
+  "fujixweekly:not-my-fujifilm-x-pro2-tri-x-push-process-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:fujifilm-x100v-x-trans-iv-film-simulation-recipe-fujicolor-100-gold": {
+   "threads": 3,
+   "score": 307
+  },
+  "fujixweekly:my-fujifilm-x-t30-faded-color-film-simulation-recipe": {
+   "threads": 2,
+   "score": 520
+  },
+  "fujixweekly:not-my-fujifilm-x-t1-x-trans-ii-kodak-portra-160-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fam:fujixweekly:fujicolor-super-hg-v2-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 9,
+   "score": 1130
+  },
+  "fujixweekly:fujifilm-x100v-x-trans-iv-film-simulation-recipe-fujicolor-pro-400h": {
+   "threads": 5,
+   "score": 67
+  },
+  "fujixweekly:mccurry-kodachrome-a-fujifilm-x-trans-iv-film-simulation-recipe": {
+   "threads": 3,
+   "score": 889
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-kodachrome-1": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:my-fujifilm-classic-negative-film-simulation-recipe-for-x-trans-iii": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:my-fujifilm-x-t30-ilford-hp5-plus-400-push-process-film-simulation-recipe": {
+   "threads": 4,
+   "score": 229
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-superia-premium-400": {
+   "threads": 2,
+   "score": 66
+  },
+  "fujixweekly:my-fujifilm-x100f-pro-neg-hi-film-simulation-recipe-portraits": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:fujifilm-provia-film-simulation-settings-or-my-agfa-optima-200-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:fujifilm-x-trans-iv-x-pro3-x100v-x-t4-x-s10-x-e4-film-simulation-recipe-fujicolor-nps-160-pulled": {
+   "threads": 4,
+   "score": 58
+  },
+  "fujixweekly:fujifilm-x-trans-iv-film-simulation-recipe-vintage-vibes": {
+   "threads": 1,
+   "score": 5
+  },
+  "fujixweekly:1976-kodak-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 1,
+   "score": 11
+  },
+  "fujixweekly:my-fujifilm-x100f-ilford-hp5-plus-film-simulation-recipe": {
+   "threads": 7,
+   "score": 52
+  },
+  "fujixweekly:fujifilm-x-trans-iv-film-simulation-recipe-fujicolor-c200": {
+   "threads": 6,
+   "score": 3685
+  },
+  "fujixweekly:my-fujifilm-x-t30-kodak-portra-400-film-simulation-recipe": {
+   "threads": 9,
+   "score": 3550
+  },
+  "fujixweekly:my-fujifilm-x-t30-provia-film-simulation-recipe-fujichrome-sensia-100": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:my-fujifilm-x100f-eterna-film-simulation-recipe": {
+   "threads": 9,
+   "score": 275
+  },
+  "fam:fujixweekly:classic-color-fujifilm-x-t5-x-trans-v-and-x-e4-x-trans-iv-film-simulation-recipe--x-trans-v": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:fujifilm-x-t1-x-trans-ii-kodachrome-ii-film-simulation-recipe": {
+   "threads": 6,
+   "score": 214
+  },
+  "fujixweekly:my-fujifilm-x-pro2-dramatic-classic-chrome-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:kodak-portra-160-v2-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 1,
+   "score": 1
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-kodak-portra-800": {
+   "threads": 8,
+   "score": 512
+  },
+  "fujixweekly:my-fujifilm-x100f-astia-film-simulation-recipe": {
+   "threads": 9,
+   "score": 814
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-kodak-t-max-400": {
+   "threads": 4,
+   "score": 138
+  },
+  "fujixweekly:my-fujifilm-x-t30-jeff-davenport-night-recipe": {
+   "threads": 1,
+   "score": 5
+  },
+  "fujixweekly:fujifilm-x-trans-iv-film-simulation-recipe-agfachrome-rs-100": {
+   "threads": 1,
+   "score": 61
+  },
+  "fujixweekly:fujifilm-x-trans-iv-film-simulation-recipe-bright-kodak": {
+   "threads": 8,
+   "score": 2029
+  },
+  "fujixweekly:not-my-fujifilm-x100v-classic-negative-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:my-fujifilm-x-t1-x-trans-ii-kodacolor-film-simulation-recipe": {
+   "threads": 10,
+   "score": 1808
+  },
+  "fam:fujixweekly:kodachrome-25-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 3,
+   "score": 167
+  },
+  "fujixweekly:kodak-vision3-250d-v2-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 1,
+   "score": 85
+  },
+  "fujixweekly:fujifilm-x-trans-iv-film-simulation-recipe-ilford-hp5-plus-400": {
+   "threads": 7,
+   "score": 41
+  },
+  "fujixweekly:new-nostalgic-negative-film-simulation-x-trans-iv-nostalgic-negative-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:fujifilm-x-t20-x-trans-iii-x-t30-film-simulation-recipe-kodak-ultramax": {
+   "threads": 9,
+   "score": 1196
+  },
+  "fujixweekly:timeless-negative-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 3,
+   "score": 153
+  },
+  "fujixweekly:fujifilm-x-trans-iv-film-simulation-recipe-kodak-portra-400-warm": {
+   "threads": 2,
+   "score": 41
+  },
+  "fujixweekly:two-fujifilm-x-trans-iv-film-simulation-recipes-kodachrome-ii": {
+   "threads": 8,
+   "score": 237
+  },
+  "fujixweekly:two-fujifilm-x-trans-iv-film-simulation-recipes-kodachrome-ii-2": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:not-my-fujifilm-x-urban-vintage-chrome-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:fujifilm-x-trans-iv-film-simulation-recipe-kodak-portra-800-v2": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:fujifilm-x70-x-trans-ii-film-simulation-recipe-classic-kodak-chrome": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:nostalgia-negative-my-first-fujifilm-x-t5-x-trans-v-film-simulation-recipe": {
+   "threads": 1,
+   "score": 1
+  },
+  "fujixweekly:my-fujifilm-x-t30-redscale-film-simulation-recipe": {
+   "threads": 10,
+   "score": 152
+  },
+  "fujixweekly:my-fujifilm-x-t30-faded-monochrome-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  },
+  "fujixweekly:frgmt-bw-a-fujifilm-film-simulation-recipe-by-hiroshi-fujiwara": {
+   "threads": 8,
+   "score": 212
+  },
+  "fujixweekly:fujifilm-x100v-film-simulation-recipe-agfa-vista-100": {
+   "threads": 3,
+   "score": 131
+  },
+  "fujixweekly:fujifilm-x-e4-x-trans-iv-film-simulation-recipe-positive-film": {
+   "threads": 7,
+   "score": 331
+  },
+  "fujixweekly:my-fujifilm-x-t30-monochrome-kodachrome-film-simulation-recipe": {
+   "threads": 0,
+   "score": 0
+  }
+ },
+ "source": "hn-app search (Reddit results), one query per catalogue card, top 100 by comments and mentions; at most 10 threads per query"
+}

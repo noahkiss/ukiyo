@@ -31,6 +31,13 @@ export const events = {
 };
 
 /* Types */
+/**  One setting's value for another sensor. */
+export type Alternative = {
+	sensor: string,
+	label: string,
+	value: string,
+};
+
 export type Capture = "stills" | "movie";
 
 export type Catalog = Catalog_Serialize | Catalog_Deserialize;
@@ -60,6 +67,7 @@ export type CatalogRecipe_Deserialize = {
 	credit: Publication_Deserialize,
 	/**  Later publications of the same settings. */
 	alsoPublishedBy?: Publication_Deserialize[],
+	popularity: Popularity_Deserialize,
 };
 
 /**  One distinct recipe: settings published once or more. */
@@ -78,6 +86,7 @@ export type CatalogRecipe_Serialize = {
 	credit: Publication_Serialize,
 	/**  Later publications of the same settings. */
 	alsoPublishedBy?: Publication_Serialize[],
+	popularity: Popularity_Serialize,
 };
 
 export type Catalog_Deserialize = {
@@ -165,6 +174,26 @@ export type Entry_Serialize = {
 /**  What the person at the fake camera does (`UKIYO_FAKE_CAMERA=1` only). */
 export type FakeAction = "openMenu" | "closeMenu" | "movie" | "stills" | "powerOff" | "powerOn" | "unplug" | "nudge" | "autoOn" | "autoOff";
 
+export type Family = Family_Serialize | Family_Deserialize;
+
+export type Family_Deserialize = {
+	/**  `fam:` and the newest variant's recipe id. */
+	id: string,
+	title: string,
+	variants: Variant[],
+	/**  The variants' signals, summed. */
+	popularity: Popularity_Deserialize,
+};
+
+export type Family_Serialize = {
+	/**  `fam:` and the newest variant's recipe id. */
+	id: string,
+	title: string,
+	variants: Variant[],
+	/**  The variants' signals, summed. */
+	popularity: Popularity_Serialize,
+};
+
 /**  The value's allowed set, as the descriptor's form says. */
 export type Form = { form: "none" } | { form: "range"; min: Value; max: Value; step: Value } | { form: "enum"; values: Value[] };
 
@@ -216,12 +245,60 @@ export type Parsed_Deserialize = {
 	settings: Settings_Deserialize,
 	notes: Note[],
 	warnings: Warning[],
+	/**
+	 *  Values the text gives for other sensors: "Off (X-Trans V); Weak (X-Trans IV)". The
+	 *  settings hold the first; each of these is one setting of another sensor's variant.
+	 */
+	alternatives?: Alternative[],
+	/**  The sensor the first value is for, when the text names it. */
+	sensor?: string | null,
 };
 
 export type Parsed_Serialize = {
 	settings: Settings_Serialize,
 	notes: Note[],
 	warnings: Warning[],
+	/**
+	 *  Values the text gives for other sensors: "Off (X-Trans V); Weak (X-Trans IV)". The
+	 *  settings hold the first; each of these is one setting of another sensor's variant.
+	 */
+	alternatives?: Alternative[],
+	/**  The sensor the first value is for, when the text names it. */
+	sensor?: string | null,
+};
+
+/**
+ *  How much a recipe is talked about. No source publishes downloads or favourites, so there
+ *  is no download count.
+ */
+export type Popularity = Popularity_Serialize | Popularity_Deserialize;
+
+/**
+ *  How much a recipe is talked about. No source publishes downloads or favourites, so there
+ *  is no download count.
+ */
+export type Popularity_Deserialize = {
+	/**  Comments on its posts. A post holding several recipes splits its count among them. */
+	comments: number,
+	/**  Other posts in the read feeds that link to its posts, split the same way. */
+	mentions: number,
+	reddit?: RedditCount | null,
+	/**  `score_of`. */
+	score: number | null,
+};
+
+/**
+ *  How much a recipe is talked about. No source publishes downloads or favourites, so there
+ *  is no download count.
+ */
+export type Popularity_Serialize = {
+	/**  Comments on its posts. A post holding several recipes splits its count among them. */
+	comments: number,
+	/**  Other posts in the read feeds that link to its posts, split the same way. */
+	mentions: number,
+	reddit?: RedditCount | null,
+	/**  `score_of`. */
+	score: number | null,
 };
 
 /**  One property as the UI shows it. */
@@ -282,6 +359,8 @@ export type RecipeCatalog_Deserialize = {
 	builtAt: string,
 	sources: SourceInfo[],
 	recipes: CatalogRecipe_Deserialize[],
+	/**  Recipes that are one recipe made for several sensors. */
+	families?: Family_Deserialize[],
 };
 
 /**  `catalog/recipes/catalog.json`. */
@@ -291,6 +370,15 @@ export type RecipeCatalog_Serialize = {
 	builtAt: string,
 	sources: SourceInfo[],
 	recipes: CatalogRecipe_Serialize[],
+	/**  Recipes that are one recipe made for several sensors. */
+	families: Family_Serialize[],
+};
+
+/**  Reddit threads that name a recipe, from the hn-app search (`catalog/recipes/reddit.json`). */
+export type RedditCount = {
+	threads: number,
+	/**  The threads' scores, summed. */
+	score: number,
 };
 
 export type Screen = "shooting" | "playback" | "menu" | "unknown";
@@ -450,6 +538,13 @@ export type Value = { kind: "int"; v: number } | { kind: "str"; v: string } | { 
  *  properties), as lowercase hex.
  */
 { kind: "raw"; v: string };
+
+/**  A family's versions, newest sensor first. */
+export type Variant = {
+	sensor: string,
+	/**  A `CatalogRecipe::id`. */
+	recipe: string,
+};
 
 /**  One line the parser could not use as it stands. Nothing is dropped without one. */
 export type Warning = {

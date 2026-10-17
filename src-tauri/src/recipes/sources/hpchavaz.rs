@@ -3,7 +3,7 @@
 //! credits its Creator column; the source is the compilation, linked to the sheet. A row's
 //! own URL, when given, is the recipe's link.
 
-use super::{Fetch, Source};
+use super::{with_variants, Fetch, Source};
 use crate::recipes::catalogue::{SourceInfo, SourceRecipe};
 use crate::recipes::{parse_text, post, values::film_sim};
 
@@ -109,7 +109,7 @@ fn recipes(csv: &str) -> Vec<SourceRecipe> {
             seen.insert(id.clone());
         }
         let link = get(url);
-        out.push(SourceRecipe {
+        let r = SourceRecipe {
             id,
             name: title.clone(),
             title,
@@ -118,10 +118,9 @@ fn recipes(csv: &str) -> Vec<SourceRecipe> {
             author: Some(get(creator)).filter(|c| !c.is_empty()),
             sensor: post::sensor(&get(sensor), &[]),
             video: kind.is_some_and(|k| get(k).to_lowercase().contains("video")),
-            settings: p.settings,
-            notes: p.notes,
-            warnings: p.warnings,
-        });
+            ..SourceRecipe::default()
+        };
+        out.extend(with_variants(r, p));
     }
     out
 }
