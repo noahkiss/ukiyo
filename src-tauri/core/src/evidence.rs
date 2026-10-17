@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn confirmed_needs_a_change_this_session() {
-        let g = ChangeGroup { id: 1, at: 0.0, source: ChangeSource::Camera, changes: vec![Change { code: 0xd023, old: None, new: Some(Value::Int(2)) }], actor: None };
+        let g = ChangeGroup { id: 1, at: 0.0, source: ChangeSource::Camera, changes: vec![Change { code: 0xd023, old: None, new: Some(Value::Int(2)) }], actor: None, closed_menu: false };
         let s = snap(vec![], vec![g]);
         let confirmed = |code| LabelPatch { confidence: Some(Confidence::Confirmed), ..patch(code) };
         assert!(check(&s, "mcp:test", &confirmed(0xd023)).is_ok());

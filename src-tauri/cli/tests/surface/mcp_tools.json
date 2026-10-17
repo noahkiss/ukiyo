@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "camera_status",
-      "description": "Reports the camera connection, its USB mode, and which features work in that mode.\n\nBest for: the first call in any camera task, and after any needs_* error.\nReturns: link, reason, model, firmware, mode, capture (stills/movie), screen, battery, card, keep_awake, the owner process (serve, its pid, fake or real camera), and available per feature (settings, slots, movie_props).\nNot for property values: use settings_read.",
+      "description": "Reports the camera connection, its USB mode, and which features work in that mode.\n\nBest for: the first call in any camera task, and after any needs_* error.\nReturns: link, reason, model, firmware, mode, capture (stills/movie), screen, battery, card, keep_awake (the setting) and keep_awake_active (resetting the camera's auto power off timer now), the owner process (serve, its pid, fake or real camera), and available per feature (settings, slots, movie_props).\nNot for property values: use settings_read.",
       "inputSchema": {
         "type": "object",
         "properties": {},
