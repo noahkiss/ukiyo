@@ -313,7 +313,8 @@ impl FakeHandle {
     pub fn tick_noise(&self, wall_ms: i64) {
         self.with(|s| {
             if let Some(p) = s.props.get_mut(&0x5011) {
-                p.value = Value::Str(format!("20261017T{:06}", (wall_ms / 1000) % 240000));
+                let secs = (wall_ms / 1000) % 86_400;
+                p.value = Value::Str(format!("20261017T{:02}{:02}{:02}", secs / 3600, secs / 60 % 60, secs % 60));
             }
             if let Some(p) = s.props.get_mut(&0xD171) {
                 if let Value::Int(n) = p.value {
