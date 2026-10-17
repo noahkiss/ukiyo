@@ -123,6 +123,11 @@ class Dialogs:
     def __init__(self, log, scripted=None):
         self.log, self.scripted = log, scripted
 
+    @staticmethod
+    def _ping(title):
+        """A notification, so the owner away from the screen sees that a step waits on them."""
+        macnet.notify("ukiyo Wi-Fi test", f"Waiting for you: {title}")
+
     def _osa(self, script, args):
         cmd = ["osascript"] + sum((["-e", ln] for ln in script), []) + list(args)
         p = subprocess.run(cmd, capture_output=True, text=True)
@@ -140,6 +145,7 @@ class Dialogs:
                       "set r to display dialog (item 1 of argv) with title (item 2 of argv) buttons b "
                       "default button (count of b) giving up after 3600",
                       "if gave up of r then return \"(timeout)\"", "return button returned of r", "end run"]
+            self._ping(title)
             rc, out = self._osa(script, [text, title, *buttons])
             pick = out if rc == 0 and out in buttons else ("Skip" if out == "(timeout)" else "Stop")
         self.log("answer", key=key, answer=pick)
@@ -163,6 +169,7 @@ class Dialogs:
                       "if button returned of r is \"Skip\" then return \"__ukiyo_skip__\"",
                       "if button returned of r is \"Stop\" then return \"__ukiyo_stop__\"",
                       "return text returned of r", "end run"]
+            self._ping(title)
             rc, out = self._osa(script, [text, title, default])
             val = None if rc != 0 or out == "__ukiyo_skip__" else out
             if out == "__ukiyo_stop__" or rc != 0:
@@ -180,6 +187,7 @@ class Dialogs:
             script = ["on run argv", "set opts to items 3 thru -1 of argv",
                       "set r to choose from list opts with title (item 1 of argv) with prompt (item 2 of argv)",
                       "if r is false then return \"\"", "return item 1 of r", "end run"]
+            self._ping(title)
             rc, out = self._osa(script, [title, prompt, *options])
             val = out if out in options else None
         self.log("answer", key=key, answer=val)
@@ -246,6 +254,8 @@ class Run:
     # ------------------------------------------------------------ main flow
 
     def main(self):
+        if not self.dry:
+            self.take_camera()
         try:
             if self.dry:
                 import fakecam
@@ -269,6 +279,17 @@ class Run:
             self.log("traceback", text=traceback.format_exc())
         finally:
             self.finish()
+
+    def take_camera(self):
+        """Holds Ukiyo's owner.lock for the run, as tools/ptp does, and refuses while the camera
+        is on USB: the Wi-Fi tests need it unplugged."""
+        sys.path.insert(0, str(REPO / "tools" / "ptp"))
+        import owner_lock
+        owner_lock.hold()
+        usb = subprocess.run(["ioreg", "-p", "IOUSB", "-l"], capture_output=True, text=True).stdout
+        if re.search(r'"idVendor" = 1227\b', usb):  # 0x04CB, Fujifilm
+            sys.exit("A Fujifilm camera is on USB. Unplug the cable, then run this again.")
+        self.log("owner_lock", held=True)
 
     @staticmethod
     def _free_port():

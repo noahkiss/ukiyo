@@ -42,6 +42,9 @@ files with thumbnails, a live view frame, and a keep-alive watch.
 
 ## Safety
 
+- The run takes Ukiyo's `owner.lock`, as `tools/ptp` does. It refuses while Ukiyo owns the
+  camera, or while a Fujifilm camera is on USB.
+- Each dialog also sends a macOS notification, so you see a waiting step from across the room.
 - Read-only, except one AUTO POWER OFF (D381) toggle to a neighbouring value and back. The
   restore runs in a `finally`. If it fails, the summary says which value to set by hand.
 - `fujiptpip.Session` refuses capture, delete, format and object-write operations.
