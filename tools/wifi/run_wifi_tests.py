@@ -510,11 +510,11 @@ class Run:
             "Skip if the camera already has this network.",
         ])
         self.dlg.ask("tether_apo", "Wireless tether: auto power off", [
-            "For the keep-alive test, the camera should sleep soon.",
+            "The camera must stay on during the tests.",
             f"On the camera: {MENU_APO}.",
-            "Note the current value, then choose 1 MIN.",
-            "You set it back at the end.",
-            "Skip to keep the current value.",
+            "Note the current value, then choose OFF.",
+            "The keep-alive test at the end asks for 1 MIN.",
+            "You set your usual value back at the end.",
         ])
         self.dlg.ask("tether_mode_on", "Wireless tether: start", [
             f"On the camera: {MENU_NET} > CONNECTION MODE > WIRELESS TETHER SHOOTING FIXED.",
@@ -995,6 +995,15 @@ class Run:
 
     def keep_alive(self, s, out, props):
         res = out["keep_alive"] = {}
+        ans = self.dlg.ask("keepalive_setup", "Keep-alive test", [
+            "Last test: does the Wi-Fi connection keep the camera awake?",
+            f"On the camera: {MENU_APO} > 1 MIN.",
+            "Go back to shooting mode (half-press the shutter).",
+            "Press Done, then do not touch the camera for about 3 minutes.",
+        ])
+        if ans == "Skip":
+            res["skipped"] = "owner"
+            return
         rc, data, _ = s.get_value(D381)
         apo = struct.unpack("<H", data[:2])[0] if rc == fp.OK and len(data) >= 2 else None
         secs = APO_SECONDS.get(apo)
@@ -1005,7 +1014,7 @@ class Run:
         limit = min(self.args.keepalive_max_s, (secs or 120) + 90) * scale
         poll = self.args.keepalive_poll_s * scale
         pressed, close = self.dlg.background("keepalive", "Keep-alive test", [
-            f"Leave the camera alone for {int(limit // 60) + 1} minutes.",
+            f"Leave the camera alone for up to {int(limit / scale // 60) + 1} minutes.",
             "Do not touch any button or dial.",
             "The Mac checks every few seconds whether it is still connected.",
             "End now: stop this test early.",
@@ -1315,7 +1324,9 @@ def render_summary(f, run_dir):
         if lv:
             L.append(f"- Live view: {json.dumps(lv)[:500]}")
         ka = m.get("keep_alive")
-        if ka:
+        if ka and ka.get("skipped"):
+            L.append(f"- Keep-alive: not run ({ka['skipped']}).")
+        elif ka:
             L.append(f"- Keep-alive: {ka.get('verdict')} (AUTO POWER OFF {ka.get('auto_power_off')}, watched "
                      f"{ka.get('watched_s')} s, dropped at {ka.get('dropped_at_s')} s, "
                      f"{ka.get('since_last_d381_write_s')} s after the last D381 write, {ka.get('polls')} polls).")
