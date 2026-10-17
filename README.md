@@ -1,13 +1,62 @@
-# ukiyo
+# Ukiyo
 
-A Mac app for a Fujifilm X-series camera over USB. This first version is the **Lab**: a live
-property mapper. Flip a setting on the camera, watch which PTP property moves, and label it.
-Labels go into a model catalog (`catalog/<model>.json`) that anyone can extend for their camera.
+Ukiyo is a Mac app for a Fujifilm X-series camera, connected over USB. It manages film
+simulation recipes and the camera's settings from the computer, so you do not dig through the
+on-camera menus.
 
-## Run it
+- **Recipe library.** Browse a bundled catalogue of film simulation recipes and keep your own.
+  Ukiyo will read and write the camera's custom slots C1-C7.
+- **Settings editor.** Read and change camera settings from the Mac, laid out like Fujifilm's
+  own menus.
+- **Lab.** A live property mapper. Change a setting on the camera, watch which PTP property
+  moves, and label it. Labels go into a per-model catalog that anyone can extend.
+- **`ukiyo` CLI and MCP server.** The command line tool and the MCP server reach what the
+  window reaches, with the same safety rules. An agent can read the camera, plan a change, and
+  apply it after a read-back check.
 
-Requirements: Rust through rustup (the version in `rust-toolchain.toml`), Node 24
-(`.node-version`), and pnpm (`packageManager` in `app/package.json`, through corepack).
+## Status
+
+Ukiyo is pre-release. There is no signed build or installer yet; build it from source.
+
+- Built: the USB connection core, the Lab, the CLI with gated setting writes, and the MCP
+  server. The Python tools in `tools/ptp/` read C1-C7.
+- In progress: the recipe library, C1-C7 reads and writes in the app, presets, snapshots, and packaging.
+  `docs/roadmap.md` lists what comes next.
+
+Ukiyo writes only properties whose meaning is confirmed, and reads each one back after the
+write. Expect rough edges.
+
+## Cameras
+
+| Camera | State |
+|---|---|
+| X-T5 | Tested. The property catalog (`catalog/x-t5.json`) maps its settings. |
+| Other X-series bodies | Not tested. Ukiyo connects and the Lab maps their properties. `catalog/menus/` holds the menus of 21 bodies from their owner's manuals. |
+
+Contributions of a catalog for another body are welcome. `docs/catalog.md` describes the format.
+
+## USB modes
+
+Set the mode on the camera: SET UP > CONNECTION SETTING > CONNECTION MODE.
+
+| Mode | What Ukiyo can do |
+|---|---|
+| USB TETHER SHOOTING FIXED | Read and change settings, the Hub, the Lab. The camera keeps working. |
+| USB RAW CONV./BACKUP RESTORE | Read and write recipe slots C1-C7 (in progress). The camera is locked until you unplug it. |
+| STILL/MOVIE switch at MOVIE (in tether mode) | Movie settings. Stills settings need the switch at STILL. |
+
+`ukiyo help modes` prints the steps. `docs/protocol.md` has the detail.
+
+## Build from source
+
+Requirements:
+
+- macOS 13 or later
+- Rust through rustup (the version in `rust-toolchain.toml`)
+- Node 24 (`.node-version`)
+- pnpm (`packageManager` in `app/package.json`, through corepack)
+
+Run the app:
 
 ```bash
 cd app
@@ -16,61 +65,58 @@ UKIYO_FAKE_CAMERA=1 pnpm tauri dev   # no camera: a fake X-T5 with made-up value
 pnpm tauri dev                       # the real camera over USB
 ```
 
-The dev server runs on port 4823. `UKIYO_FAKE_MODE=rawconv` starts the fake camera in
-RAW CONV. mode instead of tether.
+`UKIYO_FAKE_MODE=rawconv` starts the fake camera in RAW CONV. mode. The dev server uses port
+4823.
 
-With a real camera:
-
-1. Set SET UP > CONNECTION SETTING > CONNECTION MODE to **USB TETHER SHOOTING FIXED**. The
-   other modes work, with fewer properties (`docs/protocol.md`).
-2. Plug the camera in and turn it on. The app stops macOS's PTPCamera agent before it claims
-   the camera, and finds it within 3 seconds.
-3. Change one setting on the camera. The change feed shows what moved. Type what you did into
-   "What I just changed" first, and the note sticks to that change.
-4. Label it: select the change (`j`/`k`) and press `l`, or double-click a row. `⌘↩` saves.
-
-The camera's own menu blocks every read while it is open. The app pauses, shows "Camera in
-menu", and resumes when the menu closes. When the camera powers itself off, the app waits 30
-seconds before it reconnects. "Keep the camera awake while you use Ukiyo" (Settings > Camera
-connection, on by default) resets the camera's auto power off timer while you use the app: it
-sets AUTO POWER OFF to a neighbouring timeout and straight back, and never to OFF.
-
-## Tests
+Build the CLI and add the MCP server to a client:
 
 ```bash
 cd src-tauri
-cargo test                                  # unit tests, the owner on the fake camera
+cargo build -p ukiyo-cli
+claude mcp add ukiyo -- "$PWD/target/debug/ukiyo-cli" mcp
+```
+
+Run the tests:
+
+```bash
+cd src-tauri
+cargo test
 cargo clippy --all-targets -- -D warnings
-UKIYO_UPDATE_BINDINGS=1 cargo test bindings # rewrite app/src/bindings.ts after a command change
 cd ../app && pnpm build
 ```
 
-## Files
+`AGENTS.md` maps the source tree. `docs/agent-interface.md` covers the CLI and the MCP server.
 
-| Path | Holds |
-|---|---|
-| `src-tauri/core/` | `ukiyo-core`, the Rust core with no Tauri in it; the modules below |
-| `src-tauri/core/src/api.rs` | The requests, responses and events every front end speaks |
-| `src-tauri/src/` | The window's glue: Tauri commands (one call each into `api`), events, bindings |
-| `src-tauri/core/src/camera/` | The PTP core: `ptp` framing, `usb` (nusb), `fake`, `owner` (the one connection thread) |
-| `src-tauri/core/src/catalog.rs` | Catalog load, label, save |
-| `src-tauri/core/src/lab.rs` | The Lab: mirror for the window, session log, export, the fake camera's controls |
-| `app/` | The window: React, TypeScript, Vite |
-| `catalog/` | One JSON file per camera model (`docs/catalog.md`) |
-| `catalog/recipes/` | Recipe settings from Fuji X Weekly, film.recipes and H-P Chavaz's recipe database, with a link to each post (`docs/recipes.md`) |
-| `src-tauri/core/src/recipes/` | The recipe text parser, the source adapters and the de-duplicating merge |
-| `docs/protocol.md` | What is known about the camera's PTP interface |
-| `tools/ptp/` | The Python discovery scripts the Rust core was ported from |
-| `tools/catalog/seed_xt5.py` | Seeds `catalog/x-t5.json` and the fake camera's shape from local dumps |
+## How the connection works
 
-The app writes session logs (`sessions/*.jsonl`), exports (`dumps/`) and `settings.json` to
-`~/Library/Application Support/com.nkmkdigital.ukiyo/`. In a dev build, labels go to the repo's
-`catalog/` so they can be committed; `UKIYO_CATALOG_DIR` points them elsewhere.
+One process owns the USB connection: `ukiyo serve`. The window, the CLI and the MCP server all
+talk to it over a local socket, and it starts on demand. Ukiyo stops macOS's PTPCamera agent
+before it claims the camera.
+
+The camera blocks reads while its own menu is open. Ukiyo pauses and resumes when the menu
+closes. "Keep the camera awake while you use Ukiyo" (on by default) resets the auto power off
+timer while you use the app. It never sets AUTO POWER OFF to OFF.
+
+Ukiyo keeps session logs, exports and settings in
+`~/Library/Application Support/com.nkmkdigital.ukiyo/`.
 
 ## Credits
 
-The bundled film simulation recipes are © their creators: Ritchie Roesch,
-[Fuji X Weekly](https://fujixweekly.com); Justin Gould, [film.recipes](https://film.recipes);
-and the creators compiled by Henri-Pierre Chavaz in his
-[Fujifilm Film Simulation Recipes Database](https://docs.google.com/spreadsheets/d/11PvZ7rOnwmbz5VylVIvzOuWwEa83c0DweAlBwJ2pZJc).
-ukiyo bundles their settings only, with a link to each post (`docs/recipes.md`).
+The bundled film simulation recipes are © their creators. Ukiyo bundles their settings only,
+with a link to each post (`docs/recipes.md`).
+
+- Ritchie Roesch, [Fuji X Weekly](https://fujixweekly.com)
+- Justin Gould, [film.recipes](https://film.recipes)
+- The creators compiled by Henri-Pierre Chavaz in the
+  [Fujifilm Film Simulation Recipes Database](https://docs.google.com/spreadsheets/d/11PvZ7rOnwmbz5VylVIvzOuWwEa83c0DweAlBwJ2pZJc)
+
+Property mapping draws on the documentation of
+[fujifilm-ptp-recipes](https://github.com/ILFforever/fujifilm-ptp-recipes) by ILFforever,
+used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+`docs/mapping-sources.md` lists every other source and its licence.
+
+## Disclaimer
+
+Ukiyo is an independent project. It is not affiliated with, endorsed by, or supported by
+FUJIFILM Corporation. Fujifilm, X-series and film simulation names are trademarks of their
+owners. Use Ukiyo at your own risk.
