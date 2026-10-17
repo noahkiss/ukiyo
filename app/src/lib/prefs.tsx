@@ -1,17 +1,25 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import markPrimaryLight from "../assets/brand/mark-primary-light.svg";
-import markPrimaryDark from "../assets/brand/mark-primary-dark.svg";
-import markAlt1Light from "../assets/brand/mark-alt-1-light.svg";
-import markAlt1Dark from "../assets/brand/mark-alt-1-dark.svg";
-import markAlt2Light from "../assets/brand/mark-alt-2-light.svg";
-import markAlt2Dark from "../assets/brand/mark-alt-2-dark.svg";
-import iconPrimaryLight from "../assets/app-icon/icon-primary-light.svg";
-import iconPrimaryDark from "../assets/app-icon/icon-primary-dark.svg";
-import iconAlt1Light from "../assets/app-icon/icon-alt-1-light.svg";
-import iconAlt1Dark from "../assets/app-icon/icon-alt-1-dark.svg";
-import iconAlt2Light from "../assets/app-icon/icon-alt-2-light.svg";
-import iconAlt2Dark from "../assets/app-icon/icon-alt-2-dark.svg";
+import markStillWaterLight from "../assets/brand/mark-still-water-light.webp";
+import markStillWaterDark from "../assets/brand/mark-still-water-dark.webp";
+import markSunAndSealLight from "../assets/brand/mark-sun-and-seal-light.webp";
+import markSunAndSealDark from "../assets/brand/mark-sun-and-seal-dark.webp";
+import markFujiInMistLight from "../assets/brand/mark-fuji-in-mist-light.webp";
+import markFujiInMistDark from "../assets/brand/mark-fuji-in-mist-dark.webp";
+import markCloudsLight from "../assets/brand/mark-clouds-light.webp";
+import markCloudsDark from "../assets/brand/mark-clouds-dark.webp";
+import markFujiReflectionLight from "../assets/brand/mark-fuji-reflection-light.webp";
+import markFujiReflectionDark from "../assets/brand/mark-fuji-reflection-dark.webp";
+import markPineAndWaveLight from "../assets/brand/mark-pine-and-wave-light.webp";
+import markPineAndWaveDark from "../assets/brand/mark-pine-and-wave-dark.webp";
+import iconBrushLight from "../assets/app-icon/icon-brush-light.webp";
+import iconBrushDark from "../assets/app-icon/icon-brush-dark.webp";
+import iconSealLight from "../assets/app-icon/icon-seal-light.webp";
+import iconSealDark from "../assets/app-icon/icon-seal-dark.webp";
+import iconSunLight from "../assets/app-icon/icon-sun-light.webp";
+import iconSunDark from "../assets/app-icon/icon-sun-dark.webp";
+import iconApertureLight from "../assets/app-icon/icon-aperture-light.webp";
+import iconApertureDark from "../assets/app-icon/icon-aperture-dark.webp";
 
 export type ThemePref = "system" | "light" | "dark";
 export type Theme = "light" | "dark";
@@ -19,23 +27,26 @@ export type Theme = "light" | "dark";
 /** One pickable image, with a version for each theme. */
 export type ArtChoice = { id: string; name: string; light: string; dark: string };
 
-// Placeholder entries until the real brand marks and app icons exist. Add a choice by
-// adding its two images and a line here.
+// The first entry of each list is the default. Add a choice by adding its two images and a line here.
 export const BRAND_MARKS: ArtChoice[] = [
-  { id: "primary", name: "primary", light: markPrimaryLight, dark: markPrimaryDark },
-  { id: "alt-1", name: "alt-1", light: markAlt1Light, dark: markAlt1Dark },
-  { id: "alt-2", name: "alt-2", light: markAlt2Light, dark: markAlt2Dark },
+  { id: "still-water", name: "Still water", light: markStillWaterLight, dark: markStillWaterDark },
+  { id: "sun-and-seal", name: "Sun and seal", light: markSunAndSealLight, dark: markSunAndSealDark },
+  { id: "fuji-in-mist", name: "Fuji in mist", light: markFujiInMistLight, dark: markFujiInMistDark },
+  { id: "clouds", name: "Clouds", light: markCloudsLight, dark: markCloudsDark },
+  { id: "fuji-reflection", name: "Fuji reflection", light: markFujiReflectionLight, dark: markFujiReflectionDark },
+  { id: "pine-and-wave", name: "Pine and wave", light: markPineAndWaveLight, dark: markPineAndWaveDark },
 ];
 
 export const APP_ICONS: ArtChoice[] = [
-  { id: "primary", name: "primary", light: iconPrimaryLight, dark: iconPrimaryDark },
-  { id: "alt-1", name: "alt-1", light: iconAlt1Light, dark: iconAlt1Dark },
-  { id: "alt-2", name: "alt-2", light: iconAlt2Light, dark: iconAlt2Dark },
+  { id: "brush", name: "Brush 浮", light: iconBrushLight, dark: iconBrushDark },
+  { id: "seal", name: "Seal", light: iconSealLight, dark: iconSealDark },
+  { id: "sun", name: "Sun", light: iconSunLight, dark: iconSunDark },
+  { id: "aperture", name: "Aperture", light: iconApertureLight, dark: iconApertureDark },
 ];
 
 export type Prefs = { theme: ThemePref; brandMark: string; appIcon: string };
 
-const DEFAULTS: Prefs = { theme: "system", brandMark: "primary", appIcon: "primary" };
+const DEFAULTS: Prefs = { theme: "system", brandMark: BRAND_MARKS[0].id, appIcon: APP_ICONS[0].id };
 
 // No settings command covers app preferences yet (settings.json holds only keep-awake), so
 // they live in local storage.

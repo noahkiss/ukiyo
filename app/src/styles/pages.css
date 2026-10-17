@@ -902,14 +902,15 @@
 .art-tile img {
   max-width: 100%;
   max-height: 100%;
+  border-radius: 4px;
 }
 
 .art-name {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .radio-dot {

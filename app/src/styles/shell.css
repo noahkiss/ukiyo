@@ -23,6 +23,7 @@
   width: 168px;
   height: 184px;
   object-fit: contain;
+  border-radius: 6px;
 }
 
 .nav-list {

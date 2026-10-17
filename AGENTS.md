@@ -18,7 +18,7 @@ what comes next.
   and app icon choices in local storage, `decode.ts` value display), `src/fixtures/` sample data
   for pages without a backend (see its README), `src/styles/` (`tokens.css` light and dark
   tokens, then base, shell, pages, lab), `src/assets/` (bundled OFL fonts with licences, camera
-  art, placeholder brand marks and app icons). `src/bindings.ts` generated (do not edit;
+  art, brand marks and app icons as light and dark webp). `src/bindings.ts` generated (do not edit;
   `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort). In a
   browser outside Tauri, `?camera=tether|rawconv|cardreader` previews a camera state.
 - `src-tauri/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
