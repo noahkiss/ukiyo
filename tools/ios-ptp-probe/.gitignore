@@ -1,0 +1,4 @@
+Local.xcconfig
+*.xcodeproj/
+build/
+Sources/Info.plist

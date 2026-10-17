@@ -45,6 +45,9 @@ what comes next.
   - `dump_props.py OUT.json` — every property descriptor or value.
   - `watch_props.py PROPS.json NAMES.json LOG` — poll and log changes.
   - `set_prop.py CODE VALUE` — write one uint16 property, with read before and after.
+- `tools/ios-ptp-probe/` — iOS/iPadOS test app (XcodeGen, ImageCaptureCore): can a phone read
+  and write the camera's PTP properties over USB-C? Signing from gitignored `Local.xcconfig`; see
+  its README.
 - `local/` — gitignored. Raw dumps, logs and the working property map. They contain camera and
   lens serial numbers and owner strings.
 - App data (`~/Library/Application Support/app.ukiyo/`): `sessions/*.jsonl`, `dumps/`,
