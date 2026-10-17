@@ -167,7 +167,15 @@ fn status_and_settings_on_the_fake_camera() {
     // Prefs and history.
     let (code, v) = env.json(&["prefs", "set", "theme=dark", "keep-awake=off"]);
     assert_eq!((code, v["data"]["theme"].as_str(), v["data"]["keep_awake"].as_bool()), (0, Some("dark"), Some(false)), "{v}");
-    let (_, v) = env.json(&["status"]);
+    // The owner thread takes the change from its queue, so status can lag a moment behind.
+    let mut v = Value::Null;
+    for _ in 0..50 {
+        v = env.json(&["status"]).1;
+        if v["data"]["keep_awake"] == false {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
     assert_eq!(v["data"]["keep_awake"], false, "the owner got keep-awake off: {v}");
     let (code, v) = env.json(&["prefs", "set", "brand-mark=nope"]);
     assert_eq!((code, v["error"]["code"].as_str()), (2, Some("not_found")));
