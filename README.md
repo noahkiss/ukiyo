@@ -22,7 +22,8 @@ Ukiyo is pre-release. There is no signed build or installer yet; build it from s
   server, the library (presets, snapshots, favourite settings, camera history), and recipes:
   your recipe library, catalogue search, import from text or a link, and C1-C7 reads and
   writes, in the app, the CLI and MCP. Slot writes are not yet tried on a camera.
-- In progress: packaging.
+- Packaging is built but not yet released: the app bundle carries the CLI, the app updates
+  itself from GitHub releases, and a Homebrew cask is drafted. No release exists yet.
   `docs/roadmap.md` lists what comes next.
 
 Ukiyo writes only properties whose meaning is confirmed, and reads each one back after the
@@ -78,6 +79,34 @@ cd src-tauri
 cargo build -p ukiyo-cli
 claude mcp add ukiyo -- "$PWD/target/debug/ukiyo-cli" mcp
 ```
+
+The Homebrew cask (from the first release on) puts the bundled CLI on PATH as `ukiyo`:
+
+```bash
+claude mcp add ukiyo -- ukiyo mcp
+```
+
+```json
+{ "mcpServers": { "ukiyo": { "command": "ukiyo", "args": ["mcp"] } } }
+```
+
+Build the app bundle, with the CLI inside as `Ukiyo.app/Contents/MacOS/ukiyo-cli`:
+
+```bash
+cd app
+pnpm bundle                          # src-tauri/target/release/bundle/macos/Ukiyo.app
+```
+
+Build a release (the arm64 zip, the updater archive and `latest.json`) without uploading
+anything:
+
+```bash
+tools/release/release.sh --dry-run   # writes local/release/<version>/
+```
+
+A local build is signed ad hoc. Without the updater key in the environment
+(`UKIYO_UPDATER_PUBKEY`, `TAURI_SIGNING_PRIVATE_KEY`), the build never checks for updates;
+`docs/agent-interface.md` (section 8, stage 8) has the release steps.
 
 Run the tests:
 

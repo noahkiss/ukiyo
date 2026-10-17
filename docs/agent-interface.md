@@ -2,10 +2,10 @@
 
 A design for the `ukiyo` command line tool and its MCP server. Stage 1 (the core crate and
 `api`), stage 2 (the shared owner, `ukiyo serve`), stage 3 (the read-only CLI), stage 4
-(plans and gated writes), stage 5 (the MCP server), stage 6 (the library) and stage 7
-(recipes) are built; stage 8 (packaging) is not (section 8). The
-bm task is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool
-surface, search then read, and plan then apply for every camera write.
+(plans and gated writes), stage 5 (the MCP server), stage 6 (the library), stage 7
+(recipes) and stage 8 (packaging) are built (section 8). No release exists yet. The bm task
+is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool surface,
+search then read, and plan then apply for every camera write.
 
 ## 1. Goals
 
@@ -50,6 +50,13 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
   - `plan` (built, stage 4): builds and gates a plan, checks it for staleness, and shapes the
     applied result. `lab.rs` stores plans and applies them through the owner.
   - `api` (built): every front end speaks only this.
+    - `ukiyo_api_table!`, the method table (stage 8, QuadCam's `api!`): one row per method
+      with its variant, params, result and the body `dispatch` runs. The core expands it into
+      `Request`, `Response`, `METHODS`, `Request::method` and `dispatch`; the app crate
+      expands the same table into its Tauri commands (`src-tauri/src/lib.rs`,
+      `tauri_commands!`). Rows sit in three groups: `result` and `quiet` rows become
+      forwarding Tauri commands (with and without a result), `own` rows have a hand-written
+      command or none. A new method is one row.
     - `Request`, one variant per method: `{"method": "plan_create", "params": {...}}`.
     - `Response`, the variant of the same name: `{"method": "plan_create", "result": {...}}`.
     - `Error`: a `code`, a `message`, and `hint`, `walkthrough` and `mode` when they help.
@@ -179,15 +186,16 @@ session for all of them.
 ### Where the binary lives
 
 - The app bundle ships the binary as a Tauri `externalBin`:
-  `Ukiyo.app/Contents/MacOS/ukiyo-cli` (stage 8). It is signed and notarized with the app.
-  Until then, `cargo build -p ukiyo-cli` builds it, and the app needs it for nothing: the app
-  spawns its own executable as `serve` (rule 3 above).
-- Settings > Command line has one button, "Install command line tool". It symlinks
-  `~/.local/bin/ukiyo` to the bundled binary, and shows the path if that directory is not on
-  `PATH`. `ukiyo install --prefix DIR` does the same from a shell.
-- The symlink follows app updates, since it points into the bundle.
-- MCP client config. Until stage 8 puts `ukiyo` on PATH, give the built binary's full path
-  (`src-tauri/target/debug/ukiyo-cli` after `cargo build -p ukiyo-cli`):
+  `Ukiyo.app/Contents/MacOS/ukiyo-cli` (stage 8), signed with the app. The app needs it for
+  nothing: the app spawns its own executable as `serve` (rule 3 above), and the bundled CLI
+  spawns itself. In a source checkout, `cargo build -p ukiyo-cli` builds it.
+- The Homebrew cask links it onto PATH as `ukiyo` (`binary ... target: "ukiyo"`). The link
+  follows app updates, since it points into the bundle.
+- Planned, not built: a Settings button and `ukiyo install --prefix DIR` that symlink
+  `~/.local/bin/ukiyo` to the bundled binary, for an install without Homebrew.
+- MCP client config. With the cask, `ukiyo` is on PATH. From a source checkout, give the
+  built binary's full path (`src-tauri/target/debug/ukiyo-cli` after `cargo build -p
+  ukiyo-cli`):
 
   ```bash
   claude mcp add ukiyo -- ukiyo mcp
@@ -981,3 +989,68 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
      typed Tauri commands (`api!`), and a schema version with a surface guard test over the
      MCP and CLI listings.
    - The README carries the MCP config snippet (`ukiyo mcp`).
+
+   Done 2026-10-17, "Packaging as built" below. Left for later: the first release, the cask in
+   the tap, Developer ID signing and notarization (CI, as QuadCam does), and the
+   no-Homebrew install button.
+
+### Packaging as built (stage 8)
+
+- **The CLI in the bundle.** `src-tauri/tauri.bundle.conf.json` is an overlay config that
+  adds `bundle.externalBin: ["binaries/ukiyo-cli"]` and a `beforeBuildCommand` that also runs
+  `tools/release/cli_sidecar.sh`. That script builds `ukiyo-cli` (release, or debug under
+  `tauri build --debug`) and copies it to `src-tauri/binaries/ukiyo-cli-<target triple>`
+  (gitignored); the bundler puts it in `Contents/MacOS/ukiyo-cli`. `pnpm bundle` (in `app/`)
+  runs `tauri build --bundles app --config tauri.bundle.conf.json`.
+  - Why an overlay and not `tauri.conf.json`: tauri-build copies each `externalBin` into
+    `target/<profile>/` under its short name. In debug builds that would replace the real
+    `target/debug/ukiyo-cli`, which the CLI tests run.
+  - The app still spawns itself as `serve`; the bundled CLI spawns itself. Both are the same
+    build.
+- **The updater** (`src-tauri/src/updater.rs`). tauri-plugin-updater reads `latest.json` from
+  `https://github.com/noahkiss/ukiyo/releases/latest/download/latest.json`, with
+  `requireSignedVersion`. `tauri.conf.json` holds the placeholder
+  `UKIYO_UPDATER_PUBKEY_PLACEHOLDER`; the release script merges the real public key in from
+  `UKIYO_UPDATER_PUBKEY`. The updater is off, and makes no request, in a build with the
+  placeholder, in a debug build (unless `UKIYO_UPDATER=real`), and with `UKIYO_UPDATER=off`.
+  One check runs 30 s after launch. Settings > Connection > Updates shows the version and the
+  answer, checks again, and installs (download, signature check, replace, restart). Window
+  commands: `update_status`, `update_check`, `update_install`; an agent cannot update the
+  app.
+- **The method table**: section 2, `ukiyo_api_table!`. The wire did not change; the window's
+  commands kept their names and params.
+- **Schema version and surface guard** (`src-tauri/cli/src/schema.rs`, from QuadCam).
+  `SCHEMA_VERSION` is 1 and counts removals and renames only. `ukiyo --schema-version`
+  prints it; the MCP server reports it in `serverInfo.schemaVersion`. The guard tests compare
+  the MCP tool listing and the clap command tree with `cli/tests/surface/mcp.txt` and
+  `cli.txt`: a removal, a rename, a newly required parameter or a new value list on a free
+  parameter fails unless `SCHEMA_VERSION` went up and `DEPRECATIONS` lists the item. An
+  addition fails until the baseline is updated:
+  `UKIYO_UPDATE_SURFACE=1 cargo test -p ukiyo-cli surface` (it also refreshes
+  `mcp_tools.json`). A deprecated item gets a note in the tool listing and a warning on
+  stderr from the CLI.
+- **The release** (`tools/release/release.sh [--dry-run]`, Apple Silicon only). It checks that
+  `tauri.conf.json` and `Cargo.toml` state one version, builds the bundle, checks it
+  (`CFBundleShortVersionString`, an arm64 `ukiyo-cli` that runs, the code signature), and
+  writes to `local/release/<version>/`:
+  - `ukiyo-<version>-arm64.zip` (ditto), the cask's download; the script prints its sha256;
+  - `ukiyo-<version>-arm64.app.tar.gz` and its `.sig` (`tauri signer sign --app-version`);
+  - `latest.json` for the `darwin-aarch64` platform.
+
+  `--dry-run` uploads nothing and allows a build without keys (no updater, an empty
+  signature). Without it, the script needs both keys, a clean tree and HEAD at the tag
+  `v<version>` on origin; it creates the GitHub release if needed and attaches the files, and
+  never replaces an attached zip, archive or signature.
+- **Keys.** The updater keypair lives in 1Password, read through op-connect into the
+  environment for one run; it is never written to a file. The release reads
+  `UKIYO_UPDATER_PUBKEY`, `TAURI_SIGNING_PRIVATE_KEY` and
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for a key without a password).
+- **Signing.** `tauri.conf.json` signs ad hoc (`signingIdentity "-"`), as QuadCam's does. A
+  public release is signed with the Developer ID and notarized in CI, as QuadCam's
+  `release.yml` does with noahkiss/workflows (`macos-sign-notarize`), before the zip and the
+  updater archive are made. That workflow is not set up for Ukiyo yet.
+- **The cask** is drafted, not in the tap: `app "Ukiyo.app"`, `binary
+  "#{appdir}/Ukiyo.app/Contents/MacOS/ukiyo-cli", target: "ukiyo"`, `depends_on arch: :arm64`,
+  `depends_on macos: :ventura`, `auto_updates true`, livecheck `:github_latest`, and `zap` of
+  the Application Support, Caches, Saved Application State and WebKit folders of
+  `com.nkmkdigital.ukiyo`.
