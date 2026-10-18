@@ -159,3 +159,6 @@ what comes next.
   built before stage 2 (17e2c0c) first; it opens USB without the lock.
 - Never reconnect in a tight loop or reset USB on every connect (see protocol.md, power).
 - Never commit current values, serials or owner strings to `catalog/`.
+- Every camera write from the window, CLI or MCP is a plan; there is no direct write method.
+- Keep-awake never writes AUTO POWER OFF = OFF; a half-press is sent only to close a menu over
+  the shooting screen, once per write.
