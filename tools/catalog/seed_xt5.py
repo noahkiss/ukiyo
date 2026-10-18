@@ -7,7 +7,7 @@ Usage: seed_xt5.py LOCAL_DIR [--force]
   LOCAL_DIR holds props-tether.json, props-movie.json, props-backupmode.json and fuji-names.json.
 
 Writes ../../catalog/x-t5.json (refuses to overwrite it without --force, since lab sessions
-edit it) and ../../src-tauri/core/src/camera/fake_x-t5.json. Neither file carries a current value,
+edit it; names already in it are kept) and ../../src-tauri/core/src/camera/fake_x-t5.json. Neither file carries a current value,
 serial number or owner string: the catalog holds names and shapes, the fake shape holds
 codes, types, forms and made-up values.
 """
@@ -22,7 +22,7 @@ TYPES = {"0x0000": "undefined", "0x0001": "int8", "0x0002": "uint8", "0x0003": "
          "0x0008": "uint64", "0xffff": "string"}
 
 PTP_NAMES = {
-    0x5001: "BatteryLevel", 0x5002: "FunctionalMode", 0x5003: "ImageSize", 0x5004: "CompressionSetting",
+    0x5001: "PTPBatteryLevel", 0x5002: "FunctionalMode", 0x5003: "ImageSize", 0x5004: "CompressionSetting",
     0x5005: "WhiteBalance", 0x5006: "RGBGain", 0x5007: "FNumber", 0x5008: "FocalLength",
     0x5009: "FocusDistance", 0x500A: "FocusMode", 0x500B: "ExposureMeteringMode", 0x500C: "FlashMode",
     0x500D: "ExposureTime", 0x500E: "ExposureProgramMode", 0x500F: "ExposureIndex",
@@ -104,9 +104,9 @@ CURATED = {
     0xD025: dict(menu="AF/MF SETTING > NUMBER OF FOCUS POINTS", confidence=L, source=MAP,
                  values=labels([(3, "117 POINTS"), (4, "425 POINTS")])),
     0xD026: dict(menu="AF/MF SETTING > MF ASSIST", confidence=L, source=MAP),
-    0xD10A: dict(name="ReleaseFocusPriorityAFS", menu="AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-S PRIORITY SELECTION",
+    0xD10A: dict(name="ReleaseFocusPriorityAFC", menu="AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-C PRIORITY SELECTION",
                  confidence=L, source=MAP, notes="libgphoto2 calls it ShutterPriorityMode1."),
-    0xD10B: dict(name="ReleaseFocusPriorityAFC", menu="AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-C PRIORITY SELECTION",
+    0xD10B: dict(name="ReleaseFocusPriorityAFS", menu="AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-S PRIORITY SELECTION",
                  confidence=L, source=MAP, notes="libgphoto2 calls it ShutterPriorityMode2."),
     0xD34E: dict(name="AeAfLockMode", menu="SET UP > BUTTON/DIAL SETTING > AE/AF-LOCK MODE", confidence=L, source=MAP),
     0xD15B: dict(menu="SET UP > SAVE DATA SET-UP > FRAME NO.", confidence=L, source=MAP),
@@ -115,8 +115,8 @@ CURATED = {
     0xD104: dict(name="MonochromaticColorWC", menu="IMAGE QUALITY SETTING > MONOCHROMATIC COLOR", confidence=L, source=MAP,
                  notes="libgphoto2 calls it BlackImageTone."),
     0xD156: dict(name="LensFirmwareVersion", confidence=L, source=MAP, notes="Hex BCD: 0x105 = 1.05."),
-    0xD16D: dict(name="FrameNumber", menu="SET UP > SAVE DATA SET-UP > FRAME NO.", confidence=L, source=MAP,
-                 notes="The current file number."),
+    0xD16D: dict(name="FrontShutterCount", confidence=L, source=MAP,
+                 notes="Front curtain shutter counter (Capture One 16.5: ShutterCountEx). Was FrameNumber."),
     0xD16E: dict(name="UsbConnectionMode", menu="NETWORK/USB SETTING > CONNECTION MODE", confidence=L, source=MAP,
                  values=labels([(5, "USB TETHER SHOOTING FIXED"), (6, "USB RAW CONV./BACKUP RESTORE")])),
     0xD1B3: dict(name="DigitalTeleConv", menu="SHOOTING SETTING > DIGITAL TELE-CONV.", confidence=L, source=MAP,
@@ -132,6 +132,11 @@ CURATED = {
     0xD237: dict(name="CopyrightAuthor", menu="SET UP > SAVE DATA SET-UP > COPYRIGHT INFO", confidence="guess", source=MAP),
 }
 
+# Commands and status codes no plan may write (docs/catalog.md, never_write): save and power
+# off, hardware control (format, resets), the release gesture, the PTP error, firmware update
+# progress, force to shooting.
+NEVER_WRITE = {0xD17B, 0xD17F, 0xD208, 0xD21C, 0xD21D, 0xD230}
+
 
 def main():
     local = pathlib.Path(sys.argv[1])
@@ -140,6 +145,9 @@ def main():
     tether, movie = load("props-tether.json")["properties"], load("props-movie.json")["properties"]
     backup = load("props-backupmode.json")["properties"]
     names = load("fuji-names.json")
+    # Names in the committed catalog (lab sessions, Capture One) win over the dump-time sources.
+    out = ROOT / "catalog" / "x-t5.json"
+    current = json.loads(out.read_text())["properties"] if out.exists() else {}
 
     codes = sorted({int(k, 16) for k in (*tether, *movie, *backup)})
     catalog_props, shape = {}, []
@@ -148,13 +156,14 @@ def main():
         t, m = tether.get(key, {"error": 1}), movie.get(key, {"error": 1})
         desc = t if "type" in t else m if "type" in m else None
         modes = [n for n, d in (("stills", t), ("movie", m)) if "error" not in d] + (["rawconv"] if key in backup else [])
-        name = names.get(key) or PTP_NAMES.get(code) or PRESET.get(code)
+        name = current.get(key, {}).get("name") or names.get(key) or PTP_NAMES.get(code) or PRESET.get(code)
         e = {"name": name, "menu": None, "type": TYPES.get(desc["type"], desc["type"]) if desc else None,
              "values": {}, "unit": None, "scale": None,
              "confidence": "confirmed" if code in PTP_NAMES else ("likely" if name else None),
              "source": "PTP" if code in PTP_NAMES else GP if key in names else FK if code in PRESET and name else None,
              "modes": modes, "notes": None}
         e.update(CURATED.get(code, {}))
+        e["never_write"] = True if code in NEVER_WRITE else None
         catalog_props[key] = {k: v for k, v in e.items() if v not in (None, {}, [])}
         shape.append(fake_shape(code, t, m, key in backup, backup.get(key)))
 
@@ -167,7 +176,6 @@ def main():
         "firmware": ["4.31"],
         "properties": catalog_props,
     }
-    out = ROOT / "catalog" / "x-t5.json"
     if out.exists() and not force:
         sys.exit(f"{out} exists; pass --force to replace it (it may hold lab labels)")
     out.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n")
