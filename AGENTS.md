@@ -127,6 +127,9 @@ what comes next.
 - `tools/wifi/` — guided Wi-Fi and Bluetooth test run (uv inline deps): `run_wifi_tests.py
   [--dry-run]`, `fujiptpip.py` (Fuji PTP over TCP), `macnet.py`, `ble.py`, `fakecam.py`. Logs to
   `local/wifi-test/`. `docs/wifi.md` covers what sources say and the Wi-Fi transport sketch.
+  `tether_probe.py [--wait S]` — read-only wireless tether probe without dialogs.
+  `liveview_demo.py` — live view and Take photo in a browser page over wireless tether
+  (http://127.0.0.1:4917/). Both take `owner.lock` like `tools/ptp`.
 - `tools/ios-ptp-probe/` — iOS/iPadOS test app (XcodeGen, ImageCaptureCore): can a phone read
   and write the camera's PTP properties over USB-C? Signing from gitignored `Local.xcconfig`; see
   its README.
