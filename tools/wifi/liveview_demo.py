@@ -61,7 +61,7 @@ b.onclick=async()=>{b.disabled=true;st.textContent='Shooting…';const t=perform
  catch(e){st.textContent=String(e)}b.disabled=false};
 let shown='';setInterval(async()=>{try{const j=await (await fetch('/latest')).json();
  if(j.url&&j.url!==shown){shown=j.url;document.getElementById('shot').src=j.url;
-  if(!b.disabled)st.textContent=`${j.name}: ${(j.bytes/1e6).toFixed(1)} MB in ${(j.ms/1000).toFixed(1)} s`}}catch(e){}},2000);
+  st.textContent=j.preview?`${j.name}: preview shown, full size downloading…`:`${j.name}: ${(j.bytes/1e6).toFixed(1)} MB in ${(j.ms/1000).toFixed(1)} s`}}catch(e){}},700);
 </script></body></html>"""
 
 
@@ -158,10 +158,24 @@ class Camera:
         time.sleep(0.5)  # RAW+JPEG arrive as two objects
         hs = self.handles()
         OUT.mkdir(parents=True, exist_ok=True)
+        infos = {}
         for h in hs:
             rc, d, _, _ = self.s.transaction(fp.OP["GetObjectInfo"], (h,), quiet=True)
-            info = fp.parse_object_info(d) if rc == fp.OK else {}
+            infos[h] = fp.parse_object_info(d) if rc == fp.OK else {}
+        # The JPEG first, and its small thumbnail before the full file, so the page shows the shot
+        # within a second while the full-size files stream.
+        hs.sort(key=lambda h: infos[h].get("format") != JPEG_FORMAT)
+        for h in hs:
+            info = infos[h]
             name = info.get("filename") or f"obj-{h:x}"
+            if info.get("format") == JPEG_FORMAT:
+                rc, thumb, _, st = self.s.transaction(fp.OP["GetThumb"], (h,), timeout=20, quiet=True)
+                if rc == fp.OK and thumb:
+                    tname = name.rsplit(".", 1)[0] + ".thumb.jpg"
+                    (OUT / tname).write_bytes(thumb)
+                    self.latest = {"name": name, "url": f"/photo/{tname}", "bytes": len(thumb),
+                                   "ms": st["ms"], "preview": True}
+                    print("Thumbnail", tname, f"{len(thumb) / 1e3:.0f} KB in {st['ms']:.0f} ms", flush=True)
             rc, data, _, st = self.s.transaction(fp.OP["GetObject"], (h,), timeout=180, quiet=True)
             if rc == fp.OK:
                 (OUT / name).write_bytes(data)
