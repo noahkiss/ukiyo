@@ -105,9 +105,12 @@ What Capture One 16.5's bundle shows (static inspection, notes in `local/mapping
 
 Tested on our X-T5 over wireless tether (2026-10-18, `tools/wifi/liveview_demo.py`):
 
-- Live view: InitiateOpenCapture(0, 0), then GetObject(0x80000001) per frame, as gphoto2 does
-  over USB: 640x480 JPEG, about 77 KB, 26 frames a second on 5 GHz. The X-T5 does not list
-  0x9018, and we did not need it.
+- Live view: InitiateOpenCapture(0, 0), then per frame GetObject(0x80000001) and
+  DeleteObject(0x80000001, 0). Without the delete the camera returns the same frame again.
+  640x480 JPEG, about 77 KB, about 6 fresh frames a second on 5 GHz through the nc relay.
+  Restarting capture (TerminateOpenCapture + InitiateOpenCapture) before each read also gives
+  fresh frames, at about 5 a second. Op 0x9018 answers OperationNotSupported on the X-T5.
+- D212 (the change-event list) is not empty over Wi-Fi: during live view it listed D20E.
 - Capture: D01B = 1, D207 = 2, D208 = 0x0200 + InitiateCapture(0, 0), then D208 = 0x0304 +
   InitiateCapture. RAW+JPEG arrive as two objects in the tether buffer. GetObject moved
   2.3 MB/s. Until the buffer objects are deleted (DeleteObject), every write answers 0xA002.

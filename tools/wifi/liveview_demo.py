@@ -8,8 +8,8 @@ Usage (camera in CONNECTION MODE > WIRELESS TETHER SHOOTING FIXED, on the Mac's 
   uv run -q liveview_demo.py [--port 4917]
 then open http://127.0.0.1:4917/
 
-A demo, not the app: one camera session, live view frames from op 0x9018 after
-InitiateOpenCapture, and a Take photo button that fires the shutter, downloads the shot from the
+A demo, not the app: one camera session, live view frames (object 0x80000001,
+read then deleted) after InitiateOpenCapture, and a Take photo button that fires the shutter, downloads the shot from the
 tether buffer, deletes the buffer copy (the camera refuses writes until it is empty), and shows
 the JPEG. Shots are saved to local/wifi-test/demo/ (gitignored; EXIF carries the camera serial).
 Ctrl-C ends live view, returns priority to the camera and closes the session.
@@ -29,7 +29,6 @@ import tether_probe as tp
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "local" / "wifi-test" / "demo"
 INITIATE_CAPTURE, DELETE_OBJECT = 0x100E, 0x100B
-GET_LIVE_VIEW = 0x9018
 BUSY = (0x2019, 0xA001, 0xA002)
 STILL = 0x10000001
 JPEG_FORMAT = 0x3801
@@ -96,7 +95,6 @@ class Camera:
         print("InitiateOpenCapture", fp.rc_name(rc), flush=True)
         self.frames = 0
         self.last_rc = None
-        self.lv_op_ok = None
 
     def u16(self, code):
         rc, d, _ = self.s.get_value(code)
@@ -119,13 +117,12 @@ class Camera:
             self.s.transaction(DELETE_OBJECT, (h, 0), quiet=True)
 
     def frame(self):
-        # gphoto2's Fuji tether reads the live view frame as object 0x80000001. The X-T5 does not
-        # list 0x9018 (Capture One adds it per model), so 0x9018 is only the fallback.
+        # Frames are object 0x80000001. The camera keeps returning the same frame until the client
+        # deletes that object; then the next read is a fresh frame (tested 2026-10-18).
         with self.lock:
             rc, d, _, _ = self.s.transaction(fp.OP["GetObject"], (0x80000001,), timeout=10, quiet=True)
-            if (rc != fp.OK or not d) and self.lv_op_ok is not False:
-                rc, d, _, _ = self.s.transaction(GET_LIVE_VIEW, (), timeout=5, quiet=True)
-                self.lv_op_ok = rc == fp.OK
+            if rc == fp.OK:
+                self.s.transaction(DELETE_OBJECT, (0x80000001, 0), quiet=True)
         if rc != self.last_rc:
             self.last_rc = rc
             print("live view frame:", fp.rc_name(rc), len(d), "bytes", flush=True)
