@@ -1,5 +1,5 @@
 // FIXTURE: what a pasted Fuji X Weekly link parses to, until the app can fetch a post.
-// TODO(task-fsd5pob8): fetch the post and run its blocks through the Rust parser
+// TODO: fetch the post and run its blocks through the Rust parser
 // (recipes::sources::fujixweekly), as the catalogue refresh does. The title is made up; the
 // link goes to the site's own search for it.
 import type { CatalogEntry } from "../lib/catalog";

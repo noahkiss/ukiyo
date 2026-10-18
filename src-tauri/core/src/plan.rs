@@ -532,8 +532,7 @@ impl Sim<'_, '_> {
     }
 }
 
-/// Orders the writes a plan was asked for, from the catalog's `requires` and `resets`
-/// (task-o8vkpf69):
+/// Orders the writes a plan was asked for, from the catalog's `requires` and `resets`:
 ///
 /// - a write that needs another code at some value comes after that code's write when the
 ///   plan sets it to such a value, and before it otherwise;

@@ -1,4 +1,4 @@
-//! The USB mode walkthrough (task-klgaidjz): how to put the camera in the mode a feature needs.
+//! The USB mode walkthrough: how to put the camera in the mode a feature needs.
 //! The CLI prints it as `ukiyo help modes`, and every `needs_*` error points at it. The window's
 //! Connect page shows the same steps (`app/src/shell/ModeNotice.tsx`).
 

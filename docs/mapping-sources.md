@@ -224,7 +224,7 @@ Ranked by labels gained per hour.
    Order: LMO, shutter type, flicker reduction, IS mode, drive CL/CH, AF area, sports finder,
    digital tele-conv, D Range Priority AUTO, then one pass over Color and Sharpness to check the
    film-sim offset claim. `tools/catalog/makernote_diff.py` pairs the photos with a guided
-   session's steps; the procedure is in bm task-jkxs1fd0.
+   session's steps; the procedure is in the work tracker.
 3. **Slot field check** (owner, 15 min). In RAW CONV. mode, change one slot's LONG EXPOSURE NR
    and then its LMO on the camera; read D1A3 each time.
 4. **SDK-hint checks** (owner, 30 min, tether mode). Step PIXEL SHIFT interval (D231), SUBJECT

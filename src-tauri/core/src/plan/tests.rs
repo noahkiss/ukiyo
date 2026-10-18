@@ -253,7 +253,7 @@ fn purposes(p: &Plan) -> Vec<(String, String, String)> {
     p.steps.iter().map(|s| (s.code.clone(), s.purpose.clone(), s.after.clone())).collect()
 }
 
-/// task-o8vkpf69: Monochromatic Color takes writes only under a monochrome film simulation.
+/// Monochromatic Color takes writes only under a monochrome film simulation.
 /// The plan sets one for the time of the write, puts the film simulation back, and puts back
 /// the Color the temporary simulation made the camera reset.
 #[test]

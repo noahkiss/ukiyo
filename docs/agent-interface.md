@@ -3,8 +3,8 @@
 A design for the `ukiyo` command line tool and its MCP server. Stage 1 (the core crate and
 `api`), stage 2 (the shared owner, `ukiyo serve`), stage 3 (the read-only CLI), stage 4
 (plans and gated writes), stage 5 (the MCP server), stage 6 (the library), stage 7
-(recipes) and stage 8 (packaging) are built (section 8). No release exists yet. The bm task
-is task-cv9i7ei1. The tool shapes follow the `mcp-tool-design` guidance: a small tool surface,
+(recipes) and stage 8 (packaging) are built (section 8). No release exists yet.
+The tool shapes follow the `mcp-tool-design` guidance: a small tool surface,
 search then read, and plan then apply for every camera write.
 
 ## 1. Goals
@@ -731,7 +731,7 @@ the window's Recipes page (`app/src/lib/recipes.ts`, `app/src/views/PlanCard.tsx
   selects the slot, writes and reads back each step, stops at the first failure, and restores
   D18C. The undo plan is a slot plan back to the values before (grain 6, a default slot's
   OFF, is written as 1).
-- **Gated and dependent settings** (task-o8vkpf69) are catalog data, not code:
+- **Gated and dependent settings** are catalog data, not code:
   `requires` and `resets` per code (docs/catalog.md). Every plan, live or slot, is ordered by
   `plan::sequence`: a write that needs another code at some value comes after that code's
   write when the plan sets such a value, and before it otherwise; a code the camera resets
@@ -853,7 +853,7 @@ The core enforces every rule here. The front ends only show them.
 ### Typed errors
 
 Each error has `code`, `message`, `hint`, and `walkthrough` where a mode switch fixes it. The
-walkthrough is the USB mode guidance (task-klgaidjz): `ukiyo help modes <mode>` in the CLI, and
+walkthrough is the USB mode guidance: `ukiyo help modes <mode>` in the CLI, and
 the Connect page's guide in the window.
 
 | Code | When | Hint |
@@ -950,7 +950,7 @@ the Connect page's guide in the window.
 ## 8. Implementation stages
 
 Each stage ships on its own and keeps `cargo test` and clippy green. Start after the catalogue
-work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
+work lands, since both touch `src-tauri/src/lib.rs`.
 
 1. **Core crate.** Move the camera, catalog, recipes and Lab logic into `ukiyo-core`. Add the
    `api` request and response enums. The app calls `api`; no behaviour changes. Done
@@ -983,7 +983,7 @@ work (task-fsd5pob8) lands, since both touch `src-tauri/src/lib.rs`.
    and `status`.
 7. **Recipes.** The user recipe library, catalogue search, `recipe_parse` with URLs, slot reads,
    and slot write plans (gated until the slot fields are confirmed). CLI: `recipes`. Done
-   2026-10-17, with gated and dependent settings in every plan (task-o8vkpf69): section 4,
+   2026-10-17, with gated and dependent settings in every plan: section 4,
    "The recipes as built". Left for later: listed there.
 8. **Packaging,** on the pattern of [QuadCam](https://github.com/noahkiss/quadcam) (its cask in the owner's tap):
    - `ukiyo-cli` is an `externalBin` in `Contents/MacOS/`, beside the app's own binary
