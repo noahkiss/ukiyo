@@ -28,6 +28,20 @@ than Fujifilm's apps.
 The X-T5 manual lists no other wireless mode. AUTO POWER OFF also applies during tethered
 shooting (man, CONNECTION MODE).
 
+## Bodies with wireless tether
+
+Capture One's camera list and its Fujifilm wireless tethering guide (support.captureone.com,
+read 2026-10-17) name these bodies for Wi-Fi tether: X-T5, X-H2, X-H2S (from Capture One 16.2),
+X-S20, X-M5, GFX100 II, GFX100S II, GFX100RF. Other tether bodies (X-T4, X-T3, X-H1, X-S10,
+X-Pro3, GFX100S and older) are wired only. X-T50, X-E5 and the X100 series have no tethering.
+
+- Capture One states no minimum Fujifilm firmware.
+- The guide: camera and computer on the same network, a dedicated router preferred. The X-H2
+  and X-H2S use CREATE/EDIT CONNECTION SETTING instead of ACCESS POINT SETTING.
+- The guide: "WIRELESS TETHER SHOOTING FIXED - it is not possible to save to both card and your
+  workstation."
+- Capture One mobile (iPad) also tethers these bodies over Wi-Fi.
+
 ## Fuji PTP over TCP
 
 - Three TCP ports on the camera: 55740 commands, 55741 events, 55742 live view JPEG. The last two
