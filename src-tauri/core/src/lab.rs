@@ -519,6 +519,10 @@ impl Lab {
             self.plans.lock().unwrap().insert(plan_id.into(), stored);
             return Err(e);
         }
+        if let Some(e) = plan::never_write_in(&snap, &stored.raw) {
+            self.log_line(serde_json::json!({ "kind": "apply", "actor": actor, "plan": plan_id, "refused": e.code }));
+            return Err(e);
+        }
         if let Some(n) = stored.slot {
             return self.apply_slot(actor, plan_id, stored, n, snap);
         }

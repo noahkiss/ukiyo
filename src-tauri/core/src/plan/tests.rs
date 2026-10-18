@@ -420,3 +420,58 @@ fn slots_need_raw_conv_mode() {
     assert_eq!(slot_plan(&r, "recipe:nope", "C9", true).unwrap_err().code, ErrorCode::NotFound);
     r.done();
 }
+
+#[test]
+fn never_write_codes_fail_every_plan() {
+    let r = rig();
+    let format = r.cam.value(0xD17F);
+    // Asked for by code, name or label, with or without allow_unconfirmed: the plan fails.
+    for (name, value) in [("0xd17f", "2"), ("HardwareControl", "FORMAT SLOT 1"), ("PowerControl", "1"), ("0xd208", "512"), ("PTPError", "0")] {
+        for allow in [false, true] {
+            let e = r.plan(&[(name, value)], allow).unwrap_err();
+            assert_eq!(e.code, ErrorCode::NeverWrite, "{name}: {e:?}");
+            assert!(e.message.contains("never_write"), "{}", e.message);
+        }
+    }
+    // With a setting beside it, nothing is planned either.
+    let e = r.plan(&[("AutoPowerOff", "OFF"), ("0xd17b", "1")], true).unwrap_err();
+    assert_eq!(e.code, ErrorCode::NeverWrite);
+    assert!(e.message.contains("0xd17b PowerControl"), "{}", e.message);
+    // A snapshot restore by exact value.
+    let e = build_values(&r.lab.snapshot(), &[(0xD17F, Value::Int(4))], true).unwrap_err();
+    assert_eq!(e.code, ErrorCode::NeverWrite);
+    // A prerequisite on a never_write code is blocked, not written (the fake holds 4).
+    let mut snap = r.lab.snapshot();
+    let cat = snap.catalog.as_mut().unwrap();
+    cat.properties.get_mut("0xd381").unwrap().requires = vec![catalog::Requirement { code: "0xd17f".into(), values: vec!["6".into()], temp: None }];
+    let now = snap.rows.iter().find(|x| x.code == APO).and_then(|x| x.value.clone());
+    let to = if now == Some(Value::Int(3)) { "5 MIN" } else { "OFF" };
+    let (p, raw) = build(&snap, &PlanInput { set: [("AutoPowerOff".to_string(), to.to_string())].into(), ..Default::default() }).unwrap();
+    assert!(p.steps.is_empty() && raw.is_empty(), "{p:?}");
+    assert_eq!(p.blocked[0].reason, "never_write", "{p:?}");
+    assert_eq!(p.empty_reason().unwrap().code, ErrorCode::NeverWrite);
+    // A slot plan with a never_write field writes nothing.
+    let current: std::collections::HashMap<u16, Value> = [(0xD17F, Value::Int(4))].into();
+    let (p, raw) = super::slot_plan(&r.lab.snapshot(), 1, &current, &[(0xD17F, Value::Int(2))], true);
+    assert!(raw.is_empty());
+    assert_eq!(p.blocked[0].reason, "never_write");
+    assert_eq!(r.cam.value(0xD17F), format, "nothing written");
+    r.done();
+}
+
+#[test]
+fn apply_refuses_a_plan_whose_code_became_never_write() {
+    let r = rig();
+    r.set_on_camera(APO, Value::Int(1));
+    let p = r.plan(&[("AutoPowerOff", "OFF")], false).unwrap();
+    assert_eq!(p.steps.len(), 1);
+    // The catalog marks the code since the plan was made: the re-check names it.
+    let mut snap = r.lab.snapshot();
+    snap.catalog.as_mut().unwrap().properties.get_mut("0xd381").unwrap().never_write = true;
+    let (_, raw) = build_values(&r.lab.snapshot(), &[(APO, Value::Int(3))], false).unwrap();
+    let e = never_write_in(&snap, &raw).unwrap();
+    assert_eq!(e.code, ErrorCode::NeverWrite);
+    assert!(e.message.contains("0xd381 AutoPowerOff"), "{}", e.message);
+    assert!(never_write_in(&r.lab.snapshot(), &raw).is_none());
+    r.done();
+}

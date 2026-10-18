@@ -3,6 +3,8 @@
 //! - [`build`] resolves names and values against the Lab's snapshot and gates each step:
 //!   the property reads in this mode, is writable, is `confirmed` in the catalog (unless the
 //!   plan allows unconfirmed codes), and the value is one the camera and the catalog allow.
+//!   A code the catalog marks `never_write` (a command: format, save and power off, the
+//!   release gesture) fails the plan as a whole, whatever its flags.
 //! - The Lab stores the plan for [`LIFETIME`]; applying it re-checks that every planned code
 //!   still holds the value it had at planning (`plan_stale` otherwise), then writes the steps
 //!   in order through the owner, which reads each one back. The first failed step stops the
@@ -230,6 +232,26 @@ fn describe(code: u16, e: Option<&Entry>) -> String {
         Some(n) => format!("{} {n}", read::code_text(code)),
         None => read::code_text(code),
     }
+}
+
+/// The refusal for a code the catalog marks `never_write`. No flag lifts it: such a code
+/// is a command (format, reset, save and power off, the release gesture) or a status.
+fn never_write(cat: Option<&Catalog>, code: u16) -> Option<(String, String)> {
+    let e = entry(cat, code).filter(|e| e.never_write)?;
+    Some((
+        ErrorCode::name(ErrorCode::NeverWrite).into(),
+        format!("{} is a command or status code, not a setting: the catalog marks it never_write, and no plan writes it", describe(code, Some(e))),
+    ))
+}
+
+fn never_write_error(cat: Option<&Catalog>, code: u16) -> Option<Error> {
+    never_write(cat, code).map(|(_, msg)| err(ErrorCode::NeverWrite, msg).hint("No flag lifts this gate. Use the camera's own menu for the action."))
+}
+
+/// The first planned code the catalog now marks `never_write`, as the error that refuses
+/// the apply. Plans never hold one; this re-check guards a catalog edited since.
+pub fn never_write_in(snap: &Snapshot, raw: &[Raw]) -> Option<Error> {
+    raw.iter().find_map(|r| never_write_error(snap.catalog.as_ref(), r.code))
 }
 
 /// Whether the camera can take writes now: connected, and not in a menu.
@@ -734,6 +756,9 @@ fn gate(snap: &Snapshot, wants: Vec<(u16, Want)>, allow_unconfirmed: bool) -> Re
         if !seen.insert(code) {
             return Err(err(ErrorCode::Ambiguous, format!("{} is set twice in one plan", read::code_text(code))));
         }
+        if let Some(e) = never_write_error(cat, code) {
+            return Err(e);
+        }
         let e = entry(cat, code);
         let row = snap.rows.iter().find(|r| r.code == code);
         let what = describe(code, e);
@@ -792,6 +817,9 @@ fn gate(snap: &Snapshot, wants: Vec<(u16, Want)>, allow_unconfirmed: bool) -> Re
     }
     let now = |c: u16| snap.rows.iter().find(|r| r.code == c).and_then(|r| r.value.clone());
     let may_write = |c: u16, v: &Value| -> Result<(), (String, String)> {
+        if let Some(refusal) = never_write(cat, c) {
+            return Err(refusal);
+        }
         let e = entry(cat, c);
         let what = describe(c, e);
         let Some(row) = snap.rows.iter().find(|r| r.code == c).filter(|r| r.available) else {
@@ -833,6 +861,10 @@ pub fn slot_plan(snap: &Snapshot, n: u8, current: &std::collections::HashMap<u16
         let e = entry(cat, *code);
         let what = describe(*code, e);
         let left = |reason: &str, message: String| Left { code: read::code_text(*code), name: e.and_then(|e| e.name.clone()), value: texts[code].clone(), reason: reason.into(), message };
+        if let Some((reason, message)) = never_write(cat, *code) {
+            plan.blocked.push(left(&reason, message));
+            continue;
+        }
         if !slot::writable(*code) {
             plan.blocked.push(left("read_only", format!("{what} is not a recipe setting; slot plans never write it")));
             continue;
@@ -851,6 +883,9 @@ pub fn slot_plan(snap: &Snapshot, n: u8, current: &std::collections::HashMap<u16
     }
     let now = |c: u16| current.get(&c).cloned();
     let may_write = |c: u16, _: &Value| -> Result<(), (String, String)> {
+        if let Some(refusal) = never_write(cat, c) {
+            return Err(refusal);
+        }
         let e = entry(cat, c);
         let what = describe(c, e);
         if !slot::writable(c) || !current.contains_key(&c) {

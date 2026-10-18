@@ -53,6 +53,10 @@ pub struct Entry {
     /// Plans write that other code after this one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resets: Vec<Reset>,
+    /// A command, not a setting (format, save and power off, the release gesture), or a
+    /// status code: no plan writes it, whatever its confidence or the plan's flags.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub never_write: bool,
 }
 
 /// One write condition: `code` must hold one of `values` (raw keys, as in `values`).
@@ -167,6 +171,11 @@ impl Catalog {
         Ok(())
     }
 
+    /// Whether the catalog forbids every write of `code` (`Entry::never_write`).
+    pub fn never_write(&self, code: u16) -> bool {
+        self.properties.get(&key(code)).is_some_and(|e| e.never_write)
+    }
+
     pub fn apply(&mut self, p: &LabelPatch, datatype: Option<&str>) {
         let e = self.properties.entry(key(p.code)).or_default();
         let set = |field: &mut Option<String>, v: &Option<String>| {
@@ -252,6 +261,18 @@ mod tests {
         assert!(e.name.is_none());
         assert_eq!(e.values.len(), 1);
         assert_eq!(e.source.as_deref(), Some("menu map + lab session"));
+    }
+
+    #[test]
+    fn command_codes_are_never_write() {
+        let c = Catalog::load(&repo_catalog()).unwrap();
+        for code in [0xD17B, 0xD17F, 0xD208, 0xD21C, 0xD21D, 0xD230] {
+            assert!(c.never_write(code), "{code:#06x}");
+        }
+        assert!(!c.never_write(0xD381));
+        let e: Entry = serde_json::from_str(r#"{ "never_write": true }"#).unwrap();
+        assert!(e.never_write);
+        assert_eq!(serde_json::to_string(&Entry::default()).unwrap(), "{}", "false is left out");
     }
 
     #[test]

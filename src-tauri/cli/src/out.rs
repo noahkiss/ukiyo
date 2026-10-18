@@ -35,7 +35,7 @@ pub fn exit_for(code: &str) -> i32 {
         "not_connected" | "camera_asleep" => 3,
         "busy" | "menu_open" | "in_playback" | "owner_conflict" => 4,
         c if c.starts_with("needs_") => 4,
-        "unconfirmed_property" | "read_only" | "value_out_of_range" | "no_evidence" | "private_text" => 5,
+        "unconfirmed_property" | "read_only" | "never_write" | "value_out_of_range" | "no_evidence" | "private_text" => 5,
         "plan_stale" | "plan_expired" => 6,
         "readback_mismatch" => 7,
         _ => 1,

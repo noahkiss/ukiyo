@@ -323,6 +323,11 @@ export type Entry_Deserialize = {
 	 *  Plans write that other code after this one.
 	 */
 	resets?: Reset_Deserialize[],
+	/**
+	 *  A command, not a setting (format, save and power off, the release gesture), or a
+	 *  status code: no plan writes it, whatever its confidence or the plan's flags.
+	 */
+	never_write?: boolean,
 };
 
 export type Entry_Serialize = {
@@ -352,6 +357,11 @@ export type Entry_Serialize = {
 	 *  Plans write that other code after this one.
 	 */
 	resets?: Reset_Serialize[],
+	/**
+	 *  A command, not a setting (format, save and power off, the release gesture), or a
+	 *  status code: no plan writes it, whatever its confidence or the plan's flags.
+	 */
+	never_write?: boolean,
 };
 
 /**  Why a request failed (docs/agent-interface.md, section 5, "Typed errors"). */
@@ -377,7 +387,9 @@ export type ErrorCode =
 /**  A process outside ukiyo holds the USB device. */
 "owner_conflict" | 
 /**  The catalog does not mark the code `confirmed`, and the plan does not allow it. */
-"unconfirmed_property" | "read_only" | "value_out_of_range" | "not_found" | "ambiguous" | 
+"unconfirmed_property" | "read_only" | 
+/**  The catalog marks the code `never_write`: a command or status code. No flag lifts it. */
+"never_write" | "value_out_of_range" | "not_found" | "ambiguous" | 
 /**  A planned code changed since the plan was made. */
 "plan_stale" | 
 /**  No such plan: expired (5 minutes), applied, discarded, or `serve` restarted. */

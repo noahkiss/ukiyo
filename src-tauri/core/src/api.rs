@@ -278,6 +278,8 @@ pub enum ErrorCode {
     /// The catalog does not mark the code `confirmed`, and the plan does not allow it.
     UnconfirmedProperty,
     ReadOnly,
+    /// The catalog marks the code `never_write`: a command or status code. No flag lifts it.
+    NeverWrite,
     ValueOutOfRange,
     NotFound,
     Ambiguous,
@@ -314,6 +316,7 @@ impl ErrorCode {
             OwnerConflict => "owner_conflict",
             UnconfirmedProperty => "unconfirmed_property",
             ReadOnly => "read_only",
+            NeverWrite => "never_write",
             ValueOutOfRange => "value_out_of_range",
             NotFound => "not_found",
             Ambiguous => "ambiguous",
@@ -560,7 +563,7 @@ mod tests {
     #[test]
     fn error_code_names() {
         use ErrorCode::*;
-        for c in [Failed, NoFakeCamera, BadRequest, Unavailable, NotConnected, CameraAsleep, Busy, MenuOpen, InPlayback, NeedsTether, NeedsRawconv, NeedsStills, NeedsMovie, OwnerConflict, UnconfirmedProperty, ReadOnly, ValueOutOfRange, NotFound, Ambiguous, PlanStale, PlanExpired, ReadbackMismatch, NoEvidence, PrivateText] {
+        for c in [Failed, NoFakeCamera, BadRequest, Unavailable, NotConnected, CameraAsleep, Busy, MenuOpen, InPlayback, NeedsTether, NeedsRawconv, NeedsStills, NeedsMovie, OwnerConflict, UnconfirmedProperty, ReadOnly, NeverWrite, ValueOutOfRange, NotFound, Ambiguous, PlanStale, PlanExpired, ReadbackMismatch, NoEvidence, PrivateText] {
             assert_eq!(serde_json::to_value(c).unwrap(), json!(c.name()));
             assert_eq!(ErrorCode::from_name(c.name()), c);
         }
@@ -631,6 +634,29 @@ mod tests {
         let p = dispatch(&lab, "test", req(json!({ "method": "recipe_parse", "params": { "text": "Film Simulation: Classic Chrome" } }))).unwrap();
         let Response::RecipeParse(parsed) = p else { panic!("{p:?}") };
         assert!(serde_json::to_value(&parsed).unwrap().is_object());
+        lab.shutdown();
+    }
+
+    /// The Lab's write box sends `plan_create` with one raw code and `allow_unconfirmed`
+    /// (app/src/pages/Lab.tsx): a never_write code is refused there too.
+    #[test]
+    fn lab_write_box_refuses_never_write_codes() {
+        std::env::set_var("UKIYO_FAKE_CAMERA", "1");
+        let data = tempfile::tempdir().unwrap();
+        let cats = tempfile::tempdir().unwrap();
+        std::fs::copy(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog/x-t5.json"), cats.path().join("x-t5.json")).unwrap();
+        let lock = crate::serve::OwnerLock::try_acquire(&data.path().join("owner.lock")).unwrap();
+        let lab = Lab::start(lock, data.path().into(), cats.path().into(), |_| {});
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !(lab.snapshot().status.link == Link::Connected && !lab.snapshot().rows.is_empty() && lab.snapshot().catalog.is_some()) {
+            assert!(Instant::now() < deadline, "fake camera never connected");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        for (code, raw) in [("0xd17f", "2"), ("0xd17b", "1"), ("0xd208", "512"), ("0xd21c", "0")] {
+            let e = dispatch(&lab, "app", req(json!({ "method": "plan_create", "params": { "set": { code: raw }, "allow_unconfirmed": true } }))).unwrap_err();
+            assert_eq!(e.code, ErrorCode::NeverWrite, "{code}: {e:?}");
+            assert!(e.message.starts_with(code), "{}", e.message);
+        }
         lab.shutdown();
     }
 }

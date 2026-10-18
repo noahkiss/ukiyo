@@ -256,6 +256,17 @@ fn tools_on_the_fake_camera() {
     m.finish(serve_pid);
 }
 
+#[test]
+fn camera_plan_refuses_never_write_codes() {
+    let mut m = Mcp::start();
+    let serve_pid = m.ok("camera_status", json!({}))["pid"].as_u64().unwrap() as u32;
+    for set in [json!({ "HardwareControl": "FORMAT SLOT 2" }), json!({ "PowerControl": "SAVE AND POWER OFF" }), json!({ "0xd208": "768" })] {
+        let e = m.err("camera_plan", json!({ "set": set, "allow_unconfirmed": true }));
+        assert_eq!(e["code"], "never_write", "{set}: {e}");
+    }
+    m.finish(serve_pid);
+}
+
 /// The connection drops after `UKIYO_MCP_IDLE`, so `serve` can idle out while the agent
 /// session stays open; the next call starts a new one.
 #[test]

@@ -1113,7 +1113,8 @@
         "movie",
         "rawconv"
       ],
-      "notes": "Capture One 16.5: PowerControl, \"Save & power off / Save settings onto the flash ROM and then turn the power off\". Never write: 1 saves settings to flash and powers the camera off."
+      "notes": "Capture One 16.5: PowerControl, \"Save & power off / Save settings onto the flash ROM and then turn the power off\". Never write: 1 saves settings to flash and powers the camera off.",
+      "never_write": true
     },
     "0xd17e": {
       "name": "CropAreaFrameInfo",
@@ -1141,7 +1142,8 @@
         "stills",
         "movie"
       ],
-      "notes": "Capture One 16.5: HardwareControl, \"Hardware control / Execute sensor cleaning, Format, Reset Frame NO. and so on\". Was ResetSetting from libgphoto2. Never write: 2 and 6 format a card, 3 to 5 reset counters or menus. The X-T5 descriptor offers 4, 5 and 7; 7 is unlabelled."
+      "notes": "Capture One 16.5: HardwareControl, \"Hardware control / Execute sensor cleaning, Format, Reset Frame NO. and so on\". Was ResetSetting from libgphoto2. Never write: 2 and 6 format a card, 3 to 5 reset counters or menus. The X-T5 descriptor offers 4, 5 and 7; 7 is unlabelled.",
+      "never_write": true
     },
     "0xd180": {
       "name": "FolderNameSuffix",
@@ -1895,7 +1897,8 @@
         "movie",
         "rawconv"
       ],
-      "notes": "Capture One 16.5: CaptureFunction, \"Capture type / Capture type setting for InitiateCapture\". Capture One writes it before InitiateCapture (S1 OFF at open, CANCEL to abort). The X-T5 descriptor also offers 37376 and 64, unlabelled."
+      "notes": "Capture One 16.5: CaptureFunction, \"Capture type / Capture type setting for InitiateCapture\". Capture One writes it before InitiateCapture (S1 OFF at open, CANCEL to abort). The X-T5 descriptor also offers 37376 and 64, unlabelled.",
+      "never_write": true
     },
     "0xd209": {
       "name": "AFStatus",
@@ -2039,7 +2042,8 @@
         "movie",
         "rawconv"
       ],
-      "notes": "Capture One 16.5: PTPError, \"PTP detailed error / PTP communication detailed error information\". The reason for the last refused PTP operation."
+      "notes": "Capture One 16.5: PTPError, \"PTP detailed error / PTP communication detailed error information\". The reason for the last refused PTP operation.",
+      "never_write": true
     },
     "0xd21d": {
       "name": "FirmwareUpdateStatus",
@@ -2050,7 +2054,8 @@
         "stills",
         "movie"
       ],
-      "notes": "Capture One 16.5: FirmupSts, \"Progress firm. upg. / Progress for the firmware upgrade\"."
+      "notes": "Capture One 16.5: FirmupSts, \"Progress firm. upg. / Progress for the firmware upgrade\".",
+      "never_write": true
     },
     "0xd222": {
       "name": "SensitivityFineTune1",
@@ -2176,7 +2181,8 @@
         "stills",
         "movie"
       ],
-      "notes": "Capture One 16.5: ForceMode, \"Force to Shooting\"."
+      "notes": "Capture One 16.5: ForceMode, \"Force to Shooting\".",
+      "never_write": true
     },
     "0xd231": {
       "type": "uint16",

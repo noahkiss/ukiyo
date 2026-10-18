@@ -451,6 +451,20 @@ fn settings_set_goes_through_a_plan() {
 }
 
 #[test]
+fn settings_set_refuses_never_write_codes() {
+    let env = Env::new();
+    let pid = env.pid();
+    for item in ["HardwareControl=FORMAT SLOT 1", "0xd17b=1", "CaptureFunction=S1 ON"] {
+        let (code, v) = env.json(&["settings", "set", item, "--yes", "--allow-unconfirmed"]);
+        assert_eq!((code, v["error"]["code"].as_str()), (5, Some("never_write")), "{item}: {v}");
+        assert!(v["error"]["message"].as_str().unwrap().contains("never_write"), "{v}");
+    }
+    let (_, log) = env.json(&["log", "show"]);
+    assert!(log["data"]["entries"].as_array().unwrap().iter().all(|e| e["kind"] != "write"), "nothing written: {log}");
+    env.finish(pid);
+}
+
+#[test]
 fn owner_strings_are_gated() {
     let env = Env::new();
     let (code, v) = env.json(&["owner", "get"]);

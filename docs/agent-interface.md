@@ -328,7 +328,7 @@ exit 1) and `not_built` (a flag for a later stage, exit 1).
 | 2 | Usage error: bad flag, unknown name, ambiguous value. |
 | 3 | No camera: not connected, asleep, unplugged. |
 | 4 | Wrong camera state: `needs_*`, `menu_open`, `in_playback`, `busy`. |
-| 5 | Refused by a gate: unconfirmed, read-only, out of range, a label without evidence (`no_evidence`) or with camera text (`private_text`). |
+| 5 | Refused by a gate: unconfirmed, read-only, `never_write`, out of range, a label without evidence (`no_evidence`) or with camera text (`private_text`). |
 | 6 | Not applied: declined at the prompt, `--dry-run`, no TTY without `--yes`, plan stale or expired. A `--dry-run` with `--json` prints `ok: true` and the plan, and still exits 6. |
 | 7 | Applied in part: at least one step failed (`readback_mismatch`, `busy` ...). The output lists each step. |
 
@@ -791,6 +791,13 @@ The core enforces every rule here. The front ends only show them.
   - the value is in the descriptor's enum or range, and in the catalog's `values` if it has any
 - `allow_unconfirmed` (CLI `--allow-unconfirmed`) lifts only the `confirmed` rule. MCP takes
   the same per-plan argument, with no start flag.
+- **Never write.** A catalog entry with `never_write` (docs/catalog.md) is a command or status
+  code: format, resets, save and power off, the release gesture, the PTP error. A plan that
+  names one fails as a whole with `never_write`, before any other gate; a prerequisite or
+  restore on one is blocked with that reason; apply checks again before the first write. No
+  flag lifts it, `allow_unconfirmed` included, and the Lab's write box obeys it too. The owner's
+  own half-press (D208 + InitiateCapture, to close a menu or keep the camera awake) is not a
+  plan and still runs. The X-T5 marks D17B, D17F, D208, D21C, D21D and D230.
 - The catalog's `values` gate applies to `confirmed` entries only. An unconfirmed entry's value
   list is itself a guess, and the Lab must be able to write values nobody has labelled yet.
 - A step whose value is already set is `skipped` with reason `unchanged`. A code the camera
@@ -861,6 +868,7 @@ the Connect page's guide in the window.
 | `needs_stills`, `needs_movie` | A property of the other capture mode | Set the STILL/MOVIE switch. |
 | `owner_conflict` | A process outside ukiyo holds the USB device | Quit that process (PTPCamera is handled by the owner). |
 | `unconfirmed_property` | Gate | Confirm the property in the Lab, or pass `allow_unconfirmed`. |
+| `never_write` | Gate: the catalog marks the code a command or status code | Nothing: no flag lifts it. Use the camera's own menu for the action. |
 | `read_only`, `value_out_of_range`, `not_found`, `ambiguous` | Gate or lookup | Lists the valid values or candidates. |
 | `plan_stale`, `plan_expired` | Apply | Make a new plan. |
 | `readback_mismatch` | Apply: the camera took the write but holds another value | Read the setting; a camera rule may tie it to another. Apply the undo plan to revert. |

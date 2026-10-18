@@ -17,18 +17,10 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-/// Catalog names a snapshot never keeps: the shutter counters, and commands or status codes
-/// that read like settings (format and reset, save and power off, the release gesture).
-pub const NOT_SETTINGS: &[&str] = &[
-    "ShotCount",
-    "TotalShotCount",
-    "ShutterExchangeCount",
-    "FrontShutterCount",
-    "HardwareControl",
-    "PowerControl",
-    "CaptureFunction",
-    "PTPError",
-];
+/// Catalog names a snapshot never keeps: the shutter counters. Commands and status codes
+/// that read like settings (format and reset, save and power off, the release gesture) are
+/// `never_write` in the catalog, and a snapshot skips those too.
+pub const NOT_SETTINGS: &[&str] = &["ShotCount", "TotalShotCount", "ShutterExchangeCount", "FrontShutterCount"];
 
 /// One setting in a snapshot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -102,7 +94,7 @@ pub fn capture(cam: &Snapshot, name: &str) -> Result<SettingsSnapshot, Error> {
             continue;
         }
         let Some(e) = cat.and_then(|c| c.properties.get(&catalog::key(r.code))) else { continue };
-        if !matches!(e.confidence, Some(Confidence::Confirmed | Confidence::Likely)) || e.name.as_deref().is_some_and(|n| NOT_SETTINGS.contains(&n)) {
+        if !matches!(e.confidence, Some(Confidence::Confirmed | Confidence::Likely)) || e.never_write || e.name.as_deref().is_some_and(|n| NOT_SETTINGS.contains(&n)) {
             continue;
         }
         values.push(SavedValue { code: catalog::key(r.code), name: e.name.clone(), value: read::raw_value(v), label: read::value_label(Some(e), v) });
