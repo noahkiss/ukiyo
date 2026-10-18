@@ -17,6 +17,7 @@ Ctrl-C ends live view, returns priority to the camera and closes the session.
 import argparse
 import http.server
 import json
+import signal
 import struct
 import sys
 import threading
@@ -90,7 +91,9 @@ class Camera:
         self.prio = self.u16(0xD207)
         self.clear_buffer()
         self.set16(0xD01B, 1)
-        self.set16(0xD207, 2)
+        # Live view runs under camera priority, so the camera's own buttons (half-press focus)
+        # keep working. PC priority (D207 = 2) is taken only around a release, as Capture One does.
+        self.set16(0xD207, 1)
         rc, _, _, _ = self.s.transaction(fp.OP["InitiateOpenCapture"], (0, 0), quiet=True)
         print("InitiateOpenCapture", fp.rc_name(rc), flush=True)
         self.frames = 0
@@ -135,12 +138,14 @@ class Camera:
     def shoot(self):
         with self.lock:
             before = set(self.handles())
+            self.set16(0xD207, 2)
             self.set16(0xD208, 0x0200)
             self.s.transaction(INITIATE_CAPTURE, (0, 0), quiet=True)
             time.sleep(0.8)
             self.set16(0xD208, 0x0304)
             rc, _, _, _ = self.s.transaction(INITIATE_CAPTURE, (0, 0), quiet=True)
             if rc != fp.OK:
+                self.set16(0xD207, 1)
                 return {"error": f"The camera did not fire ({fp.rc_name(rc)})."}
             new = []
             for _ in range(40):
@@ -151,6 +156,7 @@ class Camera:
                     new = [h for h in self.handles() if h not in before]
                     break
             if not new:
+                self.set16(0xD207, 1)
                 return {"error": "No photo arrived in the tether buffer."}
             result = None
             OUT.mkdir(parents=True, exist_ok=True)
@@ -167,6 +173,7 @@ class Camera:
                         print("Downloaded", name, f"{len(data) / 1e6:.1f} MB in {st['ms'] / 1000:.1f} s",
                               flush=True)
                 self.s.transaction(DELETE_OBJECT, (h, 0), quiet=True)
+            self.set16(0xD207, 1)  # writes work again once the buffer is empty
             return result or {"error": "Download failed."}
 
     def close(self):
@@ -248,6 +255,8 @@ def main():
     sys.path.insert(0, str(REPO / "tools" / "ptp"))
     import owner_lock
     owner_lock.hold()
+    # A background shell ignores SIGINT; let SIGTERM run the same clean-up as Ctrl-C.
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     cam = Camera(args.wait)
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler_for(cam))
     print(f"Open http://127.0.0.1:{args.port}/  (Ctrl-C to stop)", flush=True)
