@@ -32,7 +32,7 @@ RC_NAMES = {
     0x2001: "OK", 0x2002: "GeneralError", 0x2003: "SessionNotOpen", 0x2004: "InvalidTransactionID",
     0x2005: "OperationNotSupported", 0x2006: "ParameterNotSupported", 0x2009: "InvalidObjectHandle",
     0x200A: "DevicePropNotSupported", 0x200F: "AccessDenied", 0x2019: "DeviceBusy",
-    0x201E: "SessionAlreadyOpen", 0xA001: "Fuji: menu open", 0xA002: "Fuji: value already set",
+    0x201E: "SessionAlreadyOpen", 0xA001: "Fuji: menu open", 0xA002: "Fuji: busy (tether buffer holds images)",
 }
 
 OP = {
