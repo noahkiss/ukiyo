@@ -179,6 +179,9 @@ descriptors). Sources: sdk `XAPI.h:273-345`; mk `capture.go:42-77`; gp `config.c
   tv). Most remote capture is ignored without it (mk).
 - Closing the PTP session does **not** restore 1. The host must write 1 before it leaves (mk).
 - The X-T5 answers a redundant write (value already set) with vendor error 0xA002. Read first (mk).
+- 0xA002 also answers every write, redundant or not, while the tether buffer holds captured
+  images (observed 2026-10-18 over wireless tether). DeleteObject on the buffer's objects clears
+  it. Capture One treats 0xA002 as a busy code.
 - The camera refuses the change to 2 while undownloaded frames sit in the volatile store (mk).
 - D207 reads 0xA001 while a menu or playback is open; a half-press returns the body (mk
   `OPERATION.md`). This matches our 0xA001-in-menu finding.
