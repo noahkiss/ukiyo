@@ -92,7 +92,7 @@ Capture One 16.5):
   heartbeat: D38C selects a zoom position (C1 copies D170 into it), and C1 then reads D38D, the
   aperture list for that position. Its property refresh runs about once a second.
 
-What Capture One 16.5's bundle shows (static inspection, notes in `local/mapping/` on m1p):
+What Capture One 16.5's bundle shows (static inspection, notes in `local/mapping/` on the dev Mac, gitignored):
 
 - Its Fuji code is Phase One's own; Fuji's SDK is not embedded. Discovery and init match the
   above. On INIT_FAIL 0x2019 it waits 0.5 s and resends on the same socket, up to 3 times;
