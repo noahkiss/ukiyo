@@ -74,8 +74,21 @@ Capture One 16.5):
 - Storage is the tether buffer, not the card: two storages, "Still" and "Live", with all-ones
   capacity and free space, and zero objects. **Wireless tether gives no access to the card's
   photos**, so image transfer needs the smartphone mode or USB.
-- Capture One writes D38C = 1 about every 1.5 s for the whole session (gphoto2 calls D38C "PC
-  Mode"). Whether that holds the session or the camera awake is untested.
+- Capture One writes D38C = 1 about every 1.5 s. A static look at its bundle shows this is not a
+  heartbeat: D38C selects a zoom position (C1 copies D170 into it), and C1 then reads D38D, the
+  aperture list for that position. Its property refresh runs about once a second.
+
+What Capture One 16.5's bundle shows (static inspection, notes in `local/mapping/` on m1p):
+
+- Its Fuji code is Phase One's own; Fuji's SDK is not embedded. Discovery and init match the
+  above. On INIT_FAIL 0x2019 it waits 0.5 s and resends on the same socket, up to 3 times;
+  0x201E and other reasons are fatal. The client name is the Mac's host name.
+- It uses one socket: no event or live view socket (55741/55742). Live view is
+  InitiateOpenCapture, then operation 0x9018 GetLiveViewImage per frame.
+- Images: it waits for ObjectAdded (0x4002), downloads with GetObject, then DeleteObject from the
+  tether buffer. It has no card browse and no card access over Wi-Fi.
+- Busy answers it retries: 0x2019, 0xA001, 0xA002, in 200 ms steps.
+- PC priority: D207 = 2 to take, 1 to release. It needs D01B (live zoom) = 1 first.
 
 After the init, wireless tether is plain USB-tether PTP: OpenSession, GetDeviceInfo, and
 D16E (USB mode) (lf `fuji_usb.c`).
