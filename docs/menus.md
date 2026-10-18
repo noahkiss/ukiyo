@@ -173,7 +173,7 @@ the catalog's.
 | IMAGE QUALITY SETTING > COLOR SPACE | `0xd00a` ColorSpace (likely) | `0xd1a4` PresetColorSpace (likely) |
 | IMAGE QUALITY SETTING > SELECT CUSTOM SETTING | `0xd18c` PresetSlot (confirmed) | |
 | IMAGE QUALITY SETTING > EDIT/SAVE CUSTOM SETTING | `0xd18c` PresetSlot, `0xd18d` PresetName (confirmed) | |
-| AF/MF SETTING > FOCUS AREA | `0xd347` FocusPoint, `0xd372` FocusArea1, `0xd374` FocusArea3, `0xd395` FocusArea4 (likely) | |
+| AF/MF SETTING > FOCUS AREA | `0xd347` FocusArea0, `0xd372` FocusArea90, `0xd374` FocusArea270, `0xd395` FocusAreaCurrent (likely) | |
 | AF/MF SETTING > AF-C CUSTOM SETTINGS | `0xd232` AfcCustomSet, `0xd233` AfcCustomValues (likely) | |
 | AF/MF SETTING > NUMBER OF FOCUS POINTS | `0xd025` FocusPoints (confirmed) | |
 | AF/MF SETTING > PRE-AF | `0xd34b` PreAFMode (confirmed) | |
@@ -184,25 +184,25 @@ the catalog's.
 | AF/MF SETTING > FOCUS CHECK | `0xd35e` FocusCheckMode (likely) | |
 | AF/MF SETTING > INTERLOCK SPOT AE & FOCUS AREA | `0xd027` InterlockAEAFArea (likely) | |
 | AF/MF SETTING > INSTANT AF SETTING | `0xd34a` InstantAFMode (likely) | |
-| AF/MF SETTING > RELEASE/FOCUS PRIORITY | `0xd10a` ReleaseFocusPriorityAFS, `0xd10b` ReleaseFocusPriorityAFC (likely) | |
+| AF/MF SETTING > RELEASE/FOCUS PRIORITY | `0xd10a` ReleaseFocusPriorityAFC, `0xd10b` ReleaseFocusPriorityAFS (likely; swapped per Capture One 16.5) | |
 | SHOOTING SETTING > SELF-TIMER | `0x5012` CaptureDelay (confirmed) | |
 | SHOOTING SETTING > PHOTOMETRY | `0x500b` ExposureMeteringMode (confirmed) | |
 | SHOOTING SETTING > IS MODE | `0xd351` ISMode (likely) | |
 | SHOOTING SETTING > DIGITAL TELE-CONV. | `0xd1b3` DigitalTeleConv (likely) | |
 | USER SETTING > DATE/TIME | `0x5011` DateTime (confirmed) | |
-| USER SETTING > TIME DIFFERENCE | `0xd158` TimeDifference1, `0xd159` TimeDifference2 (likely) | |
+| USER SETTING > TIME DIFFERENCE | `0xd158` TimeDifferenceHour, `0xd159` TimeDifferenceMinute (likely) | |
 | USER SETTING > LANG. | `0xd15a` Language (likely) | |
-| USER SETTING > RESET | `0xd17f` ResetSetting (likely) | |
+| USER SETTING > RESET | `0xd17f` HardwareControl (likely; never write: it also formats cards) | |
 | SCREEN SETTING > PREVIEW EXP./WB IN MANUAL MODE | `0xd359` ExposurePreview (likely) | |
-| SCREEN SETTING > FRAMING GUIDELINE | `0xd106` FrameGuideMode, `0xd375` FrameGuideGridInfo1, `0xd376` FrameGuideGridInfo2 (likely) | |
+| SCREEN SETTING > FRAMING GUIDELINE | `0xd106` FrameGuideMode, `0xd375` CustomGuideGridInfo0, `0xd376` CustomGuideGridInfo90 (likely) | |
 | SCREEN SETTING > FOCUS SCALE UNITS | `0xd35f` FocusScaleUnit (likely) | |
 | SCREEN SETTING > DISP. CUSTOM SETTING | `0xd36e` CustomDispInfo (likely) | |
-| BUTTON/DIAL SETTING > COMMAND DIAL SETTING | `0xd028` CommandDialMode (likely) | |
+| BUTTON/DIAL SETTING > COMMAND DIAL SETTING | none known: `0xd028`, once read as this item, is DOFScale per Capture One 16.5 | |
 | BUTTON/DIAL SETTING > LENS ZOOM/FOCUS SETTING | `0xd1bf` ConstantSpeedFocus, `0xd1c0` ConstantSpeedZoom (likely) | |
 | BUTTON/DIAL SETTING > AE/AF-LOCK MODE | `0xd34e` AeAfLockMode (likely) | |
 | BUTTON/DIAL SETTING > LOCK | `0xd136` FunctionLock, `0xd36f` FunctionLockCategory1, `0xd370` FunctionLockCategory2 (likely) | |
 | POWER MANAGEMENT > AUTO POWER OFF | `0xd381` AutoPowerOff (confirmed) | |
-| SAVE DATA SETTING > FRAME NO. | `0xd15b` FrameNumberSequence, `0xd16d` FrameNumber (likely) | |
+| SAVE DATA SETTING > FRAME NO. | `0xd15b` FrameNumberSequence (likely) | |
 | SAVE DATA SETTING > EDIT FILE NAME | `0xd365` FileNamePrefix1, `0xd366` FileNamePrefix2 (likely) | |
 | SAVE DATA SETTING > COPYRIGHT INFO | `0xd215` Copyright, `0xd216` Copyright2 (likely), `0xd237` CopyrightAuthor (guess) | |
 | NETWORK/USB SETTING > CONNECTION MODE | `0xd16e` UsbConnectionMode (likely) | |

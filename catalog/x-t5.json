@@ -10,6 +10,13 @@
     "4.31"
   ],
   "properties": {
+    "0x5001": {
+      "name": "PTPBatteryLevel",
+      "type": "uint8",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: BatteryLevel. The standard PTP BatteryLevel; uint8 from the PTP standard (Capture One gives no type). Named apart from 0xd242 BatteryLevel. Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
     "0x5003": {
       "name": "ImageSize",
       "type": "string",
@@ -28,12 +35,12 @@
         "32775": "COLOR TEMPERATURE"
       },
       "confidence": "confirmed",
-      "source": "PTP + lab session",
+      "source": "PTP + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Other WB modes not yet mapped."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Other WB modes not yet mapped. Capture One 16.5: \"White balance\"."
     },
     "0x5007": {
       "name": "FNumber",
@@ -57,11 +64,12 @@
         "32770": "C"
       },
       "confidence": "confirmed",
-      "source": "lab session",
+      "source": "lab session + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: \"Focus mode\"."
     },
     "0x500b": {
       "name": "ExposureMeteringMode",
@@ -77,34 +85,39 @@
       "menu": "Shutter speed dial",
       "type": "uint32",
       "confidence": "confirmed",
-      "source": "lab session",
+      "source": "lab session + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: \"Shutter Speed / seconds\"."
     },
     "0x500e": {
       "name": "ExposureProgramMode",
       "type": "uint16",
       "confidence": "confirmed",
-      "source": "PTP",
+      "source": "PTP + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: \"Shooting mode\"."
     },
     "0x500f": {
       "name": "ExposureIndex",
       "menu": "ISO dial",
       "type": "int32",
       "values": {
-        "-3": "AUTO"
+        "-4": "AUTO4",
+        "-3": "AUTO",
+        "-2": "AUTO2",
+        "-1": "AUTO1"
       },
       "confidence": "confirmed",
-      "source": "lab session",
+      "source": "lab session + Capture One 16.5",
       "modes": [
         "stills"
       ],
-      "notes": "AUTO is 0xFFFFFFFD."
+      "notes": "AUTO is 0xFFFFFFFD. Capture One 16.5: ExposureIndex."
     },
     "0x5010": {
       "name": "ExposureBiasCompensation",
@@ -130,30 +143,39 @@
     "0x5012": {
       "name": "CaptureDelay",
       "type": "uint16",
+      "values": {
+        "0": "OFF",
+        "2000": "2 SEC",
+        "10000": "10 SEC"
+      },
       "confidence": "confirmed",
-      "source": "PTP",
+      "source": "PTP + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: \"Capture delay\"."
     },
     "0x5015": {
       "name": "Sharpness",
       "type": "int16",
+      "scale": 10,
       "confidence": "confirmed",
-      "source": "PTP",
+      "source": "PTP + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: \"Sharpness\". Capture One's per-model table gives some other bodies 5 steps, -20..20; not the X-T5. The X-T5 descriptor range is -40..40, step 10."
     },
     "0x501c": {
       "name": "FocusMeteringMode",
       "type": "uint16",
       "confidence": "confirmed",
-      "source": "PTP",
+      "source": "PTP + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: \"Focus metering mode\"."
     },
     "0xd001": {
       "name": "FilmSimulation",
@@ -182,12 +204,12 @@
         "20": "REALA ACE"
       },
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 20 = REALA ACE, 12 = ACROS and 17 = CLASSIC Neg. seen on the camera. Choosing ACROS sets Color (0xd008) to 0. 19 and 20 are not in libgphoto2; 19 is inferred from the enum length.",
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 20 = REALA ACE, 12 = ACROS and 17 = CLASSIC Neg. seen on the camera. Choosing ACROS sets Color (0xd008) to 0. 19 and 20 are not in libgphoto2; 19 is inferred from the enum length. Capture One 16.5: PresetMode, \"Film simulation\".",
       "resets": [
         {
           "when": [
@@ -217,11 +239,12 @@
         "65535": "AUTO"
       },
       "confidence": "likely",
-      "source": "menu map",
+      "source": "menu map + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: DrangMode, \"Dynamic range\"."
     },
     "0xd008": {
       "name": "Color",
@@ -229,46 +252,47 @@
       "type": "int16",
       "scale": 10,
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: -2 reads -20. Choosing ACROS sets it to 0. libgphoto2 calls it ColorMode."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: -2 reads -20. Choosing ACROS sets it to 0. libgphoto2 calls it ColorMode. Capture One 16.5: ColorMode, \"Color mode\". Capture One's per-model table gives some other bodies 5 steps, -20..20; not the X-T5."
     },
     "0xd00a": {
       "name": "ColorSpace",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: ColorSpace, \"Color space\"."
     },
     "0xd00b": {
       "name": "WhiteBalanceShiftR",
       "menu": "IMAGE QUALITY SETTING > WHITE BALANCE",
       "type": "int16",
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The R axis of the WB shift grid. Signed, one step per unit: R +3 reads 3. libgphoto2 calls it WhitebalanceTune1."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The R axis of the WB shift grid. Signed, one step per unit: R +3 reads 3. libgphoto2 calls it WhitebalanceTune1. Capture One 16.5: WBTuningRCy, \"WB shift Red-Cyan\"."
     },
     "0xd00c": {
       "name": "WhiteBalanceShiftB",
       "menu": "IMAGE QUALITY SETTING > WHITE BALANCE",
       "type": "int16",
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The B axis of the WB shift grid. Signed, one step per unit: B -2 reads -2. libgphoto2 calls it WhitebalanceTune2."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The B axis of the WB shift grid. Signed, one step per unit: B -2 reads -2. libgphoto2 calls it WhitebalanceTune2. Capture One 16.5: WBTuningBYe, \"WB shift Blue-Yellow\"."
     },
     "0xd017": {
       "name": "ColorTemperature",
@@ -276,32 +300,43 @@
       "type": "uint16",
       "unit": "K",
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The Kelvin value, raw: 5000K reads 5000. Reads 0 when white balance is not COLOR TEMPERATURE."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). The Kelvin value, raw: 5000K reads 5000. Reads 0 when white balance is not COLOR TEMPERATURE. Capture One 16.5: WBColorTuning, \"Color temperature / Color temperature for white balance\"."
     },
     "0xd018": {
       "name": "Quality",
       "type": "uint16",
+      "values": {
+        "1": "RAW",
+        "2": "FINE",
+        "3": "NORMAL",
+        "4": "RAW+FINE",
+        "5": "RAW+NORMAL",
+        "6": "SUPER FINE",
+        "7": "RAW+SUPER FINE"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: ImageQuality, \"Image quality\"."
     },
     "0xd01b": {
       "name": "ThroughImageZoom",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: LiveZoom, \"Live zoom ratio / Zoom ratio for Live Video (Live Frame)\". Capture One sets it to 1 at open and before each capture; PC priority needs it at 1. Capture One's live view saves and restores it."
     },
     "0xd01c": {
       "name": "NoiseReduction",
@@ -319,30 +354,52 @@
         "32768": "-4"
       },
       "confidence": "confirmed",
-      "source": "menu map + lab session",
+      "source": "menu map + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 32768 = -4 and 28672 = -3 seen on the camera."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 32768 = -4 and 28672 = -3 seen on the camera. Capture One 16.5: Noise, \"Noise reduction\". Capture One's per-model table calls it High ISO NR (0 off, 2 on) on some other bodies; not the X-T5."
+    },
+    "0xd01d": {
+      "name": "MacroMode",
+      "type": "uint16",
+      "values": {
+        "1": "OFF",
+        "2": "MACRO ON"
+      },
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: MacroMode, \"Macro\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd020": {
       "name": "FaceDetectionMode",
       "type": "uint16",
+      "values": {
+        "1": "ON",
+        "2": "OFF"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FaceDetectMode, \"Face detection\"."
     },
     "0xd022": {
       "name": "RawCompression",
       "type": "uint16",
+      "values": {
+        "1": "UNCOMPRESSED",
+        "2": "LOSSLESS COMPRESSED",
+        "3": "COMPRESSED"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: RawCompress, \"RAW recording\"."
     },
     "0xd023": {
       "name": "GrainEffect",
@@ -353,24 +410,33 @@
         "2": "WEAK SMALL",
         "3": "STRONG SMALL",
         "4": "WEAK LARGE",
-        "5": "STRONG LARGE"
+        "5": "STRONG LARGE",
+        "6": "OFF SMALL",
+        "7": "OFF LARGE"
       },
       "confidence": "confirmed",
-      "source": "menu map + lab session",
+      "source": "menu map + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 4 = WEAK LARGE and 5 = STRONG LARGE seen on the camera."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 4 = WEAK LARGE and 5 = STRONG LARGE seen on the camera. Capture One 16.5: GrainEffect, \"Grain effect\"."
     },
     "0xd024": {
       "name": "SetEyeAFMode",
       "type": "uint16",
+      "values": {
+        "1": "OFF",
+        "2": "AUTO",
+        "3": "RIGHT EYE PRIORITY",
+        "4": "LEFT EYE PRIORITY"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: EyeAf, \"Eye detection\"."
     },
     "0xd025": {
       "name": "FocusPoints",
@@ -381,40 +447,65 @@
         "4": "425 POINTS"
       },
       "confidence": "confirmed",
-      "source": "menu map + lab session",
+      "source": "menu map + lab session + Capture One 16.5",
       "modes": [
         "stills"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 3 and 4 seen on the camera."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 3 and 4 seen on the camera. Capture One 16.5: FocusPoints, \"Focus points\"."
     },
     "0xd026": {
       "name": "MFAssistMode",
       "menu": "AF/MF SETTING > MF ASSIST",
       "type": "uint16",
+      "values": {
+        "1": "STANDARD",
+        "2": "DIGITAL SPLIT IMAGE MONO",
+        "3": "DIGITAL SPLIT IMAGE COLOR",
+        "4": "FOCUS PEAK WHITE LOW",
+        "5": "FOCUS PEAK WHITE HIGH",
+        "6": "FOCUS PEAK RED LOW",
+        "7": "FOCUS PEAK RED HIGH",
+        "8": "FOCUS PEAK BLUE LOW",
+        "9": "FOCUS PEAK BLUE HIGH",
+        "10": "FOCUS PEAK YELLOW LOW",
+        "11": "FOCUS PEAK YELLOW HIGH",
+        "12": "DIGITAL MICROPRISM"
+      },
       "confidence": "likely",
-      "source": "menu map",
+      "source": "menu map + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: MfAssist, \"MF assist\"."
     },
     "0xd027": {
       "name": "InterlockAEAFArea",
       "type": "uint16",
+      "values": {
+        "1": "ON",
+        "2": "OFF"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: InterlockAEAFArea, \"Interlock AE & AF / Interlock spot AE & AF area\"."
     },
     "0xd028": {
-      "name": "CommandDialMode",
+      "name": "DOFScale",
       "type": "uint16",
+      "values": {
+        "1": "PIXEL BASIS",
+        "2": "FILM FORMAT BASIS"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: DOFScale, \"Depth-Of-Field scale\". Was CommandDialMode from libgphoto2."
     },
     "0xd029": {
       "name": "ColorChromeEffect",
@@ -426,36 +517,49 @@
         "3": "STRONG"
       },
       "confidence": "confirmed",
-      "source": "protocol.md",
+      "source": "protocol.md + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "libgphoto2 calls it Shadowing."
+      "notes": "libgphoto2 calls it Shadowing. Capture One 16.5: Shadowing, \"Color chrome effect\"."
     },
     "0xd02a": {
-      "name": "ExposureIndex",
+      "name": "FocusMeteringMode0",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusMeteringMode_0, \"Focus metering (0) / AF mode and focus area settings for landscape position\". Was ExposureIndex from libgphoto2. Capture One's live view saves and restores it."
     },
     "0xd02b": {
-      "name": "MovieISO",
+      "name": "FocusMeteringMode90",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusMeteringMode_90, \"Focus metering (90)\". Was MovieISO from libgphoto2."
+    },
+    "0xd02c": {
+      "name": "FocusMeteringMode180",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: FocusMeteringMode_180, \"Focus metering (180)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd02d": {
+      "name": "FocusMeteringMode270",
       "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusMeteringMode_270, \"Focus metering (270)\"."
     },
     "0xd02e": {
       "name": "DRangePriority",
@@ -468,22 +572,23 @@
         "32768": "AUTO"
       },
       "confidence": "confirmed",
-      "source": "protocol.md",
+      "source": "protocol.md + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "libgphoto2 calls it WideDynamicRange."
+      "notes": "libgphoto2 calls it WideDynamicRange. Capture One 16.5: WideDynamicRange, \"D. range priority / Dynamic range priority\"."
     },
     "0xd02f": {
       "name": "TNumber",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: TNumber, \"T number - MKX / T number setting for MKX lenses\"."
     },
     "0xd030": {
       "name": "ColorChromeFXBlue",
@@ -491,15 +596,16 @@
       "type": "uint16",
       "values": {
         "1": "OFF",
+        "2": "WEAK",
         "3": "STRONG"
       },
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 2 is likely WEAK, not yet seen."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 2 is likely WEAK, not yet seen. Capture One 16.5: BlueEffect, \"Color Chr. Fx Blue / Color Chrome Fx Blue\"."
     },
     "0xd031": {
       "name": "MonochromaticColorMG",
@@ -507,12 +613,12 @@
       "type": "int16",
       "scale": 10,
       "confidence": "confirmed",
-      "source": "menu map + lab session",
+      "source": "menu map + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: MG -2 reads -20. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. The range collapses to 0 with a colour film simulation.",
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: MG -2 reads -20. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. The range collapses to 0 with a colour film simulation. Capture One 16.5: ColorMonochrome_RG, \"Monochr. M/G / Monochrome Magenta/Green\".",
       "requires": [
         {
           "code": "0xd001",
@@ -536,12 +642,12 @@
       "type": "int16",
       "scale": 10,
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: +3 reads 30. Choosing HEIF (0xd1b2) sets it to 0."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: +3 reads 30. Choosing HEIF (0xd1b2) sets it to 0. Capture One 16.5: Clarity, \"Clarity\"."
     },
     "0xd033": {
       "name": "ShutterDialAuto",
@@ -607,11 +713,19 @@
       "name": "Comment",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: Comment, \"Comment for Exif IFD / User Comment setting for Exif IFD information of saving data\". Capture One types it uint16; the X-T5 descriptor says string."
+    },
+    "0xd103": {
+      "name": "Preview",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: Preview, \"Image Disp\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd104": {
       "name": "MonochromaticColorWC",
@@ -619,12 +733,12 @@
       "type": "int16",
       "scale": 10,
       "confidence": "confirmed",
-      "source": "menu map + lab session",
+      "source": "menu map + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: WC +3 reads 30. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. libgphoto2 calls it BlackImageTone.",
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: WC +3 reads 30. Valid only with a monochrome film simulation (ACROS, MONOCHROME); a write answers 0x201C (invalid value) with a colour one. libgphoto2 calls it BlackImageTone. Capture One 16.5: BlackImageTone, \"Monochr. W/C / Monochrome Warm/Cool\".",
       "requires": [
         {
           "code": "0xd001",
@@ -646,158 +760,259 @@
       "name": "FrameGuideMode",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: Gridview, \"Framing guideline\"."
+    },
+    "0xd108": {
+      "name": "LSAutoTurn",
+      "type": "string",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: LSAutoTurn, \"Auto rotate PB\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd10a": {
-      "name": "ReleaseFocusPriorityAFS",
-      "menu": "AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-S PRIORITY SELECTION",
-      "type": "uint16",
-      "confidence": "likely",
-      "source": "menu map",
-      "modes": [
-        "stills"
-      ],
-      "notes": "libgphoto2 calls it ShutterPriorityMode1."
-    },
-    "0xd10b": {
       "name": "ReleaseFocusPriorityAFC",
       "menu": "AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-C PRIORITY SELECTION",
       "type": "uint16",
+      "values": {
+        "1": "RELEASE",
+        "2": "FOCUS"
+      },
       "confidence": "likely",
-      "source": "menu map",
+      "source": "menu map + Capture One 16.5",
       "modes": [
         "stills"
       ],
-      "notes": "libgphoto2 calls it ShutterPriorityMode2."
+      "notes": "libgphoto2 calls it ShutterPriorityMode1. Capture One 16.5: Af_C, \"Release/Focus AF-C / Release/Focus priority setting for AF-C\". Was ReleaseFocusPriorityAFS from menu map. One read-back test would settle the swap with 0xd10b."
+    },
+    "0xd10b": {
+      "name": "ReleaseFocusPriorityAFS",
+      "menu": "AF/MF SETTING > RELEASE/FOCUS PRIORITY > AF-S PRIORITY SELECTION",
+      "type": "uint16",
+      "values": {
+        "1": "RELEASE",
+        "2": "FOCUS"
+      },
+      "confidence": "likely",
+      "source": "menu map + Capture One 16.5",
+      "modes": [
+        "stills"
+      ],
+      "notes": "libgphoto2 calls it ShutterPriorityMode2. Capture One 16.5: Af_S, \"Release/Focus AF-S / Release/Focus priority setting for AF-S\". Was ReleaseFocusPriorityAFC from menu map. One read-back test would settle the swap with 0xd10a."
     },
     "0xd112": {
       "name": "AFIlluminator",
       "type": "uint16",
+      "values": {
+        "1": "ON",
+        "2": "OFF"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: AfLight, \"AF illuminator\"."
+    },
+    "0xd113": {
+      "name": "AfVolume",
+      "type": "uint16",
+      "values": {
+        "0": "OFF",
+        "1": "LOW",
+        "2": "MID",
+        "3": "HIGH"
+      },
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: AfVolume, \"AF Beep volume\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd115": {
+      "name": "IsoAutoDefaultISO",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: IsoAuto_DefaultISO, \"Default for ISO Auto / Default sensitivity setting for ISO Auto mode\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd116": {
+      "name": "IsoAutoMaxISO",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: IsoAuto_MaxISO, \"Max. for ISO Auto / Max. sensitivity setting for ISO Auto mode\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd117": {
+      "name": "IsoAutoMinShutterSpeed",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: IsoAuto_MinShutterSpeed, \"Min. for ISO Auto / Min. sensitivity setting for ISO Auto mode\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd136": {
       "name": "FunctionLock",
       "type": "uint16",
+      "values": {
+        "1": "UNLOCK",
+        "2": "ALL FUNCTION",
+        "3": "SELECTED FUNCTION"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FunctionLock, \"Lock setting\"."
     },
     "0xd145": {
       "name": "Password",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: PasswordInput, \"Lock password / Password for Lock mode\"."
     },
     "0xd153": {
       "name": "FirmwareVersion",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FirmVer, \"Firm. v. (body) / Firmware version of the camera body\"."
     },
     "0xd154": {
       "name": "ShotCount",
       "type": "uint32",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: ShutterCount, \"Rear shutter count / Rear curtain shutter counter of the camera\". Capture One: the rear-curtain shutter count."
     },
     "0xd155": {
       "name": "ShutterExchangeCount",
       "type": "uint32",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: ExchangeCount, \"Shutter exc. counter / Shutter exchange counter of the camera\"."
     },
     "0xd156": {
       "name": "LensFirmwareVersion",
       "type": "uint16",
       "confidence": "likely",
-      "source": "menu map",
+      "source": "menu map + Capture One 16.5",
       "modes": [
         "stills"
       ],
-      "notes": "Hex BCD: 0x105 = 1.05."
+      "notes": "Hex BCD: 0x105 = 1.05. Capture One 16.5: LensVer, \"Firm. v. (lens) / Firmware version of the lens\"."
     },
     "0xd157": {
       "name": "WorldClock",
       "type": "uint16",
+      "values": {
+        "1": "HOME",
+        "2": "LOCAL"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: WorldClock, \"Time difference / Time differernce (Home or Local) setting\"."
     },
     "0xd158": {
-      "name": "TimeDifference1",
+      "name": "TimeDifferenceHour",
       "type": "int16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: TimeDifferenceHour, \"Hour of time diff. / Hour of time difference setting for Local mode\". Was TimeDifference1 from libgphoto2."
     },
     "0xd159": {
-      "name": "TimeDifference2",
+      "name": "TimeDifferenceMinute",
       "type": "uint16",
+      "values": {
+        "0": "00",
+        "15": "15",
+        "30": "30",
+        "45": "45"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: TimeDifferenceMinute, \"Minute of time diff. / Minute of time difference  setting for Local mode\". Was TimeDifference2 from libgphoto2."
     },
     "0xd15a": {
       "name": "Language",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: Language, \"Language setting\"."
     },
     "0xd15b": {
       "name": "FrameNumberSequence",
       "menu": "SET UP > SAVE DATA SET-UP > FRAME NO.",
       "type": "uint16",
+      "values": {
+        "1": "CONTINUOUS",
+        "2": "RENEW"
+      },
       "confidence": "likely",
-      "source": "menu map",
+      "source": "menu map + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FrameNo, \"Frame No. setting\"."
+    },
+    "0xd15d": {
+      "name": "UsbSet",
+      "type": "uint16",
+      "values": {
+        "1": "USB TETHER SHOOTING AUTO",
+        "2": "USB TETHER SHOOTING FIXED"
+      },
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: UsbSet, \"USB Auto/Fixed / USB tether shooting Auto/Fixed setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd16b": {
+      "name": "TCVer",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: TCVer, \"Firm. v. Tele-conv. / Firmware version of the Tele-converter\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd16d": {
-      "name": "FrameNumber",
-      "menu": "SET UP > SAVE DATA SET-UP > FRAME NO.",
+      "name": "FrontShutterCount",
       "type": "uint32",
       "confidence": "likely",
-      "source": "menu map",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
       ],
-      "notes": "The current file number."
+      "notes": "Capture One 16.5: ShutterCountEx, \"Front shutter count / Front curtain shutter counter of the camera\". Was FrameNumber (the current file number) from menu map, with menu SET UP > SAVE DATA SET-UP > FRAME NO. (that menu is 0xd15b); menu dropped."
     },
     "0xd16e": {
       "name": "UsbConnectionMode",
@@ -819,58 +1034,86 @@
       "name": "CropMode",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: CropMode, \"35mm Format mode\". No values imported: Capture One's table reads 0 No Crop, 1 35mm Crop, 32768 No Crop (Auto), 32769 35mm Crop (Auto), the report's summary reads 1 crop, 2 no crop, and Capture One's per-model table calls it Sport Finder on some bodies. The X-T5 descriptor offers 0 and 2. Capture One's live view saves and restores it."
     },
     "0xd170": {
       "name": "LensZoomPos",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocalLength, \"Zoom position / Zoom position of the lens\". Capture One calls it FocalLength, but its label is the zoom position: a prime lens reports 1. Capture One writes this value into 0xd38c."
     },
     "0xd171": {
       "name": "FocusPosition",
       "type": "int16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusPos, \"Focus pos. (lens) / UTC Time\". Capture One's MF Drive (its 0x5802 alias: -4 near end .. +4 far end) writes this code. 0x5802 is Capture One-side, not on the wire."
     },
     "0xd173": {
       "name": "LiveViewImageQuality",
       "type": "uint16",
+      "values": {
+        "1": "FINE",
+        "2": "NORMAL",
+        "3": "BASIC"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: LiveViewImageQuality, \"Live view quality / Live view image quality setting\". Capture One's live view saves and restores it."
     },
     "0xd174": {
       "name": "LiveViewImageSize",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: LiveViewImageSize, \"Live view size / Live view image size setting\". Capture One's live view saves and restores it."
+    },
+    "0xd176": {
+      "name": "StandbyMode",
+      "type": "uint16",
+      "values": {
+        "1": "NORMAL",
+        "2": "STANDBY"
+      },
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: StandbyMode, \"Standby mode setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd17b": {
+      "name": "PowerControl",
       "type": "uint16",
+      "values": {
+        "1": "SAVE AND POWER OFF"
+      },
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: PowerControl, \"Save & power off / Save settings onto the flash ROM and then turn the power off\". Never write: 1 saves settings to flash and powers the camera off."
     },
     "0xd17e": {
       "name": "CropAreaFrameInfo",
@@ -882,33 +1125,54 @@
       ]
     },
     "0xd17f": {
-      "name": "ResetSetting",
+      "name": "HardwareControl",
       "type": "uint16",
+      "values": {
+        "1": "DUST REDUCTION",
+        "2": "FORMAT SLOT 1",
+        "3": "RESET FRAME NO.",
+        "4": "RESET SHOOTING MENU",
+        "5": "RESET SETUP MENU",
+        "6": "FORMAT SLOT 2"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: HardwareControl, \"Hardware control / Execute sensor cleaning, Format, Reset Frame NO. and so on\". Was ResetSetting from libgphoto2. Never write: 2 and 6 format a card, 3 to 5 reset counters or menus. The X-T5 descriptor offers 4, 5 and 7; 7 is unlabelled."
     },
     "0xd180": {
+      "name": "FolderNameSuffix",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FoldernameSuffix, \"Folder name / Folder name for Select Folder setting\". Capture One types it uint16, as it does every text field."
     },
     "0xd181": {
+      "name": "FolderNameList",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FoldernameList, \"Folder list / Folder list for Select Folder setting\". Capture One types it uint16, as it does every text field."
     },
     "0xd182": {
+      "name": "FolderPriorityIndex",
       "type": "int16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FolderPriorityIndex, \"Folder priority / Folder list related information for Select Folder setting\". Capture One types it uint16; the X-T5 descriptor says int16."
     },
     "0xd183": {
       "modes": [
@@ -944,35 +1208,55 @@
         "rawconv"
       ]
     },
+    "0xd188": {
+      "name": "RAWOutputDepth",
+      "type": "uint16",
+      "values": {
+        "1": "14 BIT",
+        "2": "16 BIT"
+      },
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: RAWOutputDepth, \"RAW output depth / RAW output bit depth\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
     "0xd189": {
       "name": "SmoothSkinEffect",
       "menu": "IMAGE QUALITY SETTING > SMOOTH SKIN EFFECT",
       "type": "uint16",
       "values": {
         "1": "OFF",
-        "2": "WEAK"
+        "2": "WEAK",
+        "3": "STRONG"
       },
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 3 is likely STRONG, not yet seen."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). 3 is likely STRONG, not yet seen. Capture One 16.5: SmoothSkinEffect, \"Smooth Skin Effect\"."
     },
     "0xd18a": {
+      "name": "FaceFrameInfo",
       "type": "string",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FaceFrameInfo, \"Face Frame Info\"."
     },
     "0xd18b": {
+      "name": "CustomWBInfo",
       "type": "string",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: CustomWBInfo, \"Custom WB Info / Custom White Balance Info\"."
     },
     "0xd18c": {
       "name": "PresetSlot",
@@ -1551,93 +1835,153 @@
         "10": "BKT"
       },
       "confidence": "confirmed",
-      "source": "lab session",
+      "source": "lab session + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
       ],
-      "notes": "CH = 3 is not confirmed."
+      "notes": "CH = 3 is not confirmed. Capture One 16.5: FunctionMode, \"Drive mode setting\"."
+    },
+    "0xd205": {
+      "name": "ProgramShift",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: ProgramShift, \"Program shift\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd207": {
       "name": "PriorityMode",
       "type": "uint16",
+      "values": {
+        "1": "CAMERA PRIORITY",
+        "2": "PC PRIORITY"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: Priority, \"Camera/PC Priority / Camera Priority / PC Priority mode setting\". Capture One writes 2 to take PC priority and 1 to give it back; it needs 0xd01b = 1 first."
     },
     "0xd208": {
+      "name": "CaptureFunction",
       "type": "uint16",
+      "values": {
+        "1": "AF OFF",
+        "2": "AE OFF",
+        "4": "S1 OFF",
+        "5": "AF OFF (0x9300)",
+        "6": "INSTANT AF OFF",
+        "8": "BULB OFF",
+        "12": "BULB S1 OFF",
+        "14": "CANCEL",
+        "256": "SHOOT (S1+S2)",
+        "260": "SHOOT, S1 OFF",
+        "512": "S1 ON",
+        "768": "S2",
+        "772": "S2, S1 OFF",
+        "1024": "BULB ON",
+        "1280": "BULB S2 ON",
+        "32768": "CUSTOM WB",
+        "36864": "AE ON",
+        "37120": "AF ON",
+        "37632": "AF",
+        "40960": "INSTANT AF"
+      },
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: CaptureFunction, \"Capture type / Capture type setting for InitiateCapture\". Capture One writes it before InitiateCapture (S1 OFF at open, CANCEL to abort). The X-T5 descriptor also offers 37376 and 64, unlabelled."
     },
     "0xd209": {
       "name": "AFStatus",
       "type": "uint16",
+      "values": {
+        "1": "AF RUNNING",
+        "2": "AF SUCCEEDED",
+        "3": "AF FAILED",
+        "4": "NO AF DONE"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: AfStatus, \"AF status\"."
     },
     "0xd20a": {
+      "name": "CustomWBStatus",
       "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: CwbStatus, \"Custom WB. status / Result for the custom white balance\"."
     },
     "0xd20b": {
       "name": "DeviceName",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: CustomMemory, \"Memo Text\". Capture One types it uint16; the X-T5 descriptor says string. Name kept, not replaced: `ukiyo owner device-name`, the Hub and their tests read DeviceName; the owner decides."
     },
     "0xd20c": {
       "name": "MediaRecord",
       "type": "uint16",
+      "values": {
+        "1": "ON (RAW+JPEG)",
+        "2": "ON (RAW ONLY)",
+        "3": "ON (JPEG ONLY)",
+        "4": "OFF"
+      },
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: MediaRecord, \"Save to SD card\"."
     },
     "0xd20d": {
       "name": "MediaCapacity",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: MediaCapacity, \"Media capacity / Remaining storage media (SD card) capacity\". Capture One types it uint16; the X-T5 descriptor says string."
     },
     "0xd20e": {
       "name": "FreeSDRAMImages",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FrameCapacity, \"In-camera capacity / Remaining in-camera volatile buffer capacity in frame count\". Capture One deletes each tether image after download to free this buffer."
     },
     "0xd211": {
       "name": "MediaStatus",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: MediaStatus, \"SD card status / Storage media (SD card) status\"."
     },
     "0xd212": {
       "name": "CurrentState",
@@ -1653,36 +1997,60 @@
       "name": "Copyright",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: Copyright1, \"Copyright1 text / Copyright1 text setting for 0th IFD information of saving data\". Capture One types it uint16; the X-T5 descriptor says string."
     },
     "0xd216": {
       "name": "Copyright2",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: Copyright2, \"Copyrigh31 text / Copyrigh31 text setting for 0th IFD information of saving data\". Capture One types it uint16; the X-T5 descriptor says string."
     },
     "0xd21c": {
+      "name": "PTPError",
       "type": "uint16",
+      "values": {
+        "0": "NO ERROR",
+        "1": "VALUE OUT OF RANGE",
+        "2": "COMBINATION ERROR",
+        "3": "UNSUPPORTED PROPERTY CODE",
+        "4": "BUSY",
+        "5": "IN STANDBY MODE",
+        "6": "RELEASE FAILED",
+        "7": "ZOOM ERROR",
+        "8": "FOCUS ERROR",
+        "9": "JPEG COMPRESSION FAILED",
+        "10": "NOT STABILIZED",
+        "11": "UNEXPECTED ERROR"
+      },
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: PTPError, \"PTP detailed error / PTP communication detailed error information\". The reason for the last refused PTP operation."
     },
     "0xd21d": {
+      "name": "FirmwareUpdateStatus",
       "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FirmupSts, \"Progress firm. upg. / Progress for the firmware upgrade\"."
     },
     "0xd222": {
       "name": "SensitivityFineTune1",
@@ -1703,11 +2071,15 @@
       ]
     },
     "0xd224": {
+      "name": "ReleaseStatus",
       "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: ReleaseStatus, \"Status shutter rel. / Status for the shutter release\"."
     },
     "0xd225": {
       "type": "string",
@@ -1799,11 +2171,12 @@
       "name": "ForceMode",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: ForceMode, \"Force to Shooting\"."
     },
     "0xd231": {
       "type": "uint16",
@@ -2445,10 +2818,11 @@
       "name": "TotalShotCount",
       "type": "uint32",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: TotalShotCount, \"Total shutter count\". Capture One types it uint16; the X-T5 descriptor says uint32."
     },
     "0xd320": {
       "name": "HighLightTone",
@@ -2456,77 +2830,120 @@
       "type": "int16",
       "scale": 10,
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: +1.5 reads 15."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Signed, x10: +1.5 reads 15. Capture One 16.5: HighLightTone, \"Highlight tone\". Capture One's per-model table gives some other bodies 5 steps, -20..20; not the X-T5."
     },
     "0xd321": {
       "name": "ShadowTone",
       "type": "int16",
+      "scale": 10,
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: ShadowTone, \"Shadow tone\". x10: the X-T5 descriptor range is -20..40, step 5 (-2 to +4 in half steps). Capture One's per-model table gives some other bodies 5 steps, -20..20; not the X-T5."
     },
     "0xd322": {
       "name": "LongExposureNR",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: LongExposureNR, \"Long exposure NR / Long exposure NR setting\"."
     },
     "0xd323": {
       "name": "FullTimeManualFocus",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FullTimeManual, \"AF+MF setting\"."
     },
-    "0xd33f": {
-      "name": "ViewMode1",
+    "0xd332": {
+      "name": "ExposureIndexH1",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: ExposureIndexH1, \"ISO H or H1 setting\". Capture One attaches ISO AUTO labels (-1..-4) to this uint16, copied from 0x500f; not imported. Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd333": {
+      "name": "ExposureIndexH2",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: ExposureIndexH2, \"ISO H2 setting\". Capture One attaches ISO AUTO labels (-1..-4) to this uint16, copied from 0x500f; not imported. Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd33f": {
+      "name": "DisplayRec",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: DisplayRec, \"View mode (Shooting) / View mode setting for the Shooting mode\". Was ViewMode1 from libgphoto2."
+    },
+    "0xd340": {
+      "name": "DisplayPlay",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: DisplayPlay, \"View mode (Playback) / View mode setting for the Playback mode\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd343": {
+      "name": "DispLcd",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: DispLcd, \"Display sett. (LCD) / Display setting for LCD\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd344": {
+      "name": "DispEvf",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: DispEvf, \"Display sett. (EVF) / Display setting for EVF\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd346": {
       "name": "LensISSwitch",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: LensISSwitch, \"IS for lens / IS (Image Stabilization) switch setting of the lens\"."
     },
     "0xd347": {
-      "name": "FocusPoint",
+      "name": "FocusArea0",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusArea_0, \"Focus (landscape) / Focus area setting for landscape position\". Was FocusPoint from libgphoto2. Capture One's live view saves and restores it."
     },
     "0xd34a": {
       "name": "InstantAFMode",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: InstantAFMode, \"Instant AF setting\"."
     },
     "0xd34b": {
       "name": "PreAFMode",
@@ -2537,107 +2954,236 @@
         "2": "OFF"
       },
       "confidence": "confirmed",
-      "source": "libgphoto2 + lab session",
+      "source": "libgphoto2 + lab session + Capture One 16.5",
       "modes": [
         "stills"
       ],
-      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31)."
+      "notes": "Confirmed in lab session 2026-10-17 (guided mapping, fw 4.31). Capture One 16.5: PreAF, \"PRE-AF setting\"."
+    },
+    "0xd34c": {
+      "name": "SelectCustomSetting",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: SelectCustomSetting, \"Custom selection / Select custom selection setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd34d": {
       "name": "LMOMode",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: LMOMode, \"Lens optimizer / Lens modulation optimizer setting\"."
     },
     "0xd34e": {
       "name": "AeAfLockMode",
       "menu": "SET UP > BUTTON/DIAL SETTING > AE/AF-LOCK MODE",
       "type": "uint16",
       "confidence": "likely",
-      "source": "menu map",
+      "source": "menu map + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: AeAfLockMode, \"AE/AF Lock mode / AE/AF Lock mode setting\"."
+    },
+    "0xd34f": {
+      "name": "AfLockMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: AfLockMode, \"AF or AF+AE / Is AF Lock button setting AF or AF+AE\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd350": {
+      "name": "MicRemoteRelease",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: MicRemoteRelease, \"Mic/Remote relaease / Mic/Remote relaease setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd351": {
       "name": "ISMode",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: ISMode, \"IS Mode setting\"."
     },
     "0xd352": {
       "name": "DateTimeDispFormat",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: DateTimeFormat, \"Date/Time setting\"."
+    },
+    "0xd353": {
+      "name": "AeAfLockAssign",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: AeAfLockAssign, \"AF/AE Lock assigning / AF Lock / AE Lock button assigning setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd354": {
+      "name": "CrossKeyAssign",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: CrossKeyAssign, \"Cross key assigning / Cross key button assigning setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd355": {
+      "name": "SilentMode",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: SilentMode, \"Silent mode setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd356": {
+      "name": "PBSoundVolume",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: PBSoundVolume, \"Playback volume\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd358": {
+      "name": "EvfAutoRotate",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: EvfAutoRotate, \"Autorotate displays\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd359": {
       "name": "ExposurePreview",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: ThroughExpPrev, \"Prev. EXP./EB Manual / Preview EXP./EB in Manual mode setting\"."
+    },
+    "0xd35a": {
+      "name": "LcdBrightness",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: LcdBrightness, \"LCD brightness\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd35b": {
+      "name": "EvfBrightness",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: EvfBrightness, \"EVF brightness\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd35c": {
+      "name": "LcdChroma",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: LcdChroma, \"LCD color setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd35d": {
+      "name": "EvfChroma",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: EvfChroma, \"EVF color setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd35e": {
       "name": "FocusCheckMode",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusCheck, \"Focus check\"."
     },
     "0xd35f": {
       "name": "FocusScaleUnit",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusScaleUnit, \"Focus scale units\"."
+    },
+    "0xd361": {
+      "name": "Function1Set",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: Function1Set, \"Function (Fn1)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd362": {
+      "name": "Function2Set",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: Function2Set, \"Function (Fn2)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd363": {
+      "name": "SensorCleaningTiming",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: SensorCleaningTiming, \"Sensor cleaning\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd364": {
       "name": "CustomAutoPowerOff",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: CustomAutoPowerOff, \"Auto power off\"."
     },
     "0xd365": {
       "name": "FileNamePrefix1",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FilenamePrefix_sRGB, \"File name sRGB / Edit file name setting for sRGB images\". Capture One types it uint16; the X-T5 descriptor says string."
     },
     "0xd366": {
       "name": "FileNamePrefix2",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FilenamePrefix_AdobeRGB, \"File name AdobeRGB / Edit file name setting for AdobeRGB images\". Capture One types it uint16; the X-T5 descriptor says string."
+    },
+    "0xd367": {
+      "name": "DisableRelease",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: DisableRelease, \"Disable realease / Inhibiting release button in Camera Priority mode\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd368": {
+      "name": "CustomStudioPowerSave",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: CustomStudioPowerSave, \"Shooting stand by / Shooting stand by mode setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd369": {
       "type": "uint16",
@@ -2647,102 +3193,140 @@
       ]
     },
     "0xd36a": {
-      "name": "BatteryInfo1",
+      "name": "BatteryInfo",
       "type": "uint32",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: BatteryInfo, \"Remaining battery / Remaining battery information\". Was BatteryInfo1 from libgphoto2. Capture One derives body battery 1 and 2 and grip battery 1 and 2 from it (its synthetic codes 0xd900-0xd903, uint8 each, not on the wire). Capture One's report does not give the layout; fujifilm-ptp-recipes reads 4 bytes: body, grip, grip 2, body 2 (docs/fuji-vendor-ptp.md). Not yet read on the X-T5; one read on the camera would settle it."
     },
     "0xd36b": {
-      "name": "BatteryInfo2",
+      "name": "BatteryRatioInfo",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie",
         "rawconv"
-      ]
+      ],
+      "notes": "Capture One 16.5: BatteryRatioInfo, \"Remaining bat. ratio / Remaining battery information in ratio\". Was BatteryInfo2 from libgphoto2. fujifilm-ptp-recipes: comma-separated percentages; the field count varies."
     },
     "0xd36d": {
       "name": "LensNameAndSerial",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: LensInfo, \"Int. lens inf. / Internal FUJIFILM lens information\". Capture One derives the lens name (its synthetic 0x5892) and the lens ID or serial (its synthetic 0xd904) from it; neither is on the wire. The serial is sensitive: never store a value."
     },
     "0xd36e": {
       "name": "CustomDispInfo",
       "type": "uint32",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: DispCustomSetting, \"Display custom sett. / Display custom setting\". Capture One types it uint16; the X-T5 descriptor says uint32."
     },
     "0xd36f": {
       "name": "FunctionLockCategory1",
       "type": "uint32",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FunctionLockCategory1, \"Setting 1 Lock mode / Function selection setting 1 for Lock mode\". Capture One types it uint16; the X-T5 descriptor says uint32."
     },
     "0xd370": {
       "name": "FunctionLockCategory2",
       "type": "uint32",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: FunctionLockCategory2, \"Setting 2 Lock mode / Function selection setting 2 for Lock mode\". Capture One types it uint16; the X-T5 descriptor says uint32."
+    },
+    "0xd371": {
+      "name": "RecViewCustomSetting",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: RecViewCustomSetting, \"Custom image display / Customizing image display = 1.5 SEC setting\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd372": {
-      "name": "FocusArea1",
+      "name": "FocusArea90",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusArea_90, \"Focus area (90) / Focus area setting for portrait position of grip side down\". Was FocusArea1 from libgphoto2."
+    },
+    "0xd373": {
+      "name": "FocusArea180",
+      "type": "string",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: FocusArea_180, \"Focus area (180) / Focus area setting for landscape position of up side down\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd374": {
-      "name": "FocusArea3",
+      "name": "FocusArea270",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusArea_270, \"Focus area (270) / Focus area setting for portrait position of grip side up\". Was FocusArea3 from libgphoto2."
     },
     "0xd375": {
-      "name": "FrameGuideGridInfo1",
+      "name": "CustomGuideGridInfo0",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: CustomGuideGridInfo_0, \"Cus. guideline (0) / Custom HD guideline setting for portrait position\". Was FrameGuideGridInfo1 from libgphoto2. Capture One types it uint16; the X-T5 descriptor says string."
     },
     "0xd376": {
-      "name": "FrameGuideGridInfo2",
+      "name": "CustomGuideGridInfo90",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: CustomGuideGridInfo_90, \"Cus. guideline (90)\". Was FrameGuideGridInfo2 from libgphoto2. Capture One types it uint16; the X-T5 descriptor says string."
+    },
+    "0xd377": {
+      "name": "CustomGuideGridInfo180",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: CustomGuideGridInfo_180, \"Cus. guideline (180)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd378": {
+      "name": "CustomGuideGridInfo270",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: CustomGuideGridInfo_270, \"Cus. guideline (270)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     },
     "0xd381": {
       "name": "AutoPowerOff",
@@ -2764,59 +3348,110 @@
       ],
       "notes": "Write 1 -> 3 tested. Movie mode keeps its own value."
     },
-    "0xd38a": {
-      "name": "LensUnknownData",
+    "0xd386": {
+      "name": "Function3Set",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: Function3Set, \"Function (Fn3)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd387": {
+      "name": "Function4Set",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: Function4Set, \"Function (Fn4)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd388": {
+      "name": "Function5Set",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: Function5Set, \"Function (Fn5)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd389": {
+      "name": "Function6Set",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: Function6Set, \"Function (Fn6)\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd38a": {
+      "name": "ISCapability",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: IS_Capability, \"IS related info / IS related information of the lens setting\". Was LensUnknownData from libgphoto2."
     },
     "0xd38b": {
-      "type": "uint16",
-      "modes": [
-        "stills"
-      ]
-    },
-    "0xd38c": {
-      "name": "LensZoomPosCaps",
+      "name": "MFCapability",
       "type": "uint16",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
+      "modes": [
+        "stills"
+      ],
+      "notes": "Capture One 16.5: MF_Capability, \"MF related info / MF related information of the lens setting\"."
+    },
+    "0xd38c": {
+      "name": "LensZoomPosSelect",
+      "type": "uint16",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: LensZoomPos, \"Lens zoom position\". Was LensZoomPosCaps from libgphoto2. A selector, not a PC-mode or keep-alive flag. Capture One reads 0xd170, writes that zoom position here, then reads 0xd38d, the aperture list for that position, about once a second. Renamed from Capture One's LensZoomPos because 0xd170 holds that name."
     },
     "0xd38d": {
       "name": "LensFNumberList",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: LensEachOptZoomPos_FnumberList, \"Available F number / Available F number list for the specified zoom position\". Capture One types it uint16; the X-T5 descriptor says string. A comma-separated list, read after writing a zoom position to 0xd38c."
     },
     "0xd38e": {
       "name": "LensFocalLengthList",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "libgphoto2 + Capture One 16.5",
       "modes": [
         "stills",
         "movie"
-      ]
+      ],
+      "notes": "Capture One 16.5: LensEachOptZoomPos_FocalLength, \"Available foc. len\". Capture One types it uint16; the X-T5 descriptor says string."
     },
     "0xd395": {
-      "name": "FocusArea4",
+      "name": "FocusAreaCurrent",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2",
+      "source": "Capture One 16.5",
       "modes": [
         "stills"
-      ]
+      ],
+      "notes": "Capture One 16.5: FocusArea_Current, \"Current focus area / Focus area setting for the current position\". Was FocusArea4 from libgphoto2. Capture One's live view saves and restores it and uses it to place the zoom crop."
+    },
+    "0xd406": {
+      "name": "SessionInitiatorVersionInfo",
+      "type": "string",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: SessionInitiatorVersionInfo, \"Host version info / Host version information\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
+    },
+    "0xd407": {
+      "name": "PerceivedDeviceType",
+      "type": "uint32",
+      "confidence": "likely",
+      "source": "Capture One 16.5",
+      "notes": "Capture One 16.5: PerceivedDeviceType, \"Device type\". Not in the X-T5 property list (fw 4.31 dumps); the body may not have it."
     }
   }
 }

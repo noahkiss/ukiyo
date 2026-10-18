@@ -50,9 +50,9 @@ Each property has only the fields it needs:
 | `values` | Raw value to the label the camera shows. Numbers are keys in decimal (`"32769"`, not `"0x8001"`; signed types negative: ISO AUTO is `"-3"`); strings are their own text. Sorted by number. |
 | `unit`, `scale` | The raw value divided by `scale` is the value in `unit`: exposure compensation is in 1/1000 EV, so `"scale": 1000, "unit": "EV"`. |
 | `confidence` | `confirmed` (seen move on a camera, or a write read back), `likely` (strong evidence, not yet seen), `guess`. |
-| `source` | Where the entry came from: `PTP` (the standard), `libgphoto2`, `filmkit`, `menu map` (a reading of the manual against the dumps), `protocol.md`, `lab session`. The Lab appends `+ lab session` when it edits an entry from another source. |
-| `modes` | Where the code reads: `stills`, `movie` (tether mode with the STILL/MOVIE switch set), `rawconv` (USB RAW CONV./BACKUP RESTORE). |
-| `notes` | Anything else: quirks, dependencies, open questions. |
+| `source` | Where the entry came from: `PTP` (the standard), `libgphoto2`, `filmkit`, `menu map` (a reading of the manual against the dumps), `protocol.md`, `lab session`, `Capture One 16.5` (a static reading of Capture One's tether code; see docs/mapping-sources.md). The Lab appends `+ lab session` when it edits an entry from another source. |
+| `modes` | Where the code reads: `stills`, `movie` (tether mode with the STILL/MOVIE switch set), `rawconv` (USB RAW CONV./BACKUP RESTORE). Absent: the code is not in the dumps, so the body may not have it. |
+| `notes` | Anything else: quirks, dependencies, open questions. Two fixed phrases: notes that start with `RETEST:` mark an entry we confirmed on the camera that another source contradicts; the note says what each side says, and the confidence drops to `likely` until a lab session settles it. `Never write` marks a command code (format, save and power off); the catalog has no other write guard. |
 | `requires` | Write conditions: `[{ "code": "0xd001", "values": ["6", "12"], "temp": "6" }]`. The camera takes a write of this code only while `code` holds one of `values`. A plan sets `temp` (else the first value) for the time of the write, then puts the old value back. |
 | `resets` | Camera rules: `[{ "when": ["18"], "code": "0xd032", "to": "0" }]`. Writing one of `when` (any value when absent) sets `code` to `to`. A plan writes `code` after this one, and puts it back when only a temporary step changed it. |
 

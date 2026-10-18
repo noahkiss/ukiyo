@@ -4,8 +4,8 @@
 //!
 //! A snapshot keeps a setting when the camera reads it now, it is writable, and the catalog
 //! names it `confirmed` or `likely`. It never keeps a text value (owner strings, the device
-//! name: they may name the owner), a counter or the frame number, or a code that moves on
-//! its own (`owner::NOISY`).
+//! name: they may name the owner), a counter, a command (format, power off, release), or a
+//! code that moves on its own (`owner::NOISY`).
 
 use super::{now_ms, Error, ErrorCode};
 use crate::camera::owner::{Capture, NOISY};
@@ -17,8 +17,18 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-/// Catalog names a snapshot never keeps: counters, and the next file number.
-pub const NOT_SETTINGS: &[&str] = &["ShotCount", "TotalShotCount", "ShutterExchangeCount", "FrameNumber"];
+/// Catalog names a snapshot never keeps: the shutter counters, and commands or status codes
+/// that read like settings (format and reset, save and power off, the release gesture).
+pub const NOT_SETTINGS: &[&str] = &[
+    "ShotCount",
+    "TotalShotCount",
+    "ShutterExchangeCount",
+    "FrontShutterCount",
+    "HardwareControl",
+    "PowerControl",
+    "CaptureFunction",
+    "PTPError",
+];
 
 /// One setting in a snapshot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
