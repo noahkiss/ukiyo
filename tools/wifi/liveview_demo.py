@@ -59,6 +59,9 @@ b.onclick=async()=>{b.disabled=true;st.textContent='Shooting…';const t=perform
   if(j.error){st.textContent=j.error}else{document.getElementById('shot').src=j.url;
    st.textContent=`${j.name}: ${(j.bytes/1e6).toFixed(1)} MB in ${((performance.now()-t)/1000).toFixed(1)} s`}}
  catch(e){st.textContent=String(e)}b.disabled=false};
+let shown='';setInterval(async()=>{try{const j=await (await fetch('/latest')).json();
+ if(j.url&&j.url!==shown){shown=j.url;document.getElementById('shot').src=j.url;
+  if(!b.disabled)st.textContent=`${j.name}: ${(j.bytes/1e6).toFixed(1)} MB in ${(j.ms/1000).toFixed(1)} s`}}catch(e){}},2000);
 </script></body></html>"""
 
 
@@ -98,6 +101,8 @@ class Camera:
         print("InitiateOpenCapture", fp.rc_name(rc), flush=True)
         self.frames = 0
         self.last_rc = None
+        self.last_check = 0.0
+        self.latest = None
 
     def u16(self, code):
         rc, d, _ = self.s.get_value(code)
@@ -122,21 +127,53 @@ class Camera:
     def frame(self):
         # Frames are object 0x80000001. The camera keeps returning the same frame until the client
         # deletes that object; then the next read is a fresh frame (tested 2026-10-18).
+        # A shot taken on the camera waits in the tether buffer, and live view stops
+        # (InvalidObjectHandle) until the client downloads and deletes it.
         with self.lock:
+            if time.monotonic() - self.last_check > 2:
+                self.last_check = time.monotonic()
+                self.import_buffer()
             rc, d, _, _ = self.s.transaction(fp.OP["GetObject"], (0x80000001,), timeout=10, quiet=True)
             if rc == fp.OK:
                 self.s.transaction(DELETE_OBJECT, (0x80000001, 0), quiet=True)
+            elif self.import_buffer():
+                self.s.transaction(fp.OP["TerminateOpenCapture"], (0,), quiet=True)
+                self.s.transaction(fp.OP["InitiateOpenCapture"], (0, 0), quiet=True)
         if rc != self.last_rc:
             self.last_rc = rc
             print("live view frame:", fp.rc_name(rc), len(d), "bytes", flush=True)
         if rc != fp.OK or not d:
+            time.sleep(0.2)
             return None
         i = d.find(b"\xff\xd8")
         self.frames += 1
         return d[i:] if i >= 0 else None
 
+    def import_buffer(self):
+        """Downloads every shot waiting in the tether buffer (JPEG kept for the page, RAW saved),
+        then deletes the buffer copies. Returns how many objects it took. Caller holds the lock."""
+        hs = self.handles()
+        if not hs:
+            return 0
+        time.sleep(0.5)  # RAW+JPEG arrive as two objects
+        hs = self.handles()
+        OUT.mkdir(parents=True, exist_ok=True)
+        for h in hs:
+            rc, d, _, _ = self.s.transaction(fp.OP["GetObjectInfo"], (h,), quiet=True)
+            info = fp.parse_object_info(d) if rc == fp.OK else {}
+            name = info.get("filename") or f"obj-{h:x}"
+            rc, data, _, st = self.s.transaction(fp.OP["GetObject"], (h,), timeout=180, quiet=True)
+            if rc == fp.OK:
+                (OUT / name).write_bytes(data)
+                print("Downloaded", name, f"{len(data) / 1e6:.1f} MB in {st['ms'] / 1000:.1f} s", flush=True)
+                if info.get("format") == JPEG_FORMAT:
+                    self.latest = {"name": name, "url": f"/photo/{name}", "bytes": len(data), "ms": st["ms"]}
+            self.s.transaction(DELETE_OBJECT, (h, 0), quiet=True)
+        return len(hs)
+
     def shoot(self):
         with self.lock:
+            self.import_buffer()  # pending shots block every write, priority included
             before = set(self.handles())
             self.set16(0xD207, 2)
             self.set16(0xD208, 0x0200)
@@ -147,34 +184,17 @@ class Camera:
             if rc != fp.OK:
                 self.set16(0xD207, 1)
                 return {"error": f"The camera did not fire ({fp.rc_name(rc)})."}
-            new = []
             for _ in range(40):
                 time.sleep(0.25)
-                new = [h for h in self.handles() if h not in before]
-                if new:
-                    time.sleep(0.5)  # RAW+JPEG arrive as two objects
-                    new = [h for h in self.handles() if h not in before]
+                if [h for h in self.handles() if h not in before]:
                     break
-            if not new:
+            else:
                 self.set16(0xD207, 1)
                 return {"error": "No photo arrived in the tether buffer."}
-            result = None
-            OUT.mkdir(parents=True, exist_ok=True)
-            for h in new:
-                rc, d, _, _ = self.s.transaction(fp.OP["GetObjectInfo"], (h,), quiet=True)
-                info = fp.parse_object_info(d) if rc == fp.OK else {}
-                if info.get("format") == JPEG_FORMAT or result is None and h == new[-1]:
-                    rc, data, _, st = self.s.transaction(fp.OP["GetObject"], (h,), timeout=120, quiet=True)
-                    if rc == fp.OK:
-                        name = info.get("filename") or f"obj-{h:x}.jpg"
-                        (OUT / name).write_bytes(data)
-                        result = {"name": name, "url": f"/photo/{name}", "bytes": len(data),
-                                  "ms": st["ms"]}
-                        print("Downloaded", name, f"{len(data) / 1e6:.1f} MB in {st['ms'] / 1000:.1f} s",
-                              flush=True)
-                self.s.transaction(DELETE_OBJECT, (h, 0), quiet=True)
+            self.latest = None
+            self.import_buffer()
             self.set16(0xD207, 1)  # writes work again once the buffer is empty
-            return result or {"error": "Download failed."}
+            return self.latest or {"error": "Download failed."}
 
     def close(self):
         with self.lock:
@@ -215,6 +235,13 @@ def handler_for(cam):
                             time.sleep(0.1)
                 except (BrokenPipeError, ConnectionResetError):
                     pass
+            elif self.path == "/latest":
+                body = json.dumps(cam.latest or {}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             elif self.path.startswith("/photo/"):
                 p = OUT / Path(self.path[7:]).name
                 if not p.is_file():
