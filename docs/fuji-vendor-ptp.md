@@ -1,7 +1,7 @@
 # Fujifilm vendor PTP: what open sources say
 
-A reference compiled from open-source code and docs on 2026-10-17. Nothing here was tested on our
-camera; `protocol.md` holds what we observed. Each row names its source. Treat a row as a lead
+A reference compiled from open-source code and docs on 2026-10-17, plus one closed app read
+statically (c1). Nothing here was tested on our camera; `protocol.md` holds what we observed. Each row names its source. Treat a row as a lead
 until a lab session confirms it on the X-T5.
 
 ## Sources
@@ -18,6 +18,7 @@ until a lab session confirms it on the X-T5.
 | tv | [brendan-mistly/tetherview](https://github.com/brendan-mistly/tetherview/blob/8b40f59/Sources/TetherviewCore/FujiLiveView.swift) at `8b40f59` | see repo | iOS live view over PTP |
 | hk | [hkr/fuji-cam-wifi-tool](https://github.com/hkr/fuji-cam-wifi-tool/blob/c597fc4/lib/include/capabilities.hpp) at `c597fc4` | see repo | Older Wi-Fi remote protocol |
 | js | [Junsudo/fuji-ptp-notes](https://github.com/Junsudo/fuji-ptp-notes/blob/f662d3c/README.md) at `f662d3c` | see repo | GFX100RF slot notes and value tables |
+| c1 | Capture One 16.5.1.14, static bundle inspection on 2026-10-17 (report in `local/mapping/`, not in git) | Capture One EULA; facts only | Phase One's own Fuji PTP code, no Fuji SDK. Its property table names 164 codes with a datatype, UI label and value labels |
 
 Plugin names (mk) cover most codes. Some are misattributed: mk calls D307 `CustomSettingAutoUpdate`,
 but our lab confirmed D307 as the STILL/MOVIE switch. Use a plugin name as a lead, not as proof.
@@ -76,14 +77,14 @@ we have unnamed.
 | D364 | CustomAutoPowerOff | CustomAutoPowerOff | X-T5 advertises range 0..255 step 1. Meaning unknown | gp; mk descriptors; sdk `X-T5.h:221` (supported) |
 | D369 | **unnamed** | USBPowerSupplyCommunication | 1 auto, 2 on, 3 off (X-T5 offers 1, 3) | mk names; sdk `XAPIOpt.h:1526` |
 | D16E | UsbConnectionMode | USBMode, read only | 5 tether, 6 RAW CONV., 8 X WEBCAM; fails in card reader mode | lf `fuji_usb.c` `fujiusb_setup` |
-| D38C | LensZoomPosCaps | Zoom position capability (SDK `CapLensZoomPos`). gp writes 1 to it at capture start, commented "PC Mode" | X-T5 range 1..40 | gp `config.c:510-515`, `library.c:384`; il; mk |
+| D38C | LensZoomPosSelect | **A zoom-position selector**, not a PC-mode flag. c1 calls it LensZoomPos: it reads D170 (the lens zoom position), writes that value to D38C, then reads D38D, the aperture list for that position. gp writes 1 to it at capture start, commented "PC Mode"; 1 is the position a prime lens reports. SDK `CapLensZoomPos` | X-T5 range 1..40 | c1; gp `config.c:510-515`, `library.c:384`; il; mk |
 | D21C | **unnamed** | ApiPreProcess | 0 | mk names; gp adds it "needed for X-T2?" `library.c:385` |
 | D1BC | **unnamed** | LiveViewMode | 1, 2 (SDK LIVEVIEW_MODE1/2) | mk; sdk `XAPIOpt.h:566` |
 | D1BE | **unnamed** | LiveViewStatus, read only | | mk; sdk `API_CODE_GetLiveViewStatus` |
 | D173 | LiveViewImageQuality | | 1 fine, 3 normal | ox `FujiCamera.swift` |
 | D174 | LiveViewImageSize | | 1 XGA 1024x768, 2 VGA, 3 QVGA | gp `config.c:2594`; ox |
-| D36A | BatteryInfo1 | | uint32 as 4 bytes: body, grip, grip2, body2 | il `xsdk-live-shooting-properties.md` |
-| D36B | BatteryInfo2 | | String of percentages, e.g. `97,0,0`; field count varies | il |
+| D36A | BatteryInfo | c1 derives body battery 1 and 2 and grip battery 1 and 2 from it (its synthetic D900-D903) | uint32 as 4 bytes: body, grip, grip2, body2 | il `xsdk-live-shooting-properties.md`; c1 |
+| D36B | BatteryRatioInfo | Remaining battery as ratios (c1) | String of percentages, e.g. `97,0,0`; field count varies | il; c1 |
 | D20C | MediaRecord | Tethered frame also written to card | 1 RAW+JPEG, 2 RAW, 3 JPEG, 4 off (USB only) | mk `capture.go:122-127` |
 | D20E | FreeSDRAMImages | Free slots in the volatile capture buffer | | gp; mk `capture.go:212` |
 
@@ -230,7 +231,15 @@ without live view (mk).
 | RAW CONV. convert | 0x900C / 0x900D upload a RAF; read D185, edit, write D185; D183 = 0; poll GetObjectHandles; GetObject the JPEG; DeleteObject | lf `fuji_usb.c` `fuji_process_raf` |
 | Fuji Wi-Fi apps | Camera state DF00 and client state DF01 handshake (5 = remote mode), version props DF21-DF31. gphoto2's Wi-Fi path writes DF01 = 5, echoes DF24, then InitiateOpenCapture to start the event queue. Wi-Fi only | lf `fujiptp.h`, `lib/fuji.c`; gp `library.c:9900-9908` |
 
-No open trace of X Acquire or Capture One exists in these sources.
+No open trace of X Acquire exists in these sources. Capture One's sequence comes from a static
+reading of its code (c1), not a trace:
+
+| Software | Sequence in the code | Source |
+|---|---|---|
+| Capture One 16.5 open | D208 = 0x0004 (S1 off); read D01B, write D01B = 1 | c1 |
+| Capture One PC priority | Needs D01B = 1; D207 = 2, retrying busy codes 0x2019, 0xA001, 0xA002 for up to 10 s. Release writes D207 = 1 | c1 |
+| Capture One property poll | About every 1 s: read D170, write it to D38C, read D38D | c1 |
+| Capture One capture | D01B = 1, then D208 + InitiateCapture; GetObject, then DeleteObject to free the D20E buffer. Events: only 0x4002 and 0x400D; no D212 polling | c1 |
 
 Session facts from the X-T5 (fc audit 2026-08-31): after `ptpcamerad` is killed, the camera answers
 0x201E SessionAlreadyOpen. A retried OpenSession must carry TransactionID 0; a continued counter
@@ -380,7 +389,9 @@ Types: `undef` is datatype 0x0000. Values are enum lists or `min..max/step`.
 
 ## Proposed catalog labels
 
-Each entry is a proposal for the main session. Confidence follows `docs/catalog.md`: `likely` when
+Each entry is a proposal for the main session. The Capture One 16.5 import (2026-10-17) settled
+some of them in the catalog (D028 DOFScale, D208, D209, D20C, D022, D173 values); the catalog is the
+record. Confidence follows `docs/catalog.md`: `likely` when
 two sources agree or one source tested on hardware, `guess` otherwise. None is `confirmed`: we have
 not observed any of them.
 

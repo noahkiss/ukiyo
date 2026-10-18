@@ -18,6 +18,7 @@ candidate until a hands-on test confirms it on the X-T5 (`docs/protocol.md` rule
 | xt30-recipe-manager | Backup blob: X-T30 layout, checksum formula, Tether App restore | Read only (French) | MIT | [repo](https://github.com/xt30-recipe-lab/xt30-recipe-manager) |
 | rawji (pinpox) | D185 RAW-conversion profile: 29 parameters and their order | Read only | No licence: cite only | [repo](https://github.com/pinpox/rawji) |
 | X-T5 settings backup (our own read) | Every menu setting, by diffing blob offsets | Owner switches USB mode; one GetObject; diff per change | Our data; blob holds the serial, keep it in `local/` | — |
+| Capture One 16.5 (static bundle inspection) | 164 codes: short name, datatype, UI label, value labels; tether call order | Read only, done 2026-10-17 | Capture One EULA; facts only, no code | report in `local/mapping/` (not in git) |
 | FUJIFILM Tether App / Tether Plug-in PRO / Capture One (USB capture) | Codes behind each control the app exposes | Windows VM on a Linux host with usbmon; licences for the paid apps | App EULAs not read; check before capture | [Tether App](https://www.fujifilm-x.com/global/products/software/tether-app/) |
 | XApp / Camera Remote over Wi-Fi | Wi-Fi remote codes only (a small set) | iPhone capture with `rvictl` on the Mac | Observation of our own traffic | — |
 | Wireshark PTP/IP dissector | Nothing Fuji-specific | — | — | [packet-ptpip.c](https://gitlab.com/wireshark/wireshark/-/blob/master/epan/dissectors/packet-ptpip.c) |
@@ -142,6 +143,22 @@ Notes:
 - ptp-recipes claims MakerNote Color and Sharpness include a film-sim offset. The X-H2 shots in
   that same document show plain dial positions. Test it.
 
+## Capture One 16.5 (static bundle inspection)
+
+Capture One 16.5.1.14 carries Phase One's own Fuji PTP code; it does not embed the Fuji SDK. A
+static reading on 2026-10-17 (strings, symbols and disassembly; nothing run or attached) recovered
+its property table: 164 codes with a short name, a PTP datatype, a UI label, a description and
+value labels, plus the order of its tether calls. The owner rules its names authoritative unless
+they contradict something we confirmed on the camera. The catalog import (source `Capture One
+16.5`) found no such contradiction. It added 46 codes, renamed 20, named 13 unnamed ones and added
+value labels (D208 capture types, D21C error codes, D17F hardware control). Its datatypes are not
+taken: every text field is uint16 in its table, so the X-T5's own descriptors win. The main
+correction is D38C: a zoom-position selector (Capture One writes D170's value into it and reads
+D38D, the aperture list for that position), not a "PC Mode" flag. Capture One also shows
+synthetic codes that are not on the wire (D900-D904 and 0x5892, derived from D36A and D36D; the
+0x5802 MF Drive alias, which writes D171). The report and its working notes stay in
+`local/mapping/`.
+
 ## Settings backup (BACKUP RESTORE)
 
 What public work shows about X Acquire's file, which the Tether App and XApp (over BLE) also use:
@@ -186,7 +203,7 @@ guest under QEMU/KVM, with usbmon on the Linux host, and diffing one toggle at a
 |---|---|---|---|
 | FUJIFILM Tether App (official) | Backup/restore on the X-T5; tether controls; the X-T5 blob size | 1 day | Windows VM with USB pass-through on a Linux host (usbmon) |
 | FUJIFILM Tether Plug-in PRO (Lightroom Classic) | The widest remote settings surface Fujifilm ships | 2 days | Lightroom licence, paid plug-in, same VM |
-| Capture One (Fujifilm tether) | Exposure, WB, film sim, drive | 1-2 days | Capture One licence, same VM |
+| Capture One (Fujifilm tether) | Exposure, WB, film sim, drive. The static reading (below) already gives its names and call order; a capture would add only the order on the wire | 1-2 days | Capture One licence, same VM |
 | X RAW STUDIO | Already decompiled and captured by ptp-recipes and grawji | none | — |
 | X Acquire | Backup transfer; the Tether App covers it | low value | same VM |
 | XApp / Camera Remote | Wi-Fi codes, BLE backup | half a day | iPhone; `rvictl` on the Mac for Wi-Fi traffic |
