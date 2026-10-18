@@ -95,6 +95,7 @@ uses no Bluetooth. Options for a dry run:
 | File | Role |
 |---|---|
 | `run_wifi_tests.py` | The entry point: flow, dialogs, logging, redaction, summary |
+| `liveview_demo.py` | Live view and a Take photo button in a browser page over wireless tether (fires the shutter, downloads the JPEG, clears the tether buffer). `uv run -q liveview_demo.py`, then http://127.0.0.1:4917/ |
 | `tether_probe.py` | Read-only wireless tether probe with no dialogs: discovery, the Fuji init, DeviceInfo, a few reads, storage. `uv run -q tether_probe.py [--wait S]` |
 | `fujiptpip.py` | Fuji PTP over TCP: framing, datasets, session, wireless tether discovery |
 | `macnet.py` | Wi-Fi state, join, rejoin, internet check, notifications |

@@ -102,6 +102,19 @@ What Capture One 16.5's bundle shows (static inspection, notes in `local/mapping
 - Images: it waits for ObjectAdded (0x4002), downloads with GetObject, then DeleteObject from the
   tether buffer. It has no card browse and no card access over Wi-Fi.
 - Busy answers it retries: 0x2019, 0xA001, 0xA002, in 200 ms steps.
+
+Tested on our X-T5 over wireless tether (2026-10-18, `tools/wifi/liveview_demo.py`):
+
+- Live view: InitiateOpenCapture(0, 0), then GetObject(0x80000001) per frame, as gphoto2 does
+  over USB: 640x480 JPEG, about 77 KB, 26 frames a second on 5 GHz. The X-T5 does not list
+  0x9018, and we did not need it.
+- Capture: D01B = 1, D207 = 2, D208 = 0x0200 + InitiateCapture(0, 0), then D208 = 0x0304 +
+  InitiateCapture. RAW+JPEG arrive as two objects in the tether buffer. GetObject moved
+  2.3 MB/s. Until the buffer objects are deleted (DeleteObject), every write answers 0xA002.
+- A Wi-Fi session does not keep the camera awake: with AUTO POWER OFF at 2 MIN it powered off
+  during and between sessions. After power-on it rejoins and answers discovery again.
+- Writing D20B (a text property) as a zero-length PTP string left junk in it; a one-character
+  string holding only the terminator clears it.
 - PC priority: D207 = 2 to take, 1 to release. It needs D01B (live zoom) = 1 first.
 
 After the init, wireless tether is plain USB-tether PTP: OpenSession, GetDeviceInfo, and
