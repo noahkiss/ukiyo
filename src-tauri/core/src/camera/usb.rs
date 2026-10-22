@@ -110,18 +110,65 @@ impl UsbTransport {
         Ok(c.buffer.into_vec())
     }
 
-    /// One whole container. A read can end on a zero-length packet; skip those.
+    /// One whole container.
     fn read_container(&mut self) -> Result<(ptp::Header, Vec<u8>), TransportError> {
-        let mut buf = Vec::new();
-        while buf.len() < 12 {
-            buf.extend(self.read_some()?);
-        }
-        let h = ptp::header(&buf).ok_or_else(|| io("short container"))?;
-        while buf.len() < h.length as usize {
-            buf.extend(self.read_some()?);
-        }
-        buf.truncate(h.length as usize);
-        Ok((h, buf.split_off(12)))
+        assemble(|| self.read_some())
+    }
+}
+
+/// One whole container from bulk reads: the header, then reads until its length is in. A
+/// read can end on a zero-length packet; skip those. A length under the 12-byte header is a
+/// malformed container (garbage after a desync), reported as an error, never a panic.
+fn assemble(mut read: impl FnMut() -> Result<Vec<u8>, TransportError>) -> Result<(ptp::Header, Vec<u8>), TransportError> {
+    let mut buf = Vec::new();
+    while buf.len() < 12 {
+        buf.extend(read()?);
+    }
+    let h = ptp::header(&buf).ok_or_else(|| io("short container"))?;
+    let len = h.length as usize;
+    if len < 12 {
+        return Err(io(format!("malformed container: length {len}")));
+    }
+    while buf.len() < len {
+        buf.extend(read()?);
+    }
+    buf.truncate(len);
+    Ok((h, buf.split_off(12)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reads(chunks: &[&[u8]]) -> impl FnMut() -> Result<Vec<u8>, TransportError> {
+        let mut it: Vec<Vec<u8>> = chunks.iter().map(|c| c.to_vec()).collect();
+        it.reverse();
+        move || it.pop().ok_or(TransportError::Timeout)
+    }
+
+    #[test]
+    fn a_container_split_across_reads_and_zero_length_packets_assembles() {
+        let whole = ptp::data(0x1015, 7, &[1, 2, 3, 4, 5]);
+        let (a, b) = whole.split_at(5);
+        let (h, body) = assemble(reads(&[&[], a, &[], b])).unwrap();
+        assert_eq!((h.length, h.kind, h.code), (17, KIND_DATA, 0x1015));
+        assert_eq!(body, [1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn a_length_under_the_header_is_an_error_not_a_panic() {
+        let mut bad = ptp::command(0x1015, 7, &[]);
+        bad[0..4].copy_from_slice(&4u32.to_le_bytes());
+        assert!(matches!(assemble(reads(&[&bad])), Err(TransportError::Io(_))));
+        let mut zero = ptp::command(0x1015, 7, &[]);
+        zero[0..4].copy_from_slice(&0u32.to_le_bytes());
+        assert!(matches!(assemble(reads(&[&zero])), Err(TransportError::Io(_))));
+    }
+
+    #[test]
+    fn a_read_that_ends_early_reports_the_transport_error() {
+        let whole = ptp::data(0x1015, 7, &[1, 2, 3, 4, 5]);
+        assert_eq!(assemble(reads(&[&whole[..14]])).unwrap_err(), TransportError::Timeout);
     }
 }
 
