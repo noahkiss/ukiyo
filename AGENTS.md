@@ -25,7 +25,8 @@ what comes next.
   catalogue as library recipes, `recipes.ts` the recipe library, slot reads and slot plans), `src/fixtures/` sample data
   for the browser preview (see its README), `src/styles/` (`tokens.css` light and dark
   tokens, then base, shell, pages, lab), `src/assets/` (bundled OFL fonts with licences, camera
-  art, brand marks and app icons as light and dark webp; `camera/index.ts` maps a model to its
+  art, brand marks, app icons and the camera's Wi-Fi status icons (`status/`, shown on Connect)
+  as light and dark webp; `camera/index.ts` maps a model to its
   art, with a generic body for unknown models). `src/bindings.ts` generated (do not edit;
   `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort). In a
   browser outside Tauri, `?camera=tether|rawconv|cardreader|movie|menu|playback` previews a camera state and

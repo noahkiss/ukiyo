@@ -6,6 +6,19 @@ import { PageHead } from "../shell/PageHead";
 import { WarnIcon } from "../shell/icons";
 import { SwitchSteps } from "../shell/ModeNotice";
 import { cameraArt } from "../assets/camera";
+import wifiStartingLight from "../assets/status/wifi-status-starting-light.webp";
+import wifiStartingDark from "../assets/status/wifi-status-starting-dark.webp";
+import wifiReadyLight from "../assets/status/wifi-status-ready-light.webp";
+import wifiReadyDark from "../assets/status/wifi-status-ready-dark.webp";
+import wifiConnectedLight from "../assets/status/wifi-status-connected-light.webp";
+import wifiConnectedDark from "../assets/status/wifi-status-connected-dark.webp";
+
+/** The camera's Wi-Fi status icon, as it shows at the top left of the camera screen. */
+const WIFI_STATES = [
+  { id: "starting", light: wifiStartingLight, dark: wifiStartingDark, color: "Red", text: "Wi-Fi is starting, or not connected to a network yet." },
+  { id: "ready", light: wifiReadyLight, dark: wifiReadyDark, color: "Yellow", text: "Connected to the network. No app is using the camera." },
+  { id: "connected", light: wifiConnectedLight, dark: wifiConnectedDark, color: "Green", text: "An app is connected to the camera." },
+];
 
 /** How to set the camera's USB mode, and where the connection stands now. */
 export function Connect() {
@@ -60,6 +73,19 @@ export function Connect() {
           </>
         )}
       </div>
+
+      <section className="card wifi-status" data-component="wifi-status">
+        <h2 className="card-title">Wi-Fi status icon</h2>
+        <p className="small muted">The camera shows it at the top left of the screen.</p>
+        <ul className="wifi-states">
+          {WIFI_STATES.map((w) => (
+            <li key={w.id} className="wifi-state" data-state={w.id}>
+              <img src={theme === "dark" ? w.dark : w.light} alt={`${w.color} Wi-Fi status icon`} width={48} height={48} />
+              <span>{w.text}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
