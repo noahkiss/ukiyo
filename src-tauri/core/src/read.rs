@@ -513,7 +513,7 @@ pub fn group_view(cat: Option<&Catalog>, g: &ChangeGroup, codes: &[u16]) -> Opti
 
 /// The owner strings `ukiyo owner` reads and sets: its field names and the catalog names they
 /// stand for. None is confirmed yet, so setting one needs `--allow-unconfirmed`.
-pub const OWNER_FIELDS: &[(&str, &str)] = &[("copyright", "Copyright"), ("author", "CopyrightAuthor"), ("prefix", "FileNamePrefix1"), ("device-name", "DeviceName")];
+pub const OWNER_FIELDS: &[(&str, &str)] = &[("copyright", "Copyright"), ("author", "CopyrightAuthor"), ("prefix", "FileNamePrefix1")];
 
 /// The catalog name for an owner field (`copyright`), any case.
 pub fn owner_field(field: &str) -> Option<&'static str> {
@@ -595,7 +595,8 @@ mod tests {
     #[test]
     fn owner_fields_map_to_catalog_names() {
         assert_eq!(owner_field("Copyright"), Some("Copyright"));
-        assert_eq!(owner_field("device-name"), Some("DeviceName"));
+        assert_eq!(owner_field("prefix"), Some("FileNamePrefix1"));
+        assert_eq!(owner_field("device-name"), None);
         assert_eq!(owner_field("nickname"), None);
         let v = owner_view(&snap());
         assert_eq!(v.len(), OWNER_FIELDS.len());

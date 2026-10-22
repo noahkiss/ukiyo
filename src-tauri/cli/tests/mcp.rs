@@ -179,14 +179,14 @@ fn tools_on_the_fake_camera() {
 
     // catalog_label: the evidence rule, private text, and a label that passes.
     assert_eq!(m.err("catalog_label", json!({ "code": "0xd20b", "confidence": "confirmed" }))["code"], "no_evidence");
-    let plan = m.ok("camera_plan", json!({ "set": { "DeviceName": "studio-cam42" }, "allow_unconfirmed": true }));
+    let plan = m.ok("camera_plan", json!({ "set": { "MemoText": "studio-cam42" }, "allow_unconfirmed": true }));
     let done = m.ok("camera_apply", json!({ "plan_id": plan["plan_id"] }));
     assert_eq!(done["applied"], 1, "{done}");
     assert_eq!(m.err("catalog_label", json!({ "code": "0xd20b", "notes": "set to Studio-Cam42" }))["code"], "private_text");
-    let l = m.ok("catalog_label", json!({ "code": "0xd20b", "menu": "NETWORK/USB SETTING > DEVICE NAME", "confidence": "confirmed" }));
-    assert_eq!((l["code"].as_str(), l["entry"]["confidence"].as_str(), l["entry"]["name"].as_str()), (Some("0xd20b"), Some("confirmed"), Some("DeviceName")), "{l}");
+    let l = m.ok("catalog_label", json!({ "code": "0xd20b", "menu": "MEMO", "confidence": "confirmed" }));
+    assert_eq!((l["code"].as_str(), l["entry"]["confidence"].as_str(), l["entry"]["name"].as_str()), (Some("0xd20b"), Some("confirmed"), Some("MemoText")), "{l}");
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(m.cats.path().join("x-t5.json")).unwrap()).unwrap();
-    assert_eq!(saved["properties"]["0xd20b"]["menu"], "NETWORK/USB SETTING > DEVICE NAME");
+    assert_eq!(saved["properties"]["0xd20b"]["menu"], "MEMO");
 
     // The library: a snapshot, a preset, favourites, prefs, the trash, restore as a plan.
     let snap = m.ok("library_save", json!({ "kind": "snapshot", "name": "Before trip" }));

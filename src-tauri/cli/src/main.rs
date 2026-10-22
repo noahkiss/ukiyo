@@ -78,7 +78,7 @@ enum Cmd {
         #[command(subcommand)]
         cmd: TrashCmd,
     },
-    /// Owner strings: copyright, author, file-name prefix, device name.
+    /// Owner strings: copyright, author, file-name prefix.
     Owner {
         #[command(subcommand)]
         cmd: OwnerCmd,
@@ -307,8 +307,8 @@ enum TrashCmd {
 enum OwnerCmd {
     /// The owner strings the camera holds now.
     Get,
-    /// Sets owner strings through a plan: FIELD=VALUE (copyright, author, prefix,
-    /// device-name). None is confirmed yet, so this needs --allow-unconfirmed.
+    /// Sets owner strings through a plan: FIELD=VALUE (copyright, author,
+    /// prefix). None is confirmed yet, so this needs --allow-unconfirmed.
     Set {
         #[arg(value_name = "FIELD=VALUE", required = true)]
         pairs: Vec<String>,

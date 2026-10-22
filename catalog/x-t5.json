@@ -1929,15 +1929,15 @@
       "notes": "Capture One 16.5: CwbStatus, \"Custom WB. status / Result for the custom white balance\"."
     },
     "0xd20b": {
-      "name": "DeviceName",
+      "name": "MemoText",
       "type": "string",
       "confidence": "likely",
-      "source": "libgphoto2 + Capture One 16.5",
+      "source": "Capture One 16.5",
       "modes": [
         "stills",
         "rawconv"
       ],
-      "notes": "Capture One 16.5: CustomMemory, \"Memo Text\". Capture One types it uint16; the X-T5 descriptor says string. Name kept, not replaced: `ukiyo owner device-name`, the Hub and their tests read DeviceName; the owner decides."
+      "notes": "Capture One 16.5: CustomMemory, \"Memo Text\". Capture One types it uint16; the X-T5 descriptor says string. libgphoto2 calls it DeviceName, but on our X-T5 it reads empty while BLUETOOTH/SMARTPHONE SETTING > NAME is set, and no PTP property holds that NAME. A zero-length string write leaves junk in it; writing a string that holds only the terminator clears it."
     },
     "0xd20c": {
       "name": "MediaRecord",

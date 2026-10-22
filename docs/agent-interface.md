@@ -13,7 +13,7 @@ search then read, and plan then apply for every camera write.
   - camera settings, presets and favourite settings
   - snapshots of the camera, their diffs, and restores
   - the C1-C7 recipe slots, the recipe library, and the bundled catalogue (search and import)
-  - owner strings (copyright, author, file-name prefix, device name)
+  - owner strings (copyright, author, file-name prefix)
   - the Lab's property mapping: names, menu paths, value labels, confidence, notes
   - app appearance: theme, sidebar brand mark, app icon, keep-awake
 - Agents get the same safety rules as the window, enforced in the core, not in each front end.
@@ -230,7 +230,7 @@ ukiyo recipes ls [QUERY] [--sensor S] [--sim F]       the library
               import (--text FILE|- | --url URL | cat:ID) [--name N] [--save]
               read [SLOT] [--compare ID]       read C1-C7 (RAW CONV. mode)
               write SLOT ID                    write a recipe to a slot, through a plan
-ukiyo owner   get | set FIELD=VALUE...         copyright, author, prefix, device-name
+ukiyo owner   get | set FIELD=VALUE...         copyright, author, prefix
 ukiyo catalog show [CODE] [--model M] | label CODE [--name N] [--menu M] [--value K=LABEL]...
                                 [--confidence C] [--notes T]
 ukiyo prefs   get | set KEY=VALUE...           theme, brand-mark, app-icon, keep-awake
@@ -430,8 +430,8 @@ $ ukiyo snapshots save before-trip && ukiyo snapshots diff before-trip
   change." and exits 0.
 - **`plan show|apply|discard ID`** find plans in a running `serve` and never start one; with no
   `serve` the answer is `plan_expired`. A plan applies once.
-- **`owner get`** reads the four owner strings in tether mode. **`owner set FIELD=VALUE`** is
-  `settings set` on their catalog names. None of the four is confirmed, so `owner set` needs
+- **`owner get`** reads the three owner strings in tether mode. **`owner set FIELD=VALUE`** is
+  `settings set` on their catalog names. None of the three is confirmed, so `owner set` needs
   `--allow-unconfirmed`:
 
   | Field | Catalog name | Code | Confidence |
@@ -439,7 +439,6 @@ $ ukiyo snapshots save before-trip && ukiyo snapshots diff before-trip
   | `copyright` | Copyright | 0xd215 | likely |
   | `author` | CopyrightAuthor | 0xd237 | guess |
   | `prefix` | FileNamePrefix1 | 0xd365 | likely |
-  | `device-name` | DeviceName | 0xd20b | likely |
 
 - **`camera disconnect`** sends the Lab's switch and waits (up to 5 s) until the owner reports
   `stopped`; with no `serve` running it does nothing. **`camera connect`** spawns `serve` when

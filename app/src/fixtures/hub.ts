@@ -22,7 +22,7 @@ export type ShotCounts = {
 export type DayShots = { date: string; shots: number };
 export type LensSeen = { name: string; seen: string; attached: boolean };
 export type ConnectEntry = { when: string; shots: number };
-export type OwnerDetails = { copyright: string; author: string; prefix: string; deviceName: string };
+export type OwnerDetails = { copyright: string; author: string; prefix: string };
 
 export const hubReadAt = "today at 10:42";
 
@@ -82,7 +82,6 @@ export const ownerDetails: OwnerDetails = {
   copyright: "Your Name",
   author: "Your Name",
   prefix: "XT5_",
-  deviceName: "Your X-T5",
 };
 
 export const connectLog: ConnectEntry[] = [

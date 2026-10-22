@@ -14,7 +14,7 @@ The live property mapper: connection core, fast polling, change feed, labelling 
   battery, card space.
 - **History** per camera, kept on this Mac: shot count and other counters on every connect,
   charted over time (shots per day, per month, since a date).
-- **Owner details** editable: copyright and author strings, file-name prefix, device name.
+- **Owner details** editable: copyright and author strings, file-name prefix.
 
 ## Film simulation recipes
 

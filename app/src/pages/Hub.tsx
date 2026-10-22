@@ -92,7 +92,7 @@ function last12(perMonth: HistoryView["per_month"]): Array<{ month: string; shot
   });
 }
 
-const OWNER_NAMES: Record<keyof OwnerDetails, string> = { copyright: "Copyright", author: "CopyrightAuthor", prefix: "FileNamePrefix1", deviceName: "DeviceName" };
+const OWNER_NAMES: Record<keyof OwnerDetails, string> = { copyright: "Copyright", author: "CopyrightAuthor", prefix: "FileNamePrefix1" };
 
 function ownerOf(live: Live): OwnerDetails | null {
   const out: Partial<OwnerDetails> = {};
@@ -446,7 +446,7 @@ function niceTop(max: number): number {
 
 function Owner({ saved, onWritten }: { saved: OwnerDetails | null; onWritten: () => void }) {
   const flash = useToast();
-  const blank: OwnerDetails = { copyright: "", author: "", prefix: "", deviceName: "" };
+  const blank: OwnerDetails = { copyright: "", author: "", prefix: "" };
   const base = saved ?? blank;
   const [draft, setDraft] = useState<OwnerDetails>(base);
   const [busy, setBusy] = useState(false);
@@ -487,10 +487,6 @@ function Owner({ saved, onWritten }: { saved: OwnerDetails | null; onWritten: ()
         <label className={draft.prefix !== base.prefix ? "field changed" : "field"}>
           File name prefix, 4 characters
           <input type="text" className="mono" value={draft.prefix} maxLength={4} disabled={!saved} onChange={set("prefix")} />
-        </label>
-        <label className="field">
-          Device name
-          <input type="text" value={draft.deviceName} disabled={!saved} onChange={set("deviceName")} />
         </label>
       </div>
       <div className="actions-line">

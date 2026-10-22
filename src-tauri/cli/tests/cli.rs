@@ -470,7 +470,7 @@ fn owner_strings_are_gated() {
     let (code, v) = env.json(&["owner", "get"]);
     assert_eq!(code, 0, "{v}");
     let fields = v["data"]["fields"].as_array().unwrap();
-    assert_eq!(fields.iter().map(|f| f["field"].as_str().unwrap()).collect::<Vec<_>>(), ["copyright", "author", "prefix", "device-name"]);
+    assert_eq!(fields.iter().map(|f| f["field"].as_str().unwrap()).collect::<Vec<_>>(), ["copyright", "author", "prefix"]);
     assert_eq!(fields[0]["code"], "0xd215");
     let (code, v) = env.json(&["owner", "set", "copyright=A. Person", "--yes"]);
     assert_eq!((code, v["error"]["code"].as_str()), (5, Some("unconfirmed_property")));
