@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyusb"]
+# dependencies = ["pyusb>=1.2,<2"]
 # ///
 """Guided property mapping: a dialog names one camera change, the script reads what moved.
 

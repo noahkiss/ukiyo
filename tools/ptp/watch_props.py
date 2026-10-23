@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyusb"]
+# dependencies = ["pyusb>=1.2,<2"]
 # ///
 """Poll every readable PTP property about once a second and log the ones that change. Read-only.
 

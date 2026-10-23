@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyusb"]
+# dependencies = ["pyusb>=1.2,<2"]
 # ///
 """Read the camera's settings backup (PTP object handle 0) to a file. Read-only.
 

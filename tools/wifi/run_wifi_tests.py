@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["bleak>=0.22"]
+# dependencies = ["bleak>=0.22,<4"]
 # ///
 """Guided Wi-Fi and Bluetooth test run for a Fujifilm X-T5. See tools/wifi/README.md.
 

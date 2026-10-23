@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyusb"]
+# dependencies = ["pyusb>=1.2,<2"]
 # ///
 """Dump every PTP device property descriptor a Fujifilm camera advertises. Read-only.
 
