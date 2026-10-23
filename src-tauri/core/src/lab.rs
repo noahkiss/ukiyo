@@ -704,8 +704,12 @@ fn write_log(log: &Mutex<Option<std::fs::File>>, mut v: serde_json::Value) {
     if let Some(o) = v.as_object_mut() {
         o.insert("t".into(), serde_json::json!(wall_ms()));
     }
+    // One write per line: `writeln!` on the file writes each piece of the JSON on its own,
+    // and a reader (`log show`) could then see half a line.
+    let mut line = v.to_string();
+    line.push('\n');
     if let Some(f) = log.lock().unwrap().as_mut() {
-        let _ = writeln!(f, "{v}");
+        let _ = f.write_all(line.as_bytes());
     }
 }
 
