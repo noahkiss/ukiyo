@@ -292,6 +292,11 @@ pub fn prefs_set(out: Out, pairs: &[String]) -> Result<i32, Fail> {
         let _ = c.call(Request::LabKeepAwake { on });
         c.close();
     }
+    if let Some(kind) = patch.transport {
+        let c = conn::existing(Duration::from_millis(500));
+        let _ = c.call(Request::LabTransport { kind });
+        c.close();
+    }
     let p = call::prefs_set(&data(), &patch)?;
     if out.json {
         out.data(&p);

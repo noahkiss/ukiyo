@@ -345,6 +345,39 @@ pub fn plan_discard(out: Out, plan_id: &str) -> Result<i32, Fail> {
 
 // ---- camera connect | disconnect | export ----
 
+/// `ukiyo camera transport [usb|wifi]`: saves the preference, and a running owner switches
+/// at once (it closes the session cleanly first). Never starts `serve` for it.
+pub fn camera_transport(out: Out, kind: Option<&str>) -> Result<i32, Fail> {
+    use ukiyo_core::camera::transport::TransportKind;
+    let data = ukiyo_core::paths::data_dir();
+    let Some(k) = kind else {
+        let p = ukiyo_core::api::call::prefs_get(&data);
+        let now = ukiyo_core::lab::transport_choice(&p);
+        if out.json {
+            out.data(json!({ "transport": now, "saved": p.transport }));
+        } else {
+            line(&format!("Transport: {}{}", now.label(), if now != p.transport { " (UKIYO_TRANSPORT)" } else { "" }));
+        }
+        return Ok(DONE);
+    };
+    let k = TransportKind::parse(k).ok_or_else(|| Fail::usage(format!("no transport {k:?}")).hint("ukiyo camera transport usb|wifi"))?;
+    let c = conn::existing(Duration::from_millis(500));
+    let running = c.call(Request::LabTransport { kind: k }).is_ok();
+    c.close();
+    let patch = ukiyo_core::library::prefs::PrefsPatch { transport: Some(k), ..Default::default() };
+    ukiyo_core::api::call::prefs_set(&data, &patch)?;
+    if out.json {
+        out.data(json!({ "transport": k, "serve": running }));
+    } else {
+        line(&format!("Transport: {}.{}", k.label(), if running { " ukiyo serve looks for the camera that way now." } else { "" }));
+        if k == TransportKind::Wifi {
+            line("Set CONNECTION MODE to WIRELESS TETHER SHOOTING FIXED; the camera must be on the Mac's network.");
+            line(ukiyo_core::read::WIFI_BATTERY_NOTE);
+        }
+    }
+    Ok(DONE)
+}
+
 pub fn camera_connect(out: Out, on: bool) -> Result<i32, Fail> {
     // Disconnecting needs no owner when none runs: nothing holds the camera then.
     let c = if on { conn::client(out, None) } else { conn::existing(Duration::from_secs(2)) };

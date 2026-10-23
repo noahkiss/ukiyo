@@ -495,6 +495,12 @@ impl Server {
                 let _ = c.call(Request::LabKeepAwake { on });
                 c.close();
             }
+            let kind = input.item.as_ref().and_then(|i| i.get("transport")).and_then(Value::as_str).and_then(ukiyo_core::camera::transport::TransportKind::parse);
+            if let Some(kind) = kind {
+                let c = conn::existing(Duration::from_millis(500));
+                let _ = c.call(Request::LabTransport { kind });
+                c.close();
+            }
         }
         let saved = call::library_save(&paths::data_dir(), &actor, &input, Context { camera: snap.as_ref(), catalog: None })?;
         let mut text = format!("Saved {}{}.", saved.id, if saved.replaced && kind != SaveKind::Prefs { "; the old version is in the trash" } else { "" });

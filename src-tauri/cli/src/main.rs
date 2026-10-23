@@ -126,6 +126,12 @@ enum CameraCmd {
     Disconnect,
     /// Writes a full property dump to dumps/ in the data folder and prints its path.
     Export,
+    /// Picks how ukiyo serve reaches the camera: usb or wifi (wireless tether). Without a
+    /// value, prints the current one. Remembered in settings.json.
+    Transport {
+        /// usb or wifi.
+        kind: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -475,6 +481,7 @@ fn main() {
         Cmd::Camera { cmd: CameraCmd::Connect } => writes::camera_connect(out, true),
         Cmd::Camera { cmd: CameraCmd::Disconnect } => writes::camera_connect(out, false),
         Cmd::Camera { cmd: CameraCmd::Export } => writes::camera_export(out),
+        Cmd::Camera { cmd: CameraCmd::Transport { kind } } => writes::camera_transport(out, kind.as_deref()),
         Cmd::Settings(SettingsArgs { cmd: Some(SettingsCmd::Set { pairs, flags }), .. }) => writes::settings_set(out, &pairs, flags),
         Cmd::Owner { cmd: OwnerCmd::Get } => writes::owner_get(out),
         Cmd::Owner { cmd: OwnerCmd::Set { pairs, flags } } => writes::owner_set(out, &pairs, flags),
