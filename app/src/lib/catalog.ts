@@ -45,9 +45,6 @@ export type CatalogCard = {
 
 let sourcesById = new Map<string, SourceInfo>();
 
-/** A source's display name: "Fuji X Weekly", "film.recipes". */
-export const sourceName = (id: string) => sourcesById.get(id)?.name ?? id;
-
 /** Who published it: the site, or for a compilation the creator and where it was found. */
 export function publisher(p: Publication): string {
   const s = sourcesById.get(p.source);
