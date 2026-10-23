@@ -4,7 +4,8 @@
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use ukiyo_core::api::Request;
 use ukiyo_core::lab::FakeAction;
@@ -13,6 +14,17 @@ use ukiyo_core::serve::client::{Client, Options};
 use ukiyo_core::serve::{lock, OwnerLock};
 
 const EXE: &str = env!("CARGO_BIN_EXE_ukiyo-cli");
+
+/// One spawn at a time in this process. On macOS, std makes a child's pipes with `pipe()` and
+/// then sets `FD_CLOEXEC`; a spawn on another thread in that window hands the pipe ends to
+/// its child, which then holds this child's stdout open until it exits.
+static SPAWN: Mutex<()> = Mutex::new(());
+
+/// Spawns with stdout and stderr piped, one spawn at a time.
+fn spawn(c: &mut Command) -> Child {
+    let _one = SPAWN.lock().unwrap();
+    c.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap()
+}
 
 struct Env {
     data: tempfile::TempDir,
@@ -50,7 +62,7 @@ impl Env {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        self.cmd(args).output().unwrap()
+        spawn(&mut self.cmd(args)).wait_with_output().unwrap()
     }
 
     /// Runs with `--json` and returns the exit code and the one JSON document.
@@ -290,7 +302,7 @@ fn serve_unavailable_is_exit_1() {
 #[test]
 fn watch_streams_until_ctrl_c() {
     let env = Env::new();
-    let mut child = env.cmd(&["camera", "watch", "--json", "--quiet"]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut child = spawn(&mut env.cmd(&["camera", "watch", "--json", "--quiet"]));
     let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
     let first: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
     assert_eq!(first["event"], "status");

@@ -22,6 +22,11 @@ use std::time::Duration;
 /// Starts `exe serve` detached in its own session (`setsid`), so it outlives the process
 /// that started it and no terminal signal reaches it. Its stderr goes to `serve.log` in the
 /// data folder, and it gets `UKIYO_DATA_DIR` so it resolves the same folder as its spawner.
+///
+/// It gets no other file descriptor of its spawner. A fork passes on every descriptor not
+/// marked close-on-exec, and on macOS std marks a new pipe's ends only after `pipe()` returns,
+/// so a spawn on another thread at that instant would hand `serve` a pipe end it would then
+/// hold open for its whole life (the far side never sees the end of that pipe).
 pub fn spawn_detached(exe: &Path, data_dir: &Path) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt as _;
     crate::paths::prepare_data_dir(data_dir)?;
@@ -36,9 +41,18 @@ pub fn spawn_detached(exe: &Path, data_dir: &Path) -> std::io::Result<()> {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(log);
-    // SAFETY: setsid is async-signal-safe and touches no memory of the parent.
+    // SAFETY: setsid, getdtablesize and fcntl are async-signal-safe and touch no memory of
+    // the parent. This runs after the child's 0, 1 and 2 are in place.
     unsafe {
-        cmd.pre_exec(|| if libc::setsid() == -1 { Err(std::io::Error::last_os_error()) } else { Ok(()) });
+        cmd.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            for fd in 3..libc::getdtablesize().clamp(3, 1 << 16) {
+                libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+            }
+            Ok(())
+        });
     }
     let mut child = cmd.spawn()?;
     // Reap it when it exits, so a long-lived spawner (the app) keeps no zombie.

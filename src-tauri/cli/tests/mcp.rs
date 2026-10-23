@@ -5,11 +5,18 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use ukiyo_core::paths;
 use ukiyo_core::serve::lock;
 
 const EXE: &str = env!("CARGO_BIN_EXE_ukiyo-cli");
+
+/// One spawn at a time in this process. On macOS, std makes a child's pipes with `pipe()` and
+/// then sets `FD_CLOEXEC`; a spawn on another thread in that window hands the pipe ends to
+/// its child, and that child then holds the write end of this child's stdin, so the end of
+/// input reaches this child only when the other one exits.
+static SPAWN: Mutex<()> = Mutex::new(());
 
 struct Mcp {
     child: Child,
@@ -34,6 +41,7 @@ impl Mcp {
         cat["properties"]["0xd023"]["confidence"] = "likely".into();
         std::fs::write(cats.path().join("x-t5.json"), serde_json::to_string_pretty(&cat).unwrap()).unwrap();
         let data = tempfile::tempdir().unwrap();
+        let spawn = SPAWN.lock().unwrap();
         let mut child = Command::new(EXE)
             .arg("mcp")
             // Never the real camera: the spawned serve inherits this.
@@ -47,6 +55,7 @@ impl Mcp {
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
+        drop(spawn);
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         let mut m = Mcp { child, stdin, stdout, next: 0, data, cats };

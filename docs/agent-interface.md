@@ -130,6 +130,10 @@ Rules:
    - The app spawns its own executable with the `serve` argument (`main.rs` branches before
      any Tauri code), in development and in the bundle. The owner is then always the app's own
      build, with no second binary to keep in step. The CLI spawns itself the same way.
+   - `serve` gets no file descriptor of its spawner beyond its three standard streams
+     (`spawn_detached` marks the rest close-on-exec in the child). On macOS a pipe made on
+     another thread of the spawner is unmarked for an instant, and a long-lived `serve` that
+     inherited one end would keep that pipe from ever closing.
 4. `serve` runs the owner thread (`owner.rs`): polling, the 3 s presence check, the 30 s
    reopen delay, one USB reset per connect attempt. All requests from all clients go through
    its one queue, writes first, so two clients can never interleave on the wire.
@@ -174,8 +178,7 @@ One JSON-RPC 2.0 message per line (`core/src/serve/wire.rs`):
 - Replies can come out of order: `plan_apply` and `lab_export` wait on the camera on their own
   thread. Match replies by `id`.
 - A client that falls 4096 lines behind is disconnected rather than allowed to stall the
-  owner thread. It reconnects and reads a fresh snapshot.
-- A request is sent once. If the connection drops before the reply, it fails with
+  owner thread. It reconnects and reads a fresh snapshot.- A request is sent once. If the connection drops before the reply, it fails with
   `unavailable` and is not retried, since it may have reached the camera.
 
 Why `serve` and not "the CLI opens the camera itself" (the bm proposal): ten CLI calls in a

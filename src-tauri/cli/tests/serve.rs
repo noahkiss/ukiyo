@@ -2,7 +2,7 @@
 
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use ukiyo_core::api::{Request, Response};
 use ukiyo_core::camera::owner::Link;
@@ -12,7 +12,13 @@ use ukiyo_core::serve::lock;
 
 const EXE: &str = env!("CARGO_BIN_EXE_ukiyo-cli");
 
+/// One spawn at a time in this process. On macOS, std makes a child's pipes with `pipe()` and
+/// then sets `FD_CLOEXEC`; a spawn on another thread in that window hands the pipe ends to
+/// its child, which then holds this child's stderr open until it exits.
+static SPAWN: Mutex<()> = Mutex::new(());
+
 fn serve(data: &Path, cats: &Path, idle_s: &str) -> Child {
+    let _one = SPAWN.lock().unwrap();
     Command::new(EXE)
         .args(["serve", "--idle-exit", idle_s])
         .env("UKIYO_DATA_DIR", data)
@@ -103,7 +109,29 @@ fn spawn_on_demand_detaches_and_idles_out() {
     std::env::set_var("UKIYO_CATALOG_DIR", cats.path());
     std::env::set_var("UKIYO_IDLE_EXIT", "1");
     let dir = data.path().to_path_buf();
-    let spawn: ukiyo_core::serve::client::SpawnFn = Arc::new(move || ukiyo_core::serve::spawn_detached(Path::new(EXE), &dir));
+    // A pipe whose write end lacks close-on-exec while serve is spawned: what std's `pipe()`
+    // leaves for an instant on macOS. Both ends are marked close-on-exec at once so no other
+    // spawn in this process gets them; the write end is unmarked only under the spawn lock.
+    let mut fds = [0i32; 2];
+    {
+        let _one = SPAWN.lock().unwrap();
+        // SAFETY: a pipe of our own, and fcntl on its two ends.
+        unsafe {
+            assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
+            libc::fcntl(fds[0], libc::F_SETFD, libc::FD_CLOEXEC);
+            libc::fcntl(fds[1], libc::F_SETFD, libc::FD_CLOEXEC);
+        }
+    }
+    let (r, w) = (fds[0], fds[1]);
+    let spawn: ukiyo_core::serve::client::SpawnFn = Arc::new(move || {
+        let _one = SPAWN.lock().unwrap();
+        // SAFETY: fcntl on our own fd.
+        unsafe { libc::fcntl(w, libc::F_SETFD, 0) };
+        let out = ukiyo_core::serve::spawn_detached(Path::new(EXE), &dir);
+        // SAFETY: as above.
+        unsafe { libc::fcntl(w, libc::F_SETFD, libc::FD_CLOEXEC) };
+        out
+    });
     let c = Client::new(Options::new(data.path().into(), "cli", Some(spawn)), None);
     wait_until("spawned serve answers", 15, || connected(&c));
     assert_eq!(c.spawns(), 1);
@@ -111,6 +139,17 @@ fn spawn_on_demand_detaches_and_idles_out() {
     assert_ne!(pid, std::process::id());
     // SAFETY: getsid only reads.
     assert_eq!(unsafe { libc::getsid(pid as i32) }, pid as i32, "serve leads its own session");
+    // serve kept no copy of the write end: with ours closed, the read end is at its end.
+    // SAFETY: our own pipe ends; a one-byte non-blocking read.
+    let n = unsafe {
+        libc::close(w);
+        libc::fcntl(r, libc::F_SETFL, libc::O_NONBLOCK);
+        let mut byte = 0u8;
+        let n = libc::read(r, &mut byte as *mut u8 as *mut libc::c_void, 1);
+        libc::close(r);
+        n
+    };
+    assert_eq!(n, 0, "serve holds a pipe end its spawner left open");
     c.disconnect();
     wait_until("serve idles out", 15, || !alive(pid));
     assert!(lock::is_free(&paths::lock_path(data.path())));
@@ -120,8 +159,13 @@ fn spawn_on_demand_detaches_and_idles_out() {
 
 #[test]
 fn usage_errors() {
-    let out = Command::new(EXE).arg("bogus").output().unwrap();
-    assert_eq!(out.status.code(), Some(2));
-    let out = Command::new(EXE).args(["serve", "--idle-exit", "x"]).output().unwrap();
-    assert_eq!(out.status.code(), Some(2));
+    let run = |args: &[&str]| {
+        let child = {
+            let _one = SPAWN.lock().unwrap();
+            Command::new(EXE).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap()
+        };
+        child.wait_with_output().unwrap()
+    };
+    assert_eq!(run(&["bogus"]).status.code(), Some(2));
+    assert_eq!(run(&["serve", "--idle-exit", "x"]).status.code(), Some(2));
 }
