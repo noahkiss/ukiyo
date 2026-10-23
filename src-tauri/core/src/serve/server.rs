@@ -30,6 +30,11 @@ pub const LOCK_WAIT: Duration = Duration::from_secs(1);
 /// reconnects and reads a fresh snapshot.
 const QUEUE: usize = 4096;
 
+/// The longest line a client may send. A request is a few kilobytes; a line past this is
+/// not one, and reading it whole would hand one client the owner's memory. The client is
+/// cut off instead.
+pub const MAX_LINE: usize = 1 << 20;
+
 pub struct Options {
     pub data_dir: PathBuf,
     pub catalog_dir: PathBuf,
@@ -283,15 +288,28 @@ fn write_loop(mut stream: UnixStream, rx: Receiver<String>) {
 }
 
 fn read_loop(shared: &Arc<Shared>, conn: &Arc<Conn>, stream: UnixStream) {
-    for line in BufReader::new(stream).lines() {
-        let Ok(line) = line else { return };
+    use std::io::Read as _;
+    let mut reader = BufReader::new(stream);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        // Bounded: at most one byte past the limit, which tells a long line from a full one.
+        match (&mut reader).take(MAX_LINE as u64 + 1).read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {}
+        }
+        if buf.len() > MAX_LINE {
+            eprintln!("ukiyo serve: a client sent a line over {MAX_LINE} bytes; closing it");
+            return;
+        }
+        let Ok(line) = std::str::from_utf8(&buf) else { return };
         if line.trim().is_empty() {
             continue;
         }
         if shared.closing.load(Ordering::SeqCst) {
             return;
         }
-        handle(shared, conn, &line);
+        handle(shared, conn, line);
     }
 }
 

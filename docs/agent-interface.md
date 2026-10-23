@@ -178,7 +178,9 @@ One JSON-RPC 2.0 message per line (`core/src/serve/wire.rs`):
 - Replies can come out of order: `plan_apply` and `lab_export` wait on the camera on their own
   thread. Match replies by `id`.
 - A client that falls 4096 lines behind is disconnected rather than allowed to stall the
-  owner thread. It reconnects and reads a fresh snapshot.- A request is sent once. If the connection drops before the reply, it fails with
+  owner thread. It reconnects and reads a fresh snapshot.
+- A line over 1 MiB is not a request: `serve` closes that client without reading the rest
+  (`server::MAX_LINE`). Other clients are not affected.- A request is sent once. If the connection drops before the reply, it fails with
   `unavailable` and is not retried, since it may have reached the camera.
 
 Why `serve` and not "the CLI opens the camera itself" (the bm proposal): ten CLI calls in a

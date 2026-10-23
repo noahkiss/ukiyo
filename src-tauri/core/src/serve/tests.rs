@@ -340,6 +340,37 @@ fn the_app_respawns_once_when_serve_dies() {
     }
 }
 
+/// A line past [`server::MAX_LINE`] is not a request: `serve` closes that client without
+/// reading further, and every other client goes on as before.
+#[test]
+fn an_oversized_line_closes_only_that_client() {
+    use std::io::{BufRead, Read, Write};
+    let d = dirs();
+    let s = Server::start(opts(&d, Duration::from_secs(30))).unwrap();
+    let c = no_spawn_client(d.data.path(), "cli");
+    wait_until("connected", 10, || connected(&c));
+    let mut raw = std::os::unix::net::UnixStream::connect(crate::paths::socket_path(d.data.path())).unwrap();
+    raw.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    wait_until("the second client is counted", 5, || s.clients() == 2);
+    // The server may close before the last bytes go out; that write error is the point.
+    let _ = raw.write_all(&vec![b'x'; server::MAX_LINE + 1]);
+    let mut rest = Vec::new();
+    let _ = raw.read_to_end(&mut rest);
+    assert!(rest.is_empty(), "no reply to a line that is not a request: {}", String::from_utf8_lossy(&rest));
+    wait_until("the client is gone", 5, || s.clients() == 1);
+    assert!(connected(&c), "the other client still works");
+    // A line within the limit still works on a fresh connection.
+    let mut raw = std::os::unix::net::UnixStream::connect(crate::paths::socket_path(d.data.path())).unwrap();
+    writeln!(raw, "{}", wire::api_request_line(4, &Request::LabSnapshot)).unwrap();
+    let mut line = String::new();
+    std::io::BufReader::new(raw).read_line(&mut line).unwrap();
+    assert!(matches!(wire::parse_outgoing(&line), wire::Outgoing::Reply(4, Ok(_))), "{line}");
+    c.close();
+    s.stopper().stop();
+    s.wait();
+    s.shutdown();
+}
+
 /// A socket file that disappeared (a deleted data folder) must not keep `serve` alive: the
 /// accept loop polls instead of waiting for the wake-up connect through the path.
 #[test]
