@@ -6,6 +6,9 @@
 #   tools/release/release.sh              the same, then attach the files to the GitHub
 #                                         release vX.Y.Z of noahkiss/ukiyo (gh; the tag must
 #                                         exist on origin)
+#   tools/release/release.sh --no-upload --app PATH
+#                                         skip the build: check and package a bundle that is
+#                                         already built and signed (CI, after notarization)
 #
 # The version is tauri.conf.json's; src-tauri/Cargo.toml must state the same one.
 # Output: local/release/<version>/ (gitignored).
@@ -21,17 +24,26 @@
 #   UKIYO_RELEASE_NOTES                 latest.json's notes (default: "Ukiyo <version>").
 #
 # Signing: the bundle gets tauri.conf.json's ad-hoc signature (signingIdentity "-"). A public
-# release is signed with the Developer ID and notarized before the zip is made, on QuadCam's
-# pattern (noahkiss/workflows: macos-sign-notarize); this script checks the signature it finds
-# and says which it is.
+# release is signed with the Developer ID and notarized before the zip is made, in
+# .github/workflows/release.yml (noahkiss/workflows: macos-sign-notarize), which then runs this
+# script with --app on the signed bundle. The script checks the signature it finds and says
+# which it is; a Developer ID bundle must also pass Gatekeeper and carry a stapled ticket.
 set -euo pipefail
 
 dry_run=false
-for a in "$@"; do
+app=""
+while [ $# -gt 0 ]; do
+  a="$1"
+  shift
   case "$a" in
     --dry-run | --no-upload) dry_run=true ;;
+    --app)
+      [ $# -gt 0 ] || { echo "release: --app needs a path" >&2; exit 2; }
+      app="$1"
+      shift
+      ;;
     -h | --help)
-      sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -46,7 +58,7 @@ tauri_dir="$root/src-tauri"
 repo="noahkiss/ukiyo"
 
 [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] || { echo "release: needs an Apple Silicon Mac" >&2; exit 1; }
-for tool in jq ditto codesign pnpm cargo; do
+for tool in jq ditto codesign pnpm cargo file; do
   command -v "$tool" >/dev/null || { echo "release: needs $tool" >&2; exit 1; }
 done
 
@@ -72,21 +84,12 @@ mkdir -p "$out"
 
 # ----- build -----
 
-configs=(--config tauri.bundle.conf.json)
-if [ -n "${UKIYO_UPDATER_PUBKEY:-}" ]; then
-  configs+=(--config "$(jq -cn --arg k "$UKIYO_UPDATER_PUBKEY" '{plugins: {updater: {pubkey: $k}}}')")
-else
-  echo "release: no UKIYO_UPDATER_PUBKEY: this build never checks for updates" >&2
+if [ -z "$app" ]; then
+  # tauri.sh adds the sidecar overlay and the updater public key.
+  (cd "$tauri_dir" && "$root/tools/release/tauri.sh" build --bundles app)
+  app="$tauri_dir/target/release/bundle/macos/Ukiyo.app"
 fi
-# The private key signs nothing during the build (createUpdaterArtifacts is off): the archive
-# is made below, from the final bundle.
-(
-  cd "$tauri_dir"
-  env -u TAURI_SIGNING_PRIVATE_KEY -u TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
-    "$root/app/node_modules/.bin/tauri" build --bundles app "${configs[@]}"
-)
-
-app="$tauri_dir/target/release/bundle/macos/Ukiyo.app"
+app="$(cd "$(dirname "$app")" && pwd)/$(basename "$app")"
 [ -d "$app" ] || { echo "release: no bundle at $app" >&2; exit 1; }
 
 # ----- check the bundle -----
@@ -101,6 +104,10 @@ echo "schema version $("$cli" --schema-version)"
 codesign --verify --deep --strict "$app"
 signature="$(codesign -dv "$app" 2>&1 | sed -n 's/^Signature=//p; s/^Authority=//p' | head -1)"
 echo "release: signature: ${signature:-none}"
+if [[ "$signature" == "Developer ID Application:"* ]]; then
+  spctl --assess --type execute --verbose=2 "$app"
+  xcrun stapler validate "$app"
+fi
 
 # ----- the zip, for the cask -----
 

@@ -1036,9 +1036,11 @@ work lands, since both touch `src-tauri/src/lib.rs`.
   `UKIYO_UPDATE_SURFACE=1 cargo test -p ukiyo-cli surface` (it also refreshes
   `mcp_tools.json`). A deprecated item gets a note in the tool listing and a warning on
   stderr from the CLI.
-- **The release** (`tools/release/release.sh [--dry-run]`, Apple Silicon only). It checks that
-  `tauri.conf.json` and `Cargo.toml` state one version, builds the bundle, checks it
-  (`CFBundleShortVersionString`, an arm64 `ukiyo-cli` that runs, the code signature), and
+- **The release** (`tools/release/release.sh [--dry-run] [--app PATH]`, Apple Silicon only).
+  It checks that `tauri.conf.json` and `Cargo.toml` state one version, builds the bundle
+  through `tools/release/tauri.sh` (the sidecar overlay and the updater public key), checks it
+  (`CFBundleShortVersionString`, an arm64 `ukiyo-cli` that runs, the code signature; a
+  Developer ID bundle must also pass Gatekeeper and carry a stapled ticket), and
   writes to `local/release/<version>/`:
   - `ukiyo-<version>-arm64.zip` (ditto), the cask's download; the script prints its sha256;
   - `ukiyo-<version>-arm64.app.tar.gz` and its `.sig` (`tauri signer sign --app-version`);
@@ -1047,15 +1049,22 @@ work lands, since both touch `src-tauri/src/lib.rs`.
   `--dry-run` uploads nothing and allows a build without keys (no updater, an empty
   signature). Without it, the script needs both keys, a clean tree and HEAD at the tag
   `v<version>` on origin; it creates the GitHub release if needed and attaches the files, and
-  never replaces an attached zip, archive or signature.
+  never replaces an attached zip, archive or signature. `--app PATH` skips the build and
+  checks and packages a bundle that is already built and signed.
 - **Keys.** The updater keypair lives in 1Password, read through op-connect into the
   environment for one run; it is never written to a file. The release reads
   `UKIYO_UPDATER_PUBKEY`, `TAURI_SIGNING_PRIVATE_KEY` and
   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for a key without a password).
 - **Signing.** `tauri.conf.json` signs ad hoc (`signingIdentity "-"`), as QuadCam's does. A
-  public release is signed with the Developer ID and notarized in CI, as QuadCam's
-  `release.yml` does with noahkiss/workflows (`macos-sign-notarize`), before the zip and the
-  updater archive are made. That workflow is not set up for Ukiyo yet.
+  public release is signed with the Developer ID and notarized in CI:
+  `.github/workflows/release.yml` runs noahkiss/workflows' `tauri-macos-build` (with
+  `tauri.sh` as its Tauri command), `macos-sign-notarize`, then `release.sh --no-upload --app`
+  on the signed bundle, and `release-attach` (zip, updater archive, signature, `latest.json`)
+  on a `v*` tag. A dispatched dry run (`-f dry-run=true`, the default) tags HEAD inside the
+  runner only, attaches nothing, and keeps the files as a workflow artifact. The secrets live
+  in the `release` environment, which admits `v*` tags and `main`; a run on `main` may only
+  be a dry run. `.github/workflows/ci.yml` runs clippy and the tests on macOS and
+  `pnpm build` through the shared `node-ci` workflow.
 - **The cask** is drafted, not in the tap: `app "Ukiyo.app"`, `binary
   "#{appdir}/Ukiyo.app/Contents/MacOS/ukiyo-cli", target: "ukiyo"`, `depends_on arch: :arm64`,
   `depends_on macos: :ventura`, `auto_updates true`, livecheck `:github_latest`, and `zap` of

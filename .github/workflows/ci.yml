@@ -1,0 +1,87 @@
+name: CI
+
+# Tests and clippy for the Rust workspace in src-tauri/ (the app, ukiyo-core and the ukiyo
+# CLI), and the window's build in app/, on every push and pull request.
+#
+# The Rust job runs on an Apple Silicon runner: the app is macOS-only. The tests run on the
+# fake camera (UKIYO_FAKE_CAMERA=1); no test reaches USB. The CLI and MCP tests make their
+# own data folders under TMPDIR, which this job points at the short RUNNER_TEMP, so each
+# ukiyo.sock path stays under the 104-byte socket limit.
+#
+# The app's crate embeds app/dist at compile time (tauri.conf.json frontendDist), so the
+# Rust job builds the frontend first. The `ui` job is the shared node-ci workflow on Linux.
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a branch or pull request cancels its older run. A run on main or on a tag
+# is never cancelled: the Release workflow waits for a green run on the tagged commit.
+concurrency:
+  group: >-
+    ci-${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  rust:
+    # A pull request from this repository's own branches already ran on its push.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      UKIYO_FAKE_CAMERA: '1'
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # rust-toolchain.toml at the repo root names the version and components.
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          rustc --version
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: app/package.json
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Build the frontend
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: cargo test
+        run: |
+          export TMPDIR="$RUNNER_TEMP/"
+          cargo test --locked
+
+  ui:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    permissions:
+      contents: read
+    uses: noahkiss/workflows/.github/workflows/node-ci.yml@main
+    with:
+      working-directory: app
+      node-version-file: ../.node-version
+      scripts: build

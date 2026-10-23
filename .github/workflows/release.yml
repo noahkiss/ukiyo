@@ -1,0 +1,162 @@
+name: Release
+
+# A pushed `v*` tag builds Ukiyo.app with the ukiyo CLI inside on an Apple Silicon runner,
+# signs it with the Developer ID of NKMK Digital Co., notarizes and staples it, checks and
+# packages it with tools/release/release.sh, waits for a green ci.yml run on the tagged
+# commit, and attaches ukiyo-X.Y.Z-arm64.zip, the in-app updater's
+# ukiyo-X.Y.Z-arm64.app.tar.gz, its .sig and latest.json to the tag's GitHub Release.
+#
+# The steps are the shared composite actions in noahkiss/workflows (tauri-macos-build,
+# macos-sign-notarize, release-attach). They run in this repository's own job because that
+# job names the `release` environment: a reusable workflow from another repository cannot
+# read this repository's environment secrets.
+#
+# The build goes through tools/release/tauri.sh, as a local release.sh build does: it adds
+# the CLI sidecar overlay (src-tauri/tauri.bundle.conf.json) and the updater public key.
+#
+# To cut a release:
+#
+#   1. Set the same version in src-tauri/Cargo.toml and src-tauri/tauri.conf.json.
+#   2. Commit, then `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+#
+# A dry run builds, signs, notarizes and packages, uploads the files as a workflow artifact,
+# and attaches nothing. It needs no tag: on a branch it tags HEAD inside the runner only.
+#
+#   gh workflow run release.yml -R noahkiss/ukiyo --ref main -f dry-run=true
+#
+# To re-run the pipeline for a tag that already exists, dispatch it on the tag. The run uses
+# the release.yml at that tag:
+#
+#   gh workflow run release.yml -R noahkiss/ukiyo --ref vX.Y.Z -f tag=vX.Y.Z -f dry-run=false
+#
+# A re-run never replaces a zip that is already attached: the cask's sha256 pins what was
+# published, and a rebuilt zip is not byte-identical.
+#
+# Secrets, in the `release` environment (v* tags and main): MAC_CERT_P12,
+# MAC_CERT_PASSWORD, ASC_KEY_P8, ASC_KEY_ID, ASC_ISSUER_ID, UKIYO_UPDATER_PUBKEY,
+# TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD. The updater key has no
+# password. A run on main may only be a dry run; the first step refuses anything else.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and release, e.g. v0.2.0. Empty on a dry run: the version in tauri.conf.json.'
+        required: false
+        default: ''
+      dry-run:
+        description: 'Build, sign, notarize and package; attach nothing'
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  release:
+    name: Build, sign and attach
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      actions: read # read the CI run on the tagged commit
+    concurrency:
+      group: release-${{ inputs.tag || github.ref }}
+      cancel-in-progress: false
+    env:
+      # A tag push has no inputs: it is a real release.
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+      # tools/release/tauri.sh builds it into the app in place of the placeholder.
+      UKIYO_UPDATER_PUBKEY: ${{ secrets.UKIYO_UPDATER_PUBKEY }}
+    steps:
+      - name: Check the run
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" != true ] && [ -z "$INPUT_TAG" ] && [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            echo "::error::a release needs a tag; a run on ${GITHUB_REF} may only be a dry run"
+            exit 1
+          fi
+          [ -n "$UKIYO_UPDATER_PUBKEY" ] || { echo "::error::UKIYO_UPDATER_PUBKEY is empty"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      # tauri-macos-build proves HEAD is the release tag's commit. A dry run on a branch has
+      # no tag, so it makes one here, in the runner's clone only; nothing is pushed.
+      - name: Resolve the tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="$INPUT_TAG"
+          [ -n "$tag" ] || [[ "$GITHUB_REF" != refs/tags/* ]] || tag="${GITHUB_REF#refs/tags/}"
+          if [ -z "$tag" ]; then
+            tag="v$(jq -r .version src-tauri/tauri.conf.json)"
+            git tag "$tag" HEAD
+            echo "::notice::dry run: tagged HEAD as ${tag} in the runner only"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - id: build
+        uses: noahkiss/workflows/actions/tauri-macos-build@1aa3bd66afe3a7fe1c47fcadc4129e8b7232bceb # main, 2026-10-12
+        with:
+          tag: ${{ steps.tag.outputs.tag }}
+          app-name: Ukiyo
+          asset-prefix: ukiyo
+          # Run from src-tauri/: the sidecar overlay and the updater public key.
+          tauri-command: ../tools/release/tauri.sh
+
+      - uses: noahkiss/workflows/actions/macos-sign-notarize@1aa3bd66afe3a7fe1c47fcadc4129e8b7232bceb # main, 2026-10-12
+        with:
+          path: ${{ steps.build.outputs.app }}
+          identity: 'Developer ID Application: NKMK Digital Co. (2Z88BYP37C)'
+          team-id: 2Z88BYP37C
+          certificate-p12: ${{ secrets.MAC_CERT_P12 }}
+          certificate-password: ${{ secrets.MAC_CERT_PASSWORD }}
+          notary-key-p8: ${{ secrets.ASC_KEY_P8 }}
+          notary-key-id: ${{ secrets.ASC_KEY_ID }}
+          notary-issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+
+      # The same checks and files as a local `release.sh --dry-run`, made from the signed,
+      # notarized bundle: the CLI inside, Gatekeeper, the stapled ticket, the zip, the
+      # updater archive, its signature and latest.json.
+      - name: Check and package (release.sh)
+        env:
+          APP: ${{ steps.build.outputs.app }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          tools/release/release.sh --no-upload --app "$APP"
+          version="$(jq -r .version src-tauri/tauri.conf.json)"
+          jq -e '.platforms[].signature | length > 0' "local/release/$version/latest.json" >/dev/null
+          echo "dir=local/release/$version" >> "$GITHUB_ENV"
+
+      - name: Keep the dry run's files
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ukiyo-${{ steps.tag.outputs.tag }}-dry-run
+          path: ${{ env.dir }}
+          retention-days: 7
+
+      - if: env.DRY_RUN != 'true'
+        uses: noahkiss/workflows/actions/release-attach@1aa3bd66afe3a7fe1c47fcadc4129e8b7232bceb # main, 2026-10-12
+        with:
+          path: ${{ steps.build.outputs.app }}
+          tag: ${{ steps.build.outputs.tag }}
+          asset: ${{ steps.build.outputs.asset }}
+          smoke-command: '"$APP/Contents/MacOS/ukiyo-cli" --version'
+          require-ci-workflow: ci.yml
+          # The in-app updater's archive, its signature and latest.json, made from the
+          # notarized app (tauri.conf.json leaves createUpdaterArtifacts off).
+          updater: true
+          updater-private-key: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          updater-private-key-password: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
