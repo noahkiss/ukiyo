@@ -516,6 +516,12 @@ enum Phase {
     Connected(Box<Session>),
 }
 
+/// Why a session did not open, and whether a USB reset may follow (`Owner::open_session`).
+struct OpenFail {
+    why: String,
+    reset_ok: bool,
+}
+
 pub struct Owner {
     connector: Box<dyn Connector>,
     clock: Arc<dyn Clock>,
@@ -1266,16 +1272,16 @@ impl Owner {
         let t = loop {
             match self.open_session(reset_used) {
                 Ok(t) => break t,
-                Err(e) if !reset_used && self.connector.present() => {
+                Err(OpenFail { why, reset_ok: true }) if !reset_used && self.connector.present() => {
                     // OpenSession on a fresh claim failed: reset once and try again.
-                    self.log(format!("OpenSession failed ({e}); resetting USB once"));
+                    self.log(format!("OpenSession failed ({why}); resetting USB once"));
                     reset_used = true;
                 }
-                Err(e) => {
+                Err(OpenFail { why, .. }) => {
                     self.blocked_since = Some(self.clock.now());
-                    self.log(format!("OpenSession failed ({e}); waiting before the next try"));
+                    self.log(format!("could not open a session ({why}); waiting before the next try"));
                     let link = if self.connector.present() { Link::Waiting } else { Link::Searching };
-                    self.set_idle(link, Some(format!("could not open a session: {e}")));
+                    self.set_idle(link, Some(format!("could not open a session: {why}")));
                     return;
                 }
             }
@@ -1333,12 +1339,18 @@ impl Owner {
         self.describe();
     }
 
-    fn open_session(&mut self, reset: bool) -> Result<Box<dyn Transport>, String> {
-        let mut t = self.connector.open(reset).map_err(|e| e.to_string())?;
+    /// Claims the camera and opens a session. A USB reset is allowed only when OpenSession
+    /// itself failed on the fresh claim: not when the claim failed (another process holds
+    /// the interface), not when the camera left, and not when it answered 0x2019 (busy): a
+    /// camera that answers busy is powering off, and a reset then is what soft-locked the
+    /// X-T5 (docs/protocol.md, "Camera state and power").
+    fn open_session(&mut self, reset: bool) -> Result<Box<dyn Transport>, OpenFail> {
+        let fail = |why: String, reset_ok: bool| OpenFail { why, reset_ok };
+        let mut t = self.connector.open(reset).map_err(|e| fail(format!("claim: {e}"), false))?;
         match t.op(ptp::OP_OPEN_SESSION, &[1], None) {
             Ok(r) if r.rc == ptp::RC_OK || r.rc == ptp::RC_SESSION_ALREADY_OPEN => Ok(t),
-            Ok(r) => Err(ptp::rc_name(r.rc).to_string()),
-            Err(e) => Err(e.to_string()),
+            Ok(r) => Err(fail(format!("OpenSession: {}", ptp::rc_name(r.rc)), r.rc != ptp::RC_DEVICE_BUSY)),
+            Err(e) => Err(fail(format!("OpenSession: {e}"), e != TransportError::Gone)),
         }
     }
 

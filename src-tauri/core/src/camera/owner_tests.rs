@@ -358,6 +358,35 @@ fn a_failed_open_session_resets_once_then_backs_off() {
     assert_eq!(r.owner.status().link, Link::Waiting);
 }
 
+/// Another process holds the interface: the claim fails before OpenSession is sent. That is
+/// no reason to reset the camera's USB device; the owner waits and tries again.
+#[test]
+fn a_failed_claim_never_resets_usb() {
+    let mut r = rig_with(FakeMode::Tether, |h| h.with(|s| s.claim_failures = 1));
+    r.run_for(Duration::from_secs(1));
+    assert_eq!(r.owner.status().link, Link::Waiting, "{:?}", r.owner.status());
+    assert!(r.run_until(Duration::from_secs(60), |r| r.owner.status().link == Link::Connected));
+    let opens = r.cam.with(|s| s.opens.clone());
+    assert_eq!(opens.iter().map(|o| o.1).collect::<Vec<_>>(), [false, false], "{opens:?}");
+    assert!(opens[1].0 - opens[0].0 >= Duration::from_secs(30), "{opens:?}");
+}
+
+/// OpenSession answered 0x2019: the camera is powering off. A USB reset then is what
+/// soft-locked the X-T5 (docs/protocol.md): none is sent, and the owner waits.
+#[test]
+fn a_busy_open_session_never_resets_usb() {
+    let mut r = rig_with(FakeMode::Tether, |h| h.power_off());
+    r.run_for(Duration::from_millis(500));
+    let opens = r.cam.with(|s| s.opens.clone());
+    assert_eq!(opens.iter().map(|o| o.1).collect::<Vec<_>>(), [false], "{opens:?}");
+    assert_eq!(r.owner.status().link, Link::Waiting, "{:?}", r.owner.status());
+    // The camera leaves the bus; it comes back later and connects after the wait.
+    assert!(r.run_until(Duration::from_secs(10), |r| r.owner.status().link == Link::Searching));
+    r.cam.power_on();
+    assert!(r.run_until(Duration::from_secs(60), |r| r.owner.status().link == Link::Connected));
+    assert!(r.cam.with(|s| s.opens.iter().all(|o| !o.1)), "no reset at any point");
+}
+
 #[test]
 fn without_keep_awake_the_fake_sleeps_at_its_timeout() {
     let mut r = sleepy(6);

@@ -97,6 +97,9 @@ pub struct FakeState {
     pub off_at: Option<Duration>,
     /// OpenSession answers this many times with an error before it works.
     pub open_failures: u32,
+    /// `Connector::open` fails this many times before it works (another process holds the
+    /// interface): the camera is present, but not claimed.
+    pub claim_failures: u32,
     /// Every `Connector::open`: when, and whether it asked for a reset.
     pub opens: Vec<(Duration, bool)>,
     /// Every `Connector::present` call.
@@ -356,6 +359,7 @@ impl FakeCamera {
             present: true,
             off_at: None,
             open_failures: 0,
+            claim_failures: 0,
             opens: Vec::new(),
             presence_checks: Vec::new(),
             ops: Vec::new(),
@@ -581,10 +585,13 @@ impl Connector for FakeCamera {
         let generation = self.handle.with(|s| {
             h.settle(s);
             s.opens.push((now, reset));
-            if s.present {
-                Ok(s.generation)
-            } else {
+            if !s.present {
                 Err(TransportError::Gone)
+            } else if s.claim_failures > 0 {
+                s.claim_failures -= 1;
+                Err(TransportError::Io("interface busy".into()))
+            } else {
+                Ok(s.generation)
             }
         })?;
         Ok(Box::new(FakeTransport { handle: h, generation, session: false, op_cost: self.op_cost }))
