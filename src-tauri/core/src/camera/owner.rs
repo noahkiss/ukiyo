@@ -509,11 +509,19 @@ struct Session {
     redescribe: bool,
     ops: u64,
     op_time: Duration,
+    /// The next link check while nothing is readable (`poll_step`).
+    next_link_check: Duration,
 }
 
 enum Phase {
     Idle { next_check: Duration },
     Connected(Box<Session>),
+}
+
+/// Why a session did not open, and whether a USB reset may follow (`Owner::open_session`).
+struct OpenFail {
+    why: String,
+    reset_ok: bool,
 }
 
 pub struct Owner {
@@ -1266,16 +1274,16 @@ impl Owner {
         let t = loop {
             match self.open_session(reset_used) {
                 Ok(t) => break t,
-                Err(e) if !reset_used && self.connector.present() => {
+                Err(OpenFail { why, reset_ok: true }) if !reset_used && self.connector.present() => {
                     // OpenSession on a fresh claim failed: reset once and try again.
-                    self.log(format!("OpenSession failed ({e}); resetting USB once"));
+                    self.log(format!("OpenSession failed ({why}); resetting USB once"));
                     reset_used = true;
                 }
-                Err(e) => {
+                Err(OpenFail { why, .. }) => {
                     self.blocked_since = Some(self.clock.now());
-                    self.log(format!("OpenSession failed ({e}); waiting before the next try"));
+                    self.log(format!("could not open a session ({why}); waiting before the next try"));
                     let link = if self.connector.present() { Link::Waiting } else { Link::Searching };
-                    self.set_idle(link, Some(format!("could not open a session: {e}")));
+                    self.set_idle(link, Some(format!("could not open a session: {why}")));
                     return;
                 }
             }
@@ -1307,6 +1315,7 @@ impl Owner {
             redescribe: false,
             ops: 0,
             op_time: Duration::ZERO,
+            next_link_check: now,
         });
         let info = match s.t.op(ptp::OP_GET_DEVICE_INFO, &[], None) {
             Ok(r) if r.rc == ptp::RC_OK => {
@@ -1333,12 +1342,18 @@ impl Owner {
         self.describe();
     }
 
-    fn open_session(&mut self, reset: bool) -> Result<Box<dyn Transport>, String> {
-        let mut t = self.connector.open(reset).map_err(|e| e.to_string())?;
+    /// Claims the camera and opens a session. A USB reset is allowed only when OpenSession
+    /// itself failed on the fresh claim: not when the claim failed (another process holds
+    /// the interface), not when the camera left, and not when it answered 0x2019 (busy): a
+    /// camera that answers busy is powering off, and a reset then is what soft-locked the
+    /// X-T5 (docs/protocol.md, "Camera state and power").
+    fn open_session(&mut self, reset: bool) -> Result<Box<dyn Transport>, OpenFail> {
+        let fail = |why: String, reset_ok: bool| OpenFail { why, reset_ok };
+        let mut t = self.connector.open(reset).map_err(|e| fail(format!("claim: {e}"), false))?;
         match t.op(ptp::OP_OPEN_SESSION, &[1], None) {
             Ok(r) if r.rc == ptp::RC_OK || r.rc == ptp::RC_SESSION_ALREADY_OPEN => Ok(t),
-            Ok(r) => Err(ptp::rc_name(r.rc).to_string()),
-            Err(e) => Err(e.to_string()),
+            Ok(r) => Err(fail(format!("OpenSession: {}", ptp::rc_name(r.rc)), r.rc != ptp::RC_DEVICE_BUSY)),
+            Err(e) => Err(fail(format!("OpenSession: {e}"), e != TransportError::Gone)),
         }
     }
 
@@ -1349,6 +1364,11 @@ impl Owner {
         let codes = s.info.properties.clone();
         let mut props = BTreeMap::new();
         let mut desc_ok = 0usize;
+        // 0x2019 in a row, as in the poll: the camera is busy, or about to power off. Without
+        // this, a busy camera described every property as unavailable and the owner sat on an
+        // empty sweep, sending nothing, never seeing it leave.
+        let mut busy_run = 0u32;
+        let busy_after = self.cfg.busy_after;
         for code in &codes {
             let code = *code;
             let r = match self.op(ptp::OP_GET_PROP_DESC, &[code as u32], None) {
@@ -1358,6 +1378,9 @@ impl Owner {
             if r.rc == ptp::RC_FUJI_MENU {
                 // A menu opened mid-describe: pause, and describe again when it closes.
                 return self.enter_pause(Pause::Menu, true);
+            }
+            if self.busy_mid_describe(r.rc, &mut busy_run, busy_after) {
+                return;
             }
             let mut p = Prop { desc: None, value: None, error: None, available: false, changed: None, changed_wall: None };
             if r.rc == ptp::RC_OK {
@@ -1373,6 +1396,9 @@ impl Owner {
                     Ok(v) => v,
                     Err(e) => return self.lost(e),
                 };
+                if self.busy_mid_describe(v.rc, &mut busy_run, busy_after) {
+                    return;
+                }
                 if v.rc == ptp::RC_OK {
                     p.value = Some(ptp::decode_value(p.datatype(), &v.data));
                     p.available = true;
@@ -1411,6 +1437,29 @@ impl Owner {
         self.status.screen = screen.map(|v| screen_of(&v)).or(Some(Screen::Unknown));
         self.emit(Event::Props(rows));
         self.publish(true);
+    }
+
+    /// Counts a describe answer against the busy rule. `true`: the camera is busy, the owner
+    /// is in the Busy pause and will describe again once D22E answers.
+    fn busy_mid_describe(&mut self, rc: u16, busy_run: &mut u32, busy_after: u32) -> bool {
+        if rc != ptp::RC_DEVICE_BUSY {
+            if rc == ptp::RC_OK {
+                *busy_run = 0;
+            }
+            return false;
+        }
+        *busy_run += 1;
+        let now = self.clock.now();
+        if let Some(s) = self.session() {
+            s.busy_run = *busy_run;
+            s.last_busy = Some(now);
+        }
+        if *busy_run < busy_after {
+            return false;
+        }
+        self.log("camera busy (0x2019) while describing");
+        self.enter_pause(Pause::Busy, true);
+        true
     }
 
     fn enter_pause(&mut self, pause: Pause, redescribe: bool) {
@@ -1455,7 +1504,19 @@ impl Owner {
             self.plan_cycle();
         }
         let Some(code) = self.session().and_then(|s| s.plan.pop_front()) else {
-            // Nothing readable (card reader with no values): idle a little.
+            // Nothing readable (card reader with no values): idle a little, and check the
+            // link now and then. No property read means nothing would ever notice the camera
+            // leaving.
+            let due = self.session().is_some_and(|s| now >= s.next_link_check);
+            if due {
+                let next = now + self.cfg.presence_every;
+                if let Some(s) = self.session() {
+                    s.next_link_check = next;
+                }
+                if let Err(e) = self.op(ptp::OP_GET_DEVICE_INFO, &[], None) {
+                    return self.lost(e);
+                }
+            }
             self.clock.sleep(Duration::from_millis(100));
             return;
         };

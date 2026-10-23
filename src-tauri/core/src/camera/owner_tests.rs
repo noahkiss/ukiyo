@@ -358,6 +358,75 @@ fn a_failed_open_session_resets_once_then_backs_off() {
     assert_eq!(r.owner.status().link, Link::Waiting);
 }
 
+/// Another process holds the interface: the claim fails before OpenSession is sent. That is
+/// no reason to reset the camera's USB device; the owner waits and tries again.
+#[test]
+fn a_failed_claim_never_resets_usb() {
+    let mut r = rig_with(FakeMode::Tether, |h| h.with(|s| s.claim_failures = 1));
+    r.run_for(Duration::from_secs(1));
+    assert_eq!(r.owner.status().link, Link::Waiting, "{:?}", r.owner.status());
+    assert!(r.run_until(Duration::from_secs(60), |r| r.owner.status().link == Link::Connected));
+    let opens = r.cam.with(|s| s.opens.clone());
+    assert_eq!(opens.iter().map(|o| o.1).collect::<Vec<_>>(), [false, false], "{opens:?}");
+    assert!(opens[1].0 - opens[0].0 >= Duration::from_secs(30), "{opens:?}");
+}
+
+/// OpenSession answered 0x2019: the camera is powering off. A USB reset then is what
+/// soft-locked the X-T5 (docs/protocol.md): none is sent, and the owner waits.
+#[test]
+fn a_busy_open_session_never_resets_usb() {
+    let mut r = rig_with(FakeMode::Tether, |h| h.power_off());
+    r.run_for(Duration::from_millis(500));
+    let opens = r.cam.with(|s| s.opens.clone());
+    assert_eq!(opens.iter().map(|o| o.1).collect::<Vec<_>>(), [false], "{opens:?}");
+    assert_eq!(r.owner.status().link, Link::Waiting, "{:?}", r.owner.status());
+    // The camera leaves the bus; it comes back later and connects after the wait.
+    assert!(r.run_until(Duration::from_secs(10), |r| r.owner.status().link == Link::Searching));
+    r.cam.power_on();
+    assert!(r.run_until(Duration::from_secs(60), |r| r.owner.status().link == Link::Connected));
+    assert!(r.cam.with(|s| s.opens.iter().all(|o| !o.1)), "no reset at any point");
+}
+
+/// The camera answers 0x2019 to everything while it is described (busy with a card, or the
+/// second before auto power off): the owner pauses as it does mid-poll, probes D22E, and
+/// describes again once the camera answers. It never settles on an empty sweep.
+#[test]
+fn a_camera_busy_while_described_is_described_again_once_it_answers() {
+    let mut r = rig_with(FakeMode::Tether, |h| h.with(|s| s.busy_until = Some(Duration::from_secs(3))));
+    assert!(r.run_until(Duration::from_secs(2), |r| r.owner.status().link == Link::Busy), "{:?}", r.owner.status());
+    assert_eq!(r.owner.status().readable, 0);
+    let t = r.now();
+    r.run_for(Duration::from_millis(900));
+    let ops = r.ops_since(t);
+    assert!(ops.iter().all(|o| o.param == Some(SCREEN as u32)), "only D22E probes while busy: {:?}", &ops[..ops.len().min(5)]);
+    assert!(ops.len() <= 3, "{} probes in 0.9 s", ops.len());
+    assert!(r.run_until(Duration::from_secs(5), |r| r.owner.status().link == Link::Connected && r.owner.status().readable == 181), "{:?}", r.owner.status());
+}
+
+/// Busy while described, then gone: that is auto power off, and the owner says so.
+#[test]
+fn a_camera_busy_while_described_that_then_leaves_is_asleep() {
+    let mut r = rig_with(FakeMode::Tether, |h| h.with(|s| s.busy_until = Some(Duration::from_secs(60))));
+    assert!(r.run_until(Duration::from_secs(2), |r| r.owner.status().link == Link::Busy));
+    r.cam.unplug();
+    assert!(r.run_until(Duration::from_secs(2), |r| r.owner.status().link == Link::Asleep), "{:?}", r.owner.status());
+    assert_eq!(r.owner.status().reason.as_deref(), Some("auto power off"));
+}
+
+/// A session with nothing readable sends no property reads, so it checks the link itself:
+/// the camera leaving is seen within a few seconds, not never.
+#[test]
+fn a_session_with_nothing_readable_still_sees_the_camera_leave() {
+    let mut r = rig_with(FakeMode::Tether, |h| h.with(|s| s.props.clear()));
+    assert!(r.run_until(Duration::from_secs(5), |r| r.owner.status().link == Link::Connected));
+    assert_eq!(r.owner.status().readable, 0);
+    r.run_for(Duration::from_secs(10));
+    assert_eq!(r.owner.status().link, Link::Connected);
+    r.cam.unplug();
+    assert!(r.run_until(Duration::from_secs(10), |r| r.owner.status().link == Link::Searching), "{:?}", r.owner.status());
+    assert_eq!(r.owner.status().reason.as_deref(), Some("unplugged"));
+}
+
 #[test]
 fn without_keep_awake_the_fake_sleeps_at_its_timeout() {
     let mut r = sleepy(6);
