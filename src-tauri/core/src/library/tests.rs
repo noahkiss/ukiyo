@@ -63,6 +63,26 @@ fn presets_save_replace_trash_and_restore() {
     assert!(leftovers.is_empty());
 }
 
+/// The 30 days count from the delete, not from the item's last save.
+#[test]
+fn the_trash_keeps_an_old_item_for_thirty_days_after_the_delete() {
+    use std::time::{Duration, SystemTime};
+    let (_d, s) = store();
+    let days = |n: u64| SystemTime::now() - Duration::from_secs(n * 86_400);
+    let backdate = |p: &Path, n: u64| std::fs::OpenOptions::new().write(true).open(p).unwrap().set_modified(days(n)).unwrap();
+    s.save("test", &preset_input("Old", json!({ "AutoPowerOff": "OFF" })), Context::default()).unwrap();
+    backdate(&s.path(Kind::Preset, "old"), 40);
+    let t = s.delete("test", "preset:old").unwrap();
+    let trash = s.trash();
+    assert_eq!(trash.len(), 1, "a 40-day-old preset survives its delete");
+    assert!(trash[0].at.unwrap() >= t.trashed_at.unwrap() - 60_000.0, "listed by the time it was trashed");
+    let file = s.trash_dir().join(format!("{}.json", t.trash_id.unwrap().strip_prefix("trash:").unwrap()));
+    backdate(&file, TRASH_DAYS as u64 - 1);
+    assert_eq!(s.trash().len(), 1, "still inside the window");
+    backdate(&file, TRASH_DAYS as u64 + 1);
+    assert!(s.trash().is_empty(), "purged after the window");
+}
+
 #[test]
 fn favourites_by_code_and_prefs() {
     let (d, s) = store();

@@ -461,11 +461,17 @@ impl Store {
         let at = now_ms();
         let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S%3f");
         let name = format!("{stamp}-{}-{slug}", kind.name());
-        std::fs::rename(&from, self.trash_dir().join(format!("{name}.json")))?;
+        let to = self.trash_dir().join(format!("{name}.json"));
+        std::fs::rename(&from, &to)?;
+        // A rename keeps the file's old mtime; the trash ages by it, so an item last saved
+        // long ago would be purged at once. Its time in the trash starts now.
+        if let Ok(f) = std::fs::OpenOptions::new().write(true).open(&to) {
+            let _ = f.set_modified(std::time::SystemTime::now());
+        }
         Ok(Some((name, at as f64)))
     }
 
-    /// Drops trashed items older than [`TRASH_DAYS`].
+    /// Drops trashed items older than [`TRASH_DAYS`], by the time they went into the trash.
     fn purge_trash(&self) {
         let limit = std::time::Duration::from_secs(TRASH_DAYS as u64 * 86_400);
         for e in std::fs::read_dir(self.trash_dir()).into_iter().flatten().flatten() {
