@@ -17,6 +17,7 @@ import errno
 import hashlib
 import json
 import re
+import signal
 import socket
 import struct
 import subprocess
@@ -273,6 +274,12 @@ class Run:
         except StopRun as e:
             self.stopped = True
             self.log("stopped_by_owner", at=str(e))
+        except (KeyboardInterrupt, SystemExit) as e:
+            # Ctrl-C, or SIGTERM/SIGHUP through the handler in __main__. The finally blocks on
+            # the way here put D381 back and close the session; finish() rejoins the Wi-Fi.
+            self.stopped = True
+            self.log("stopped_by_signal", why=str(e) or type(e).__name__)
+            raise
         except Exception as e:  # noqa: BLE001 - the run must always reach the clean-up below
             self.findings["errors"].append(f"{type(e).__name__}: {e}")
             self.log("crash", error=f"{type(e).__name__}: {e}")
@@ -1387,6 +1394,12 @@ def parse_args(argv=None):
     return a
 
 
+def _stop(signum, frame):
+    raise SystemExit(f"signal {signum}")  # so the finally blocks restore D381 and rejoin the Wi-Fi
+
+
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    for _sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(_sig, _stop)
     Run(parse_args()).main()
