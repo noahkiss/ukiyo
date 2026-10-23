@@ -26,6 +26,8 @@ export type CatalogEntry = {
   sensor: string | null;
   video: boolean;
   parsed: ParsedRecipe;
+  /** The settings as the core holds them, with the fields the editor does not show. */
+  settings: Settings_Deserialize;
   tones: string[];
   popularity: Popularity;
 };
@@ -140,13 +142,15 @@ export function toParsed(name: string, s: Settings_Deserialize, notes: Note[] = 
 
 function entry(r: CatalogRecipe_Deserialize): CatalogEntry {
   const parsed = toParsed(r.name, r.settings, r.notes ?? [], r.warnings ?? [], { label: publisher(r.credit), url: r.credit.url });
-  return { id: `cat:${r.id}`, name: r.name, credit: r.credit, also: r.alsoPublishedBy ?? [], sensor: r.sensor ?? null, video: r.video ?? false, parsed, tones: simTones(parsed.sim), popularity: r.popularity };
+  return { id: `cat:${r.id}`, name: r.name, credit: r.credit, also: r.alsoPublishedBy ?? [], sensor: r.sensor ?? null, video: r.video ?? false, parsed, settings: r.settings, tones: simTones(parsed.sim), popularity: r.popularity };
 }
 
-/** An entry as a library Recipe, for the editor. Not in the library until saved. */
+/** An entry as a library Recipe, for the editor. Not in the library until saved. The core's
+ * settings ride along, so D-range priority, smooth skin and monochromatic colour survive a
+ * save from the editor. */
 export function entryRecipe(e: CatalogEntry): Recipe {
   const { notes, missing: _m, warnings: _w, ...rest } = e.parsed;
-  return { ...rest, id: e.id, slot: null, mono: isMono(e.parsed.sim), tones: e.tones, notes };
+  return { ...rest, id: e.id, slot: null, mono: isMono(e.parsed.sim), tones: e.tones, notes, settings: e.settings };
 }
 
 const SENSOR_ORDER = ["X-Trans V", "X-Trans IV", "X-Trans III", "X-Trans II", "X-Trans I", "Bayer", "GFX"];
