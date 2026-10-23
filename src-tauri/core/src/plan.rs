@@ -192,6 +192,9 @@ pub struct Raw {
     pub derived: bool,
     /// The value before the plan: what the stale check expects and an undo puts back.
     pub was: Option<Value>,
+    /// An undo plan: the camera set this code by itself during the plan it undoes (the
+    /// catalog's `resets`), and the poll may not have seen it yet. The stale check skips it.
+    pub reset_by_camera: bool,
 }
 
 /// A plan as the Lab stores it.
@@ -724,7 +727,7 @@ pub fn assemble(snap: &Snapshot, plan: &mut Plan, s: Sequenced, texts: &std::col
         step.note = q.note;
         step.resets = q.resets.iter().map(|(c, to)| format!("{} -> {}", describe(*c, entry(cat, *c)), read::display(entry(cat, *c), Some(to)))).collect();
         plan.steps.push(step);
-        raw.push(Raw { code: q.code, before: q.before, after: q.after, derived: q.derived, was: q.was });
+        raw.push(Raw { code: q.code, before: q.before, after: q.after, derived: q.derived, was: q.was, reset_by_camera: false });
     }
     let left = |code: u16, reason: &str, message: String| Left {
         code: read::code_text(code),
@@ -922,7 +925,7 @@ pub fn stale(snap: &Snapshot, s: &Stored) -> Option<Error> {
         .raw
         .iter()
         .enumerate()
-        .filter(|(i, r)| !s.raw[..*i].iter().any(|x| x.code == r.code))
+        .filter(|(i, r)| !r.reset_by_camera && !s.raw[..*i].iter().any(|x| x.code == r.code))
         .filter_map(|(_, r)| {
             let now = snap.rows.iter().find(|x| x.code == r.code).and_then(|x| x.value.clone());
             (now != r.was).then(|| {
@@ -932,6 +935,70 @@ pub fn stale(snap: &Snapshot, s: &Stored) -> Option<Error> {
         })
         .collect();
     (!moved.is_empty()).then(|| err(ErrorCode::PlanStale, format!("changed since the plan: {}", moved.join("; "))).hint("Make a new plan."))
+}
+
+/// An undo plan's targets: the value each code held before the plan, for the codes the apply
+/// changed. `ok[i]` says whether the camera took step `i`; the steps after the first failure
+/// were not sent. A code counts as changed when a taken step wrote it, or when a taken step
+/// made the camera reset it (the catalog's `resets`): the apply may have stopped before the
+/// step that would have put it back.
+pub fn undo_targets(cat: Option<&Catalog>, raw: &[Raw], ok: &[bool]) -> Vec<(u16, Value)> {
+    use crate::recipes::slot;
+    let taken: Vec<&Raw> = raw.iter().zip(ok).filter(|(_, ok)| **ok).map(|(r, _)| r).collect();
+    let reset: Vec<u16> = camera_resets(cat, raw, ok).into_iter().map(|(c, _)| c).collect();
+    let mut out: Vec<(u16, Value)> = vec![];
+    for r in taken.iter().copied().chain(raw.iter().filter(|r| reset.contains(&r.code))) {
+        if out.iter().any(|(c, _)| *c == r.code) {
+            continue;
+        }
+        if let Some(was) = r.was.clone() {
+            // A slot reads 6 for grain OFF on a default slot, and refuses a write of 6.
+            let was = if r.code == slot::GRAIN && was == Value::Int(6) { Value::Int(1) } else { was };
+            out.push((r.code, was));
+        }
+    }
+    out
+}
+
+/// What the camera set by itself for the steps it took (the catalog's `resets`) and no later
+/// step wrote again: each code once, with the value the camera gave it. The owner reads back
+/// only the code it wrote, so the poll shows these later; an undo plan built right after the
+/// apply allows for that.
+pub fn camera_resets(cat: Option<&Catalog>, raw: &[Raw], ok: &[bool]) -> Vec<(u16, Value)> {
+    let mut out: Vec<(u16, Value)> = vec![];
+    for (r, _) in raw.iter().zip(ok).filter(|(_, ok)| **ok) {
+        out.retain(|(c, _)| *c != r.code);
+        for (c, to) in resets_of(cat, r.code, &r.after) {
+            match out.iter_mut().find(|(x, _)| *x == c) {
+                Some(e) => e.1 = to,
+                None => out.push((c, to)),
+            }
+        }
+    }
+    out
+}
+
+/// The snapshot as the camera is after an apply, for its undo plan: a code the camera reset
+/// (`camera_resets`) whose row still shows its value from before the plan is set to the value
+/// the camera gave it, since the poll has not seen the reset yet. A row that moved on since
+/// the plan is kept.
+pub fn after_apply(mut snap: Snapshot, raw: &[Raw], resets: &[(u16, Value)]) -> Snapshot {
+    for (code, to) in resets {
+        let was = raw.iter().find(|r| r.code == *code).and_then(|r| r.was.clone());
+        if let Some(row) = snap.rows.iter_mut().find(|r| r.code == *code) {
+            if row.value == was {
+                row.value = Some(to.clone());
+            }
+        }
+    }
+    snap
+}
+
+/// Marks an undo plan's steps on codes the camera reset: the stale check skips them.
+pub fn mark_camera_resets(raw: &mut [Raw], resets: &[(u16, Value)]) {
+    for r in raw.iter_mut() {
+        r.reset_by_camera = resets.iter().any(|(c, _)| *c == r.code);
+    }
 }
 
 /// A step's result from the owner's outcome. `link` is the camera's link now, to tell a busy

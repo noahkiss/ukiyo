@@ -479,23 +479,6 @@ impl Lab {
         self.plans.lock().unwrap().remove(plan_id).filter(|p| !p.expired()).map(|_| ()).ok_or_else(|| Self::gone(plan_id))
     }
 
-    /// The first value each code held before the plan, for the codes it wrote: an undo
-    /// plan's targets.
-    fn undo_targets(raw: &[Raw], ok: &[bool]) -> Vec<(u16, Value)> {
-        let mut out: Vec<(u16, Value)> = vec![];
-        for (r, _) in raw.iter().zip(ok).filter(|(_, ok)| **ok) {
-            if out.iter().any(|(c, _)| *c == r.code) {
-                continue;
-            }
-            if let Some(was) = r.was.clone() {
-                // A slot reads 6 for grain OFF on a default slot, and refuses a write of 6.
-                let was = if r.code == slot::GRAIN && was == Value::Int(6) { Value::Int(1) } else { was };
-                out.push((r.code, was));
-            }
-        }
-        out
-    }
-
     /// Stores an undo plan, its steps marked `undo`; `None` when it has nothing to write.
     fn store_undo(&self, mut p: Plan, raw: Vec<Raw>, requires: &plan::Requires, snap: &Snapshot, slot: Option<u8>) -> Option<String> {
         if p.steps.is_empty() {
@@ -550,12 +533,18 @@ impl Lab {
         let planned: Vec<u16> = stored.raw.iter().map(|r| r.code).collect();
         let side_effects = plan::side_effects(after.catalog.as_ref(), &after.groups, since, &planned);
         // The undo is planned like any plan, toward the values before: prerequisites and
-        // order included.
-        let targets = Self::undo_targets(&stored.raw, &ok);
+        // order included. It also puts back what the camera reset for a step that was
+        // taken, which the poll may not show yet.
+        let resets = plan::camera_resets(after.catalog.as_ref(), &stored.raw, &ok);
+        let targets = plan::undo_targets(after.catalog.as_ref(), &stored.raw, &ok);
+        let after = plan::after_apply(after, &stored.raw, &resets);
         let undo_plan_id = (!targets.is_empty())
             .then(|| plan::build_values(&after, &targets, true).ok())
             .flatten()
-            .and_then(|(p, raw)| self.store_undo(p, raw, &stored.plan.requires, &after, None));
+            .and_then(|(p, mut raw)| {
+                plan::mark_camera_resets(&mut raw, &resets);
+                self.store_undo(p, raw, &stored.plan.requires, &after, None)
+            });
         let applied = steps.iter().filter(|s| s.ok).count() as u32;
         let failed = steps.len() as u32 - applied;
         let out = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects, warnings: vec![] };
@@ -608,7 +597,7 @@ impl Lab {
         let applied = steps.iter().filter(|s| s.ok).count() as u32;
         let failed = steps.len() as u32 - applied;
         let not_attempted = (stored.raw.len() - steps.len()) as u32;
-        let targets = Self::undo_targets(&stored.raw, &ok);
+        let targets = plan::undo_targets(cat, &stored.raw, &ok);
         let undo_plan_id = if targets.is_empty() {
             None
         } else {
