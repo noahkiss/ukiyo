@@ -109,7 +109,7 @@ class Camera:
                 break
             except (OSError, fp.PTPError) as e:
                 print("Init failed:", e, flush=True)
-                self.s.sock = None
+                self.s.close()  # drop a half-open connection before the next discovery
                 if attempt == 2:
                     sys.exit("The camera keeps closing the connection. Set CONNECTION MODE again.")
                 time.sleep(15)

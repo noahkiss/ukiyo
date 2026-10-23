@@ -110,7 +110,9 @@ def pack_value(dtype, v):
     if dtype in SCALAR:
         return struct.pack("<" + SCALAR[dtype], v)
     if dtype == 0xFFFF:
-        return ptp_string(v)
+        # Never a zero-length string on the wire: the X-T5 left junk in D20B after one
+        # (docs/wifi.md). An empty value goes as the terminator alone, which clears the property.
+        return ptp_string(v) if v else b"\x01\x00\x00"
     raise PTPError(f"cannot pack datatype {dtype:#x}")
 
 
@@ -392,34 +394,41 @@ class Session:
                 time.sleep(max(spacing, 2.0))
             self.sock = connect(self.host, self.port, self.timeout, attempts=2, spacing=2.0, log=self.log)
             self.sock.settimeout(self.timeout)
-            t0 = time.monotonic()
-            self.sock.sendall(build_init(self.name, self.guid))
-            raw = recv_packet(self.sock)
-            length, ptype = struct.unpack_from("<II", raw, 0)
-            ms = (time.monotonic() - t0) * 1000
-            if ptype == INIT_CMD_ACK:
-                ack = parse_init_ack(raw[8:])
-                self.log("init_ack", attempt=i + 1, ms=round(ms, 1), length=length, conn=ack["conn"],
-                         camera_name=ack["name"], raw_len=len(raw))
-                time.sleep(0.1)  # libfuji: Fuji cameras need >= 50 ms before OpenSession
-                return ack
-            self.log("init_fail", attempt=i + 1, ms=round(ms, 1), type=ptype, raw=raw.hex())
-            reason = struct.unpack_from("<I", raw, 8)[0] if len(raw) >= 12 else None
-            if reason == 0x2019:
-                # Busy: Capture One resends the init on the same socket, and the camera then accepts.
-                # Closing instead makes the camera stop listening.
-                for _ in range(4):
-                    time.sleep(1.0)
-                    self.sock.sendall(build_init(self.name, self.guid))
-                    raw = recv_packet(self.sock)
-                    length, ptype = struct.unpack_from("<II", raw, 0)
-                    if ptype == INIT_CMD_ACK:
-                        ack = parse_init_ack(raw[8:])
-                        self.log("init_ack", attempt=i + 1, resent=True, length=length, conn=ack["conn"],
-                                 camera_name=ack["name"])
-                        time.sleep(0.1)
-                        return ack
-                    self.log("init_fail", attempt=i + 1, resent=True, type=ptype, raw=raw.hex())
+            try:
+                t0 = time.monotonic()
+                self.sock.sendall(build_init(self.name, self.guid))
+                raw = recv_packet(self.sock)
+                length, ptype = struct.unpack_from("<II", raw, 0)
+                ms = (time.monotonic() - t0) * 1000
+                if ptype == INIT_CMD_ACK:
+                    ack = parse_init_ack(raw[8:])
+                    self.log("init_ack", attempt=i + 1, ms=round(ms, 1), length=length, conn=ack["conn"],
+                             camera_name=ack["name"], raw_len=len(raw))
+                    time.sleep(0.1)  # libfuji: Fuji cameras need >= 50 ms before OpenSession
+                    return ack
+                self.log("init_fail", attempt=i + 1, ms=round(ms, 1), type=ptype, raw=raw.hex())
+                reason = struct.unpack_from("<I", raw, 8)[0] if len(raw) >= 12 else None
+                if reason == 0x2019:
+                    # Busy: Capture One resends the init on the same socket, and the camera then accepts.
+                    # Closing instead makes the camera stop listening.
+                    for _ in range(4):
+                        time.sleep(1.0)
+                        self.sock.sendall(build_init(self.name, self.guid))
+                        raw = recv_packet(self.sock)
+                        length, ptype = struct.unpack_from("<II", raw, 0)
+                        if ptype == INIT_CMD_ACK:
+                            ack = parse_init_ack(raw[8:])
+                            self.log("init_ack", attempt=i + 1, resent=True, length=length, conn=ack["conn"],
+                                     camera_name=ack["name"])
+                            time.sleep(0.1)
+                            return ack
+                        self.log("init_fail", attempt=i + 1, resent=True, type=ptype, raw=raw.hex())
+            except (OSError, PTPError):
+                # The camera serves one client; a half-open connection left here would hold its slot
+                # while the caller retries.
+                self.sock.close()
+                self.sock = None
+                raise
             self.sock.close()
             self.sock = None
         raise PTPError("camera refused the init request (INIT_FAIL) on every attempt")

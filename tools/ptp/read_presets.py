@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyusb"]
+# dependencies = ["pyusb>=1.2,<2"]
 # ///
 """Read Fujifilm custom presets C1-C7 over PTP (USB RAW CONV./BACKUP RESTORE mode).
 
