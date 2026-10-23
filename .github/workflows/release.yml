@@ -20,7 +20,8 @@ name: Release
 #   2. Commit, then `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 #
 # A dry run builds, signs, notarizes and packages, uploads the files as a workflow artifact,
-# and attaches nothing. It needs no tag: on a branch it tags HEAD inside the runner only.
+# and attaches nothing. It needs no tag: tauri-macos-build runs with require-tag off and takes
+# the version in tauri.conf.json.
 #
 #   gh workflow run release.yml -R noahkiss/ukiyo --ref main -f dry-run=true
 #
@@ -87,33 +88,19 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      # tauri-macos-build proves HEAD is the release tag's commit. A dry run on a branch has
-      # no tag, so it makes one here, in the runner's clone only; nothing is pushed.
-      - name: Resolve the tag
-        id: tag
-        env:
-          INPUT_TAG: ${{ inputs.tag }}
-        run: |
-          set -euo pipefail
-          tag="$INPUT_TAG"
-          [ -n "$tag" ] || [[ "$GITHUB_REF" != refs/tags/* ]] || tag="${GITHUB_REF#refs/tags/}"
-          if [ -z "$tag" ]; then
-            tag="v$(jq -r .version src-tauri/tauri.conf.json)"
-            git tag "$tag" HEAD
-            echo "::notice::dry run: tagged HEAD as ${tag} in the runner only"
-          fi
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-
+      # tauri-macos-build proves HEAD is the release tag's commit. A dry run turns that check
+      # off: on a branch the tag is v<tauri.conf.json version>, which need not exist.
       - id: build
-        uses: noahkiss/workflows/actions/tauri-macos-build@1aa3bd66afe3a7fe1c47fcadc4129e8b7232bceb # main, 2026-10-12
+        uses: noahkiss/workflows/actions/tauri-macos-build@e675b62e84ea7f074e2b8e66b58f09247d2e11cd # main, 2026-10-23
         with:
-          tag: ${{ steps.tag.outputs.tag }}
+          tag: ${{ inputs.tag }}
+          require-tag: ${{ env.DRY_RUN == 'true' && 'false' || 'true' }}
           app-name: Ukiyo
           asset-prefix: ukiyo
           # Run from src-tauri/: the sidecar overlay and the updater public key.
           tauri-command: ../tools/release/tauri.sh
 
-      - uses: noahkiss/workflows/actions/macos-sign-notarize@1aa3bd66afe3a7fe1c47fcadc4129e8b7232bceb # main, 2026-10-12
+      - uses: noahkiss/workflows/actions/macos-sign-notarize@e675b62e84ea7f074e2b8e66b58f09247d2e11cd # main, 2026-10-23
         with:
           path: ${{ steps.build.outputs.app }}
           identity: 'Developer ID Application: NKMK Digital Co. (2Z88BYP37C)'
@@ -143,12 +130,12 @@ jobs:
         if: env.DRY_RUN == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ukiyo-${{ steps.tag.outputs.tag }}-dry-run
+          name: ukiyo-${{ steps.build.outputs.tag }}-dry-run
           path: ${{ env.dir }}
           retention-days: 7
 
       - if: env.DRY_RUN != 'true'
-        uses: noahkiss/workflows/actions/release-attach@1aa3bd66afe3a7fe1c47fcadc4129e8b7232bceb # main, 2026-10-12
+        uses: noahkiss/workflows/actions/release-attach@e675b62e84ea7f074e2b8e66b58f09247d2e11cd # main, 2026-10-23
         with:
           path: ${{ steps.build.outputs.app }}
           tag: ${{ steps.build.outputs.tag }}
