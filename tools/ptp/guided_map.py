@@ -50,10 +50,9 @@ Output, in local/mapping/ (gitignored, it holds this camera's values):
   <date>-<name>-proposed.json   RFC 6902 JSON Patch against catalog/<model>.json, for review
 
 Writes: only AUTO POWER OFF (D381). Every 10 s it goes to a neighbouring timeout (5 min, or 2 min
-when the owner's is 5 min) and back to the owner's value, so a crash between the two writes never
-leaves the camera at OFF. This
-which resets the power-off timer (docs/protocol.md, "Camera state and power"). A finally block
-restores it, retrying 0x2019 and 0xA001 with a 250 ms backoff. If the owner's value is already
+when the owner's is 5 min) and back to the owner's value; the write resets the power-off timer
+(docs/protocol.md, "Camera state and power"), and a crash between the two writes never leaves the
+camera at OFF. A finally block restores it, retrying 0x2019 and 0xA001 with a 250 ms backoff. If the owner's value is already
 OFF, nothing is written. A write can answer 0xA001 while reads work and D22E reads 1: the owner
 is in a menu. Outside a dialog the script then prints "a camera menu is open; close it".
 
