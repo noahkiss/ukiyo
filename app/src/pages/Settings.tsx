@@ -328,8 +328,9 @@ export function Settings({ sub }: { sub: string | null }) {
             {listed.map((r) => (
               <SettingLine key={r.id} row={r} hit={hitIds.has(r.id) || focusRow === r.id} onChange={(id, p) => void update(listed.find((x) => x.id === id) ?? r, p)} />
             ))}
-            {listed.length === 0 && section === FAVOURITES && <p className="empty">No favourites yet. Star a setting to add it.</p>}
-            {listed.length === 0 && section !== FAVOURITES && <p className="empty">No settings to show. Connect the camera in tether mode.</p>}
+            {listed.length === 0 && (
+              <p className="empty">{section === FAVOURITES && lib.favs.size === 0 ? "No favourites yet. Star a setting to add it." : "No settings to show. Connect the camera in tether mode."}</p>
+            )}
           </section>
         )}
 

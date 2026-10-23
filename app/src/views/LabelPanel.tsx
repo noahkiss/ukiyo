@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Applied, Confidence, LabelPatch, Plan, PropRow, Value } from "../bindings";
 import { display, formValues, hex, rawText, TYPE_NAMES, valueKey, type Catalog, type Entry } from "../lib/decode";
 import { CloseIcon } from "../shell/icons";
@@ -31,7 +31,6 @@ const CONFIDENCE: Array<[Confidence, string]> = [
 ];
 
 export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, onSave, writer, onClose }: Props) {
-  const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(entry?.name ?? "");
   const [menu, setMenu] = useState(entry?.menu ?? lastMenu);
   const [confidence, setConfidence] = useState<Confidence>(entry?.confidence ?? "likely");
@@ -74,7 +73,7 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
   };
 
   return (
-    <section className="card panel" role="dialog" aria-modal="false" aria-labelledby="label-title" onKeyDown={onKey} data-component="label-panel">
+    <section className="card panel" role="dialog" aria-modal="false" aria-labelledby="label-title" data-component="label-panel">
       <div className="panel-head">
         <h2 id="label-title" className="mono">
           {hex(target.code)}
@@ -90,6 +89,7 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
       </div>
       <form
         className="panel-body"
+        onKeyDown={onKey}
         onSubmit={(e) => {
           e.preventDefault();
           submit();
@@ -97,7 +97,7 @@ export function LabelPanel({ target, row, entry, catalog, lastMenu, connected, o
       >
         <label className="field">
           <span>Label</span>
-          <input ref={nameRef} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ColorChromeEffect" />
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ColorChromeEffect" />
         </label>
         <label className="field">
           <span>Menu path</span>

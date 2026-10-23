@@ -249,13 +249,14 @@ p {
   cursor: pointer;
 }
 
-.seg button[aria-pressed="true"] {
+.seg button[aria-pressed="true"],
+.seg button[aria-selected="true"] {
   background: var(--raised);
   color: var(--ink);
   font-weight: 600;
 }
 
-.seg button:hover:not([aria-pressed="true"]) {
+.seg button:hover:not([aria-pressed="true"]):not([aria-selected="true"]) {
   color: var(--ink);
 }
 

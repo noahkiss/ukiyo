@@ -62,6 +62,7 @@ export function Recipes() {
   const catalogById = data?.byId ?? new Map<string, CatalogEntry>();
   const slotById = new Map((slots ?? []).map((s) => [s.view.id, s]));
   const find = (id: string): Recipe => {
+    if (!id) return BLANK;
     if (id === "new") return NEW_C7;
     const sl = slotById.get(id);
     if (sl) return sl.recipe;
@@ -175,8 +176,13 @@ export function Recipes() {
     if (!inTauri) return notBuilt(`Writing to slot ${slot}`);
     const unchanged = diff(find(r.id), r) === 0;
     let id = known ?? (unchanged && (r.id.startsWith("cat:") || r.id.startsWith("recipe:")) ? r.id : null);
-    if (!id) id = await store(r);
-    if (!id) return;
+    if (!id) {
+      id = await store(r);
+      if (!id) return;
+      // The editor now holds the library copy.
+      setSelectedId(id);
+      setDraft({ ...r, id });
+    }
     if (pending) void commands.planDiscard(pending.plan.plan_id);
     try {
       const plan = await slotPlan(id, slot, allowUnconfirmed);

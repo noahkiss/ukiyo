@@ -201,6 +201,8 @@ export function Lab({ active }: { active: boolean }) {
         return;
       }
       if (typing || target || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Enter on a focused button or link activates it.
+      if (e.key === "Enter" && (el.tagName === "BUTTON" || el.tagName === "A")) return;
       if (e.key === "/") {
         e.preventDefault();
         searchRef.current?.focus();
