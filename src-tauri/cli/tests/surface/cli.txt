@@ -1,4 +1,5 @@
 # schema_version 1
+cli.arg camera transport [KIND]
 cli.arg catalog show [CODE]
 cli.arg help modes [MODE]
 cli.arg log note <TEXT>
@@ -35,9 +36,11 @@ cli.arg snapshots save [NAME]
 cli.arg snapshots show <ID>
 cli.arg trash restore <ID>
 cli.command camera
+cli.command camera capture
 cli.command camera connect
 cli.command camera disconnect
 cli.command camera export
+cli.command camera transport
 cli.command camera watch
 cli.command catalog
 cli.command catalog show
@@ -92,6 +95,9 @@ cli.command trash restore
 cli.flag  --json
 cli.flag  --quiet
 cli.flag  --schema-version
+cli.flag camera capture --allow-unconfirmed
+cli.flag camera capture --dry-run
+cli.flag camera capture -y,--yes
 cli.flag camera watch --code VALUE
 cli.flag camera watch --for VALUE
 cli.flag catalog show --model VALUE

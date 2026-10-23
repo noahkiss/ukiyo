@@ -138,6 +138,7 @@ pub(crate) fn applied_lines(a: &Applied, total: usize) -> Vec<String> {
         out.push(format!("Also changed: {} {}  {} -> {}", e.code, e.name.clone().unwrap_or_default(), label(&e.old_label, &e.old), label(&e.new_label, &e.new)));
     }
     out.extend(a.warnings.iter().map(|w| format!("Warning: {w}")));
+    out.extend(a.shots.iter().map(|s| format!("Saved {} ({} KB): {}", s.name, s.bytes / 1024, s.path)));
     if a.not_attempted > 0 {
         out.push(format!("{} step(s) not attempted after the failure.", a.not_attempted));
     }
@@ -211,13 +212,18 @@ fn apply(out: Out, c: &Client, plan: Plan) -> Result<i32, Fail> {
 
 /// Plans `set` and carries it through: the common body of `settings set` and `owner set`.
 fn set(out: Out, set: IndexMap<String, String>, flags: WriteFlags) -> Result<i32, Fail> {
-    plan_and_decide(out, Request::PlanCreate { set, allow_unconfirmed: flags.allow_unconfirmed, from: None, slot: None }, flags)
+    plan_and_decide(out, Request::PlanCreate { set, allow_unconfirmed: flags.allow_unconfirmed, from: None, slot: None, capture: false }, flags)
 }
 
 /// Plans a library item (`preset:<slug>`, `snapshot:<slug>`) and carries it through:
 /// `presets apply` and `snapshots restore`.
 pub fn plan_from(out: Out, from: String, flags: WriteFlags) -> Result<i32, Fail> {
-    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(from), slot: None }, flags)
+    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(from), slot: None, capture: false }, flags)
+}
+
+/// `ukiyo camera capture`: a capture plan, shown, then applied on yes.
+pub fn camera_capture(out: Out, flags: WriteFlags) -> Result<i32, Fail> {
+    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false, from: None, slot: None, capture: true }, flags)
 }
 
 pub(crate) fn plan_and_decide(out: Out, req: Request, flags: WriteFlags) -> Result<i32, Fail> {
@@ -344,6 +350,39 @@ pub fn plan_discard(out: Out, plan_id: &str) -> Result<i32, Fail> {
 }
 
 // ---- camera connect | disconnect | export ----
+
+/// `ukiyo camera transport [usb|wifi]`: saves the preference, and a running owner switches
+/// at once (it closes the session cleanly first). Never starts `serve` for it.
+pub fn camera_transport(out: Out, kind: Option<&str>) -> Result<i32, Fail> {
+    use ukiyo_core::camera::transport::TransportKind;
+    let data = ukiyo_core::paths::data_dir();
+    let Some(k) = kind else {
+        let p = ukiyo_core::api::call::prefs_get(&data);
+        let now = ukiyo_core::lab::transport_choice(&p);
+        if out.json {
+            out.data(json!({ "transport": now, "saved": p.transport }));
+        } else {
+            line(&format!("Transport: {}{}", now.label(), if now != p.transport { " (UKIYO_TRANSPORT)" } else { "" }));
+        }
+        return Ok(DONE);
+    };
+    let k = TransportKind::parse(k).ok_or_else(|| Fail::usage(format!("no transport {k:?}")).hint("ukiyo camera transport usb|wifi"))?;
+    let c = conn::existing(Duration::from_millis(500));
+    let running = c.call(Request::LabTransport { kind: k }).is_ok();
+    c.close();
+    let patch = ukiyo_core::library::prefs::PrefsPatch { transport: Some(k), ..Default::default() };
+    ukiyo_core::api::call::prefs_set(&data, &patch)?;
+    if out.json {
+        out.data(json!({ "transport": k, "serve": running }));
+    } else {
+        line(&format!("Transport: {}.{}", k.label(), if running { " ukiyo serve looks for the camera that way now." } else { "" }));
+        if k == TransportKind::Wifi {
+            line("Set CONNECTION MODE to WIRELESS TETHER SHOOTING FIXED; the camera must be on the Mac's network.");
+            line(ukiyo_core::read::WIFI_BATTERY_NOTE);
+        }
+    }
+    Ok(DONE)
+}
 
 pub fn camera_connect(out: Out, on: bool) -> Result<i32, Fail> {
     // Disconnecting needs no owner when none runs: nothing holds the camera then.

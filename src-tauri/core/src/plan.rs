@@ -43,6 +43,11 @@ pub struct PlanInput {
     /// to, `C1` to `C7`. Needs USB RAW CONV. mode.
     #[serde(default)]
     pub slot: Option<String>,
+    /// A capture plan: one shot (PC priority, half-press, release), imported from the
+    /// tether buffer. `set` and `from` must be empty. D208 stays never_write: the gesture is
+    /// this plan kind, not a settings write.
+    #[serde(default)]
+    pub capture: bool,
 }
 
 /// The camera state a plan was made in, and needs at apply.
@@ -128,6 +133,9 @@ pub struct Plan {
     /// Things the plan cannot do as asked, besides blocked steps.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// A capture plan: its steps are one owner request, not separate writes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub capture: bool,
 }
 
 impl Plan {
@@ -178,6 +186,9 @@ pub struct Applied {
     /// What went wrong around the steps: a slot selector that was not restored.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// A capture plan's shots, saved on this Mac.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shots: Vec<crate::camera::owner::Shot>,
 }
 
 pub const UNCHANGED: &str = "unchanged";
@@ -207,6 +218,8 @@ pub struct Stored {
     pub created: Instant,
     /// A slot plan's slot (1-7).
     pub slot: Option<u8>,
+    /// A capture plan.
+    pub shot: bool,
 }
 
 impl Stored {
@@ -698,6 +711,7 @@ pub fn empty_plan(snap: &Snapshot, allow_unconfirmed: bool) -> Plan {
         slot: None,
         recipe: None,
         warnings: vec![],
+        capture: false,
     }
 }
 

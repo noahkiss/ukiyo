@@ -17,8 +17,11 @@ use crate::camera::owner::{self, ChangeGroup, Config, Event, Link, PropRow, Requ
 use crate::camera::ptp::{self, Value};
 use crate::plan::{self, Applied, Plan, PlanInput, Raw, Stored};
 use crate::recipes::slot;
-use crate::camera::transport::Connector;
+use crate::camera::fake_wifi::FakeWifiCamera;
+use crate::camera::transport::{Connector, TransportKind};
 use crate::camera::usb::UsbConnector;
+use crate::camera::wifi::{WifiConfig, WifiConnector};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use crate::catalog::{Catalog, LabelPatch};
 use crate::library::history::Recorder;
 use crate::library::prefs;
@@ -35,6 +38,8 @@ use std::time::Duration;
 
 /// Change groups kept for the window's feed.
 const FEED: usize = 1000;
+/// Shots kept for the window.
+const SHOTS: usize = 50;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +52,9 @@ pub struct Snapshot {
     pub session_path: Option<String>,
     pub fake: bool,
     pub noisy: Vec<u16>,
+    /// The latest shots from the tether buffer, newest first.
+    #[serde(default)]
+    pub shots: Vec<owner::Shot>,
 }
 
 /// What the person at the fake camera does (`UKIYO_FAKE_CAMERA=1` only).
@@ -82,6 +90,7 @@ struct Mirror {
     catalog_model: Option<String>,
     /// The status last written to the session log (timings aside).
     logged: Option<Logged>,
+    shots: VecDeque<owner::Shot>,
 }
 
 pub struct Lab {
@@ -98,6 +107,45 @@ pub struct Lab {
     /// Plans by id, until applied, discarded or expired.
     plans: Mutex<HashMap<String, Stored>>,
     next_plan: AtomicU32,
+    /// The transport the owner uses now.
+    transport: Mutex<TransportKind>,
+    /// The fake camera's loopback Wi-Fi endpoint, while the fake runs on Wi-Fi.
+    wifi_fake: Mutex<Option<FakeWifiCamera>>,
+}
+
+/// The transport for this run: `UKIYO_TRANSPORT` (`usb`, `wifi`), else the preference.
+pub fn transport_choice(p: &prefs::Prefs) -> TransportKind {
+    std::env::var("UKIYO_TRANSPORT").ok().and_then(|v| TransportKind::parse(&v)).unwrap_or(p.transport)
+}
+
+/// The connector for a transport. The fake camera on Wi-Fi sits behind a loopback endpoint,
+/// returned with it: it runs while it lives.
+fn connector_for(kind: TransportKind, fake: Option<&FakeHandle>) -> (Box<dyn Connector>, Option<FakeWifiCamera>) {
+    const FAKE_OP_COST: Duration = Duration::from_millis(3);
+    match (kind, fake) {
+        (TransportKind::Usb, None) => (Box::new(UsbConnector), None),
+        (TransportKind::Wifi, None) => (Box::new(WifiConnector::start(WifiConfig::default())), None),
+        (TransportKind::Usb, Some(h)) => {
+            h.with(|s| s.buffer_blocks_writes = false);
+            (Box::new(FakeCamera::from_handle(h.clone(), FAKE_OP_COST)), None)
+        }
+        (TransportKind::Wifi, Some(h)) => {
+            // As the X-T5 over wireless tether: shots in the buffer block every write.
+            h.with(|s| s.buffer_blocks_writes = true);
+            let loopback = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0);
+            let c = WifiConnector::start(WifiConfig { listen: loopback, ..WifiConfig::default() });
+            match FakeWifiCamera::start(FakeCamera::from_handle(h.clone(), FAKE_OP_COST), c.tether_port(), Default::default()) {
+                Ok(ep) => {
+                    c.set_targets(vec![ep.target()]);
+                    (Box::new(c), Some(ep))
+                }
+                Err(e) => {
+                    eprintln!("ukiyo: the fake Wi-Fi camera did not start: {e}");
+                    (Box::new(c), None)
+                }
+            }
+        }
+    }
 }
 
 fn wall_ms() -> i64 {
@@ -138,7 +186,7 @@ pub fn catalog_dir(data_dir: &Path, resources: Option<PathBuf>) -> PathBuf {
 impl Snapshot {
     /// A snapshot with no camera, only a catalog: for resolving names offline.
     pub fn of_catalog(catalog: Option<Catalog>) -> Snapshot {
-        Snapshot { status: Status::default(), rows: vec![], groups: vec![], catalog, catalog_path: None, session_path: None, fake: false, noisy: vec![] }
+        Snapshot { status: Status::default(), rows: vec![], groups: vec![], catalog, catalog_path: None, session_path: None, fake: false, noisy: vec![], shots: vec![] }
     }
 }
 
@@ -165,20 +213,19 @@ impl Lab {
 
         let clock: Arc<dyn Clock> = Arc::new(RealClock::new());
         let use_fake = fake_mode.is_some() || std::env::var("UKIYO_FAKE_CAMERA").is_ok_and(|v| v == "1");
-        let (connector, fake): (Box<dyn Connector>, _) = if use_fake {
+        let fake = use_fake.then(|| {
             let mode = if let Some(m) = fake_mode {
                 m
             } else if std::env::var("UKIYO_FAKE_MODE").is_ok_and(|v| v == "rawconv") { FakeMode::RawConv } else { FakeMode::Tether };
-            let cam = FakeCamera::x_t5(clock.clone(), mode).with_op_cost(Duration::from_millis(3));
-            let h = cam.handle();
+            let h = FakeCamera::x_t5(clock.clone(), mode).handle();
             // The fake sleeps after its AUTO POWER OFF time, so keep-awake has work to do.
             h.with(|s| s.auto_sleep = true);
             // `UKIYO_FAKE_AUTO=0` stops the fake's own setting changes, for tests that compare reads.
             let auto = !std::env::var("UKIYO_FAKE_AUTO").is_ok_and(|v| v == "0");
-            (Box::new(cam), Some((h, Arc::new(AtomicBool::new(auto)))))
-        } else {
-            (Box::new(UsbConnector), None)
-        };
+            (h, Arc::new(AtomicBool::new(auto)))
+        });
+        let transport = transport_choice(&settings);
+        let (connector, wifi_fake) = connector_for(transport, fake.as_ref().map(|(h, _)| h));
 
         let emit = Arc::new(emit);
         let sink = {
@@ -190,10 +237,11 @@ impl Lab {
             Box::new(move |e: Event| on_event(e, &mirror, &log, &catalog_dir, &history, &*emit))
         };
         // The first line, before the owner thread can log a status.
-        write_log(&log, serde_json::json!({ "kind": "start", "fake": fake.is_some() }));
+        write_log(&log, serde_json::json!({ "kind": "start", "fake": fake.is_some(), "transport": transport }));
         let cfg = Config {
             in_use_for: Duration::from_secs(u64::from(settings.in_use_minutes.max(1)) * 60),
             close_menu_to_write: settings.close_menu_to_write,
+            shots_dir: Some(data_dir.join("shots")),
             ..Config::default()
         };
         let (tx, thread) = owner::spawn(connector, clock, sink, cfg);
@@ -224,7 +272,27 @@ impl Lab {
             lock: Mutex::new(Some(lock)),
             plans: Mutex::new(HashMap::new()),
             next_plan: AtomicU32::new(1),
+            transport: Mutex::new(transport),
+            wifi_fake: Mutex::new(wifi_fake),
         })
+    }
+
+    /// The transport: USB or Wi-Fi. The owner closes the session cleanly and looks for the
+    /// camera the other way from now on. Saved in `settings.json`.
+    pub fn transport(&self, actor: &str, kind: TransportKind) {
+        if let Err(e) = prefs::update(&self.data_dir, &prefs::PrefsPatch { transport: Some(kind), ..Default::default() }) {
+            eprintln!("ukiyo: settings.json not saved: {e}");
+        }
+        let mut cur = self.transport.lock().unwrap();
+        if *cur == kind {
+            return;
+        }
+        *cur = kind;
+        let (c, endpoint) = connector_for(kind, self.fake.as_ref().map(|(h, _)| h));
+        self.send(Request::UseConnector(c));
+        // The old loopback endpoint (fake camera on Wi-Fi) stops; its socket closes.
+        drop(std::mem::replace(&mut *self.wifi_fake.lock().unwrap(), endpoint));
+        self.log_line(serde_json::json!({ "kind": "transport", "actor": actor, "transport": kind }));
     }
 
     fn send(&self, r: Request) {
@@ -251,6 +319,7 @@ impl Lab {
             session_path: self.session_path.as_ref().map(|p| p.display().to_string()),
             fake: self.fake.is_some(),
             noisy: owner::NOISY.to_vec(),
+            shots: m.shots.iter().cloned().collect(),
         }
     }
 
@@ -334,6 +403,12 @@ impl Lab {
     pub fn plan(&self, input: PlanInput) -> Result<Plan, Error> {
         let snap = self.snapshot();
         let store = crate::library::Store::new(&self.data_dir);
+        if input.capture {
+            if !input.set.is_empty() || input.from.is_some() || input.slot.is_some() {
+                return Err(Error::new(ErrorCode::BadRequest, "a capture plan takes one shot: give capture alone, without set, from or slot"));
+            }
+            return self.plan_capture();
+        }
         let (plan, raw) = match input.from.as_deref() {
             None => {
                 if input.slot.is_some() {
@@ -362,7 +437,99 @@ impl Lab {
                 }
             }
         };
-        Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), slot: None }))
+        Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), shot: false, slot: None }))
+    }
+
+    // ---- capture ----
+
+    /// A capture plan: the steps the owner will run as one request. Needs tether mode
+    /// (USB or wireless), stills, the shooting screen.
+    fn plan_capture(&self) -> Result<Plan, Error> {
+        let snap = self.snapshot();
+        plan::ready(&snap)?;
+        crate::read::readiness(&snap.status, snap.rows.len(), crate::read::Need::Tether)?;
+        if snap.status.capture != Some(owner::Capture::Stills) {
+            return Err(Error::new(ErrorCode::NeedsStills, "A capture needs the STILL/MOVIE switch on STILL.").hint("Set the STILL/MOVIE switch to STILL."));
+        }
+        let now = |code: u16| snap.rows.iter().find(|r| r.code == code).and_then(|r| r.value.clone());
+        let mut p = plan::empty_plan(&snap, false);
+        p.capture = true;
+        let mut step = |code: u16, before: Option<Value>, after: i64, purpose: &str, note: &str| {
+            let mut s = plan::step_view(&snap, code, before.as_ref(), &Value::Int(after), "capture");
+            s.purpose = purpose.into();
+            s.note = Some(note.into());
+            p.steps.push(s);
+        };
+        let zoom = now(owner::LIVE_ZOOM);
+        let prio = now(owner::PRIORITY);
+        if zoom != Some(Value::Int(1)) {
+            step(owner::LIVE_ZOOM, zoom.clone(), 1, plan::purpose::PREREQUISITE, "PC priority needs live zoom at 1");
+        }
+        if prio != Some(Value::Int(owner::PRIORITY_PC)) {
+            step(owner::PRIORITY, prio.clone(), owner::PRIORITY_PC, plan::purpose::PREREQUISITE, "PC priority for the release");
+        }
+        step(owner::RELEASE, None, owner::RELEASE_HALF_PRESS, "capture", "half-press (S1), then InitiateCapture");
+        step(owner::RELEASE, None, owner::RELEASE_SHOOT, "capture", "release (S1+S2), then InitiateCapture; the shot is imported from the tether buffer");
+        if let Some(Value::Int(v)) = prio.filter(|v| *v != Value::Int(owner::PRIORITY_PC)) {
+            step(owner::PRIORITY, Some(Value::Int(owner::PRIORITY_PC)), v, plan::purpose::RESTORE, "priority back");
+        }
+        if let Some(Value::Int(v)) = zoom.filter(|v| *v != Value::Int(1)) {
+            step(owner::LIVE_ZOOM, Some(Value::Int(1)), v, plan::purpose::RESTORE, "live zoom back");
+        }
+        if snap.status.transport == crate::camera::transport::TransportKind::Usb {
+            p.warnings.push("Capture is tested over Wi-Fi only; over USB the shot may not reach the tether buffer.".into());
+        }
+        Ok(self.store(Stored { plan: p, raw: vec![], mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), shot: true, slot: None }))
+    }
+
+    /// Applies a capture plan: one owner request; the shots land in `shots/` in the data
+    /// folder.
+    fn apply_capture(&self, actor: &str, plan_id: &str, stored: Stored, snap: Snapshot) -> Result<Applied, Error> {
+        if snap.status.mode != stored.mode || snap.status.capture != stored.capture {
+            let e = Error::new(ErrorCode::PlanStale, "the camera's mode or STILL/MOVIE switch changed since the plan").hint("Make a new plan.");
+            self.log_line(serde_json::json!({ "kind": "apply", "actor": actor, "plan": plan_id, "refused": e.code }));
+            return Err(e);
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.send(Request::Capture { actor: Some(actor.into()), reply: tx });
+        let out = rx.recv_timeout(Duration::from_secs(300)).map_err(|_| Error::new(ErrorCode::Failed, "no answer from the camera thread"))?;
+        let link = self.mirror.lock().unwrap().status.link;
+        let mut steps: Vec<plan::AppliedStep> = vec![];
+        let raw_of = |w: &WriteOutcome| plan::Raw { code: w.code, before: w.before.clone(), after: Value::Int(match w.readback { Some(Value::Int(n)) if w.ok => n, _ => 0 }), derived: false, was: w.before.clone(), reset_by_camera: false };
+        for w in &out.writes {
+            self.log_line(serde_json::json!({ "kind": "write", "actor": actor, "plan": plan_id, "outcome": w }));
+            let mut r = raw_of(w);
+            // The value asked for: the read-back when it took, else the plan's step.
+            if !w.ok {
+                if let Some(s) = stored.plan.steps.iter().find(|s| s.code == crate::read::code_text(w.code)) {
+                    if let crate::read::RawValue::Int(n) = s.after_value {
+                        r.after = Value::Int(n);
+                    }
+                }
+            }
+            steps.push(plan::applied_step(&snap, &r, w, link));
+        }
+        let mut warnings = vec![];
+        if let Some(why) = &out.refused {
+            warnings.push(why.clone());
+        }
+        if !out.restored && !out.writes.is_empty() {
+            warnings.push("PriorityMode (D207) or live zoom (D01B) is not back at its value before.".into());
+        }
+        if out.refused.as_deref().is_some_and(|w| [owner::refusal::NOT_CONNECTED, owner::refusal::LOST].contains(&w)) && out.writes.is_empty() && !out.fired {
+            return Err(Error::new(ErrorCode::NotConnected, format!("the camera is not connected ({})", out.refused.unwrap_or_default())));
+        }
+        if out.refused.as_deref() == Some(owner::refusal::PAUSED) {
+            self.plans.lock().unwrap().insert(plan_id.into(), stored);
+            return Err(Error::new(ErrorCode::Busy, "the camera is busy or in a menu").hint("Wait; try again in a few seconds."));
+        }
+        let applied = steps.iter().filter(|s| s.ok).count() as u32 + u32::from(out.fired);
+        let failed = steps.iter().filter(|s| !s.ok).count() as u32 + u32::from(!out.fired);
+        let a = Applied { plan_id: plan_id.into(), applied, failed, not_attempted: 0, undo_plan_id: None, steps, side_effects: vec![], warnings, shots: out.shots.clone() };
+        self.log_line(serde_json::json!({
+            "kind": "apply", "actor": actor, "plan": plan_id, "capture": true, "fired": out.fired, "shots": out.shots.len(), "restored": out.restored,
+        }));
+        Ok(a)
     }
 
     // ---- custom slots ----
@@ -465,7 +632,7 @@ impl Lab {
         if name.chars().count() > slot::NAME_MAX {
             plan.warnings.push(format!("The slot name is cut to {} characters: {}", slot::NAME_MAX, slot::name_for(&name)));
         }
-        Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), slot: Some(n) }))
+        Ok(self.store(Stored { plan, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), shot: false, slot: Some(n) }))
     }
 
     fn gone(plan_id: &str) -> Error {
@@ -490,7 +657,7 @@ impl Lab {
             s.gate = "undo".into();
         }
         p.requires = requires.clone();
-        Some(self.store(Stored { plan: p, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), slot }).plan_id)
+        Some(self.store(Stored { plan: p, raw, mode: snap.status.mode, capture: snap.status.capture, created: std::time::Instant::now(), shot: false, slot }).plan_id)
     }
 
     /// Applies a stored plan: re-checks it, writes each step in order (the owner reads each
@@ -503,6 +670,9 @@ impl Lab {
         if let Err(e) = plan::ready(&snap) {
             self.plans.lock().unwrap().insert(plan_id.into(), stored);
             return Err(e);
+        }
+        if stored.shot {
+            return self.apply_capture(actor, plan_id, stored, snap);
         }
         if let Some(e) = plan::never_write_in(&snap, &stored.raw) {
             self.log_line(serde_json::json!({ "kind": "apply", "actor": actor, "plan": plan_id, "refused": e.code }));
@@ -549,7 +719,7 @@ impl Lab {
             });
         let applied = steps.iter().filter(|s| s.ok).count() as u32;
         let failed = steps.len() as u32 - applied;
-        let out = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects, warnings: vec![] };
+        let out = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects, warnings: vec![], shots: vec![] };
         self.log_line(serde_json::json!({
             "kind": "apply", "actor": actor, "plan": plan_id, "applied": out.applied, "failed": out.failed,
             "not_attempted": out.not_attempted, "undo": out.undo_plan_id,
@@ -614,7 +784,7 @@ impl Lab {
                 }
             }
         };
-        let a = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects: vec![], warnings };
+        let a = Applied { plan_id: plan_id.into(), applied, failed, not_attempted, undo_plan_id, steps, side_effects: vec![], warnings, shots: vec![] };
         self.log_line(serde_json::json!({
             "kind": "apply", "actor": actor, "plan": plan_id, "slot": slot::slot_name(n), "applied": a.applied, "failed": a.failed,
             "not_attempted": a.not_attempted, "undo": a.undo_plan_id,
@@ -768,6 +938,13 @@ fn on_event(e: Event, mirror: &Mutex<Mirror>, log: &Mutex<Option<std::fs::File>>
             drop(m);
             write_log(log, serde_json::json!({ "kind": "changes", "group": g }));
             emit(api::Event::Changes(g));
+        }
+        Event::Shot(shot) => {
+            let mut m = mirror.lock().unwrap();
+            m.shots.push_front(shot.clone());
+            m.shots.truncate(SHOTS);
+            drop(m);
+            write_log(log, serde_json::json!({ "kind": "shot", "name": shot.name, "path": shot.path, "bytes": shot.bytes }));
         }
         Event::Log(line) => write_log(log, serde_json::json!({ "kind": "log", "text": line })),
     }

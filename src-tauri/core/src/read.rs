@@ -5,6 +5,7 @@
 
 use crate::camera::owner::{Capture, Change, ChangeGroup, ChangeSource, Link, PropRow, Status, UsbMode};
 use crate::camera::ptp::{Form, Value};
+use crate::camera::transport::TransportKind;
 use crate::catalog::{self, Catalog, Confidence, Entry};
 use crate::lab::Snapshot;
 use crate::modes;
@@ -51,7 +52,8 @@ pub fn mode_id(m: UsbMode) -> &'static str {
 /// Whether the camera can answer a read that needs `need`. `rows` is how many properties the
 /// Lab has read; a fresh connection has none for a moment.
 pub fn readiness(s: &Status, rows: usize, need: Need) -> Result<(), Problem> {
-    let plug = || "Plug in the cable and turn the camera on.".to_string();
+    let wifi = s.transport == TransportKind::Wifi;
+    let plug = || if wifi { WIFI_HINT } else { "Plug in the cable and turn the camera on." }.to_string();
     let reason = s.reason.as_deref().map(|r| format!(" ({r})")).unwrap_or_default();
     match s.link {
         Link::Connected if rows > 0 => {}
@@ -59,7 +61,7 @@ pub fn readiness(s: &Status, rows: usize, need: Need) -> Result<(), Problem> {
             return Err(Problem { code: "not_connected", message: "The camera is still connecting.".into(), hint: "Try again in a few seconds.".into(), walkthrough: None, mode: None });
         }
         Link::Searching | Link::Waiting => {
-            return Err(Problem { code: "not_connected", message: format!("No camera on USB{reason}."), hint: plug(), walkthrough: Some(modes::walkthrough("tether")), mode: None });
+            return Err(Problem { code: "not_connected", message: format!("No camera on {}{reason}.", s.transport.label()), hint: plug(), walkthrough: (!wifi).then(|| modes::walkthrough("tether")), mode: None });
         }
         Link::Stopped => {
             return Err(Problem {
@@ -111,6 +113,21 @@ fn mode_name(m: UsbMode) -> &'static str {
         UsbMode::RawConv => "USB RAW CONV./BACKUP RESTORE",
         UsbMode::CardReader => "USB CARD READER",
         UsbMode::Unknown => "an unknown mode",
+    }
+}
+
+/// What brings a camera onto Wi-Fi.
+pub const WIFI_HINT: &str = "Turn the camera on, set CONNECTION MODE to WIRELESS TETHER SHOOTING FIXED, and put it on the Mac's network.";
+
+/// The note shown with the battery while the camera is on Wi-Fi.
+pub const WIFI_BATTERY_NOTE: &str = "Wi-Fi drains the camera's battery faster than USB.";
+
+/// The body battery in percent: the first field of D36B (BatteryRatioInfo), a
+/// comma-separated list of percentages.
+pub fn battery_percent(v: Option<&Value>) -> Option<u8> {
+    match v? {
+        Value::Str(s) => s.split(',').next()?.trim().parse::<u8>().ok().filter(|p| *p <= 100),
+        _ => None,
     }
 }
 
@@ -214,6 +231,8 @@ pub struct Available {
 #[derive(Debug, Clone, Serialize)]
 pub struct StatusView {
     pub link: Link,
+    /// `usb` or `wifi`: how `serve` reaches the camera.
+    pub transport: TransportKind,
     pub reason: Option<String>,
     pub model: Option<String>,
     pub firmware: Option<String>,
@@ -222,6 +241,10 @@ pub struct StatusView {
     pub screen: Option<crate::camera::owner::Screen>,
     /// BatteryLevel as the catalog labels it (the raw value until the catalog maps it).
     pub battery: Option<String>,
+    /// The body battery in percent, from D36B (BatteryRatioInfo).
+    pub battery_percent: Option<u8>,
+    /// Over Wi-Fi: Wi-Fi drains the battery faster than USB.
+    pub battery_note: Option<&'static str>,
     /// CaptureRemaining, the shots left on the card (raw until the catalog maps it).
     pub card: Option<String>,
     /// Not read yet: D36D carries the lens name with its serial.
@@ -282,6 +305,7 @@ pub fn status_view(snap: &Snapshot, owner: Option<&Welcome>) -> StatusView {
     let read = |name| named_row(snap, name).map(|(r, e)| display(e, r.value.as_ref()));
     StatusView {
         link: s.link,
+        transport: s.transport,
         reason: s.reason.clone(),
         model: s.model.clone(),
         firmware: s.firmware.clone(),
@@ -289,6 +313,8 @@ pub fn status_view(snap: &Snapshot, owner: Option<&Welcome>) -> StatusView {
         capture: s.capture,
         screen: s.screen,
         battery: if connected { read("BatteryLevel") } else { None },
+        battery_percent: if connected { battery_percent(snap.rows.iter().find(|r| r.code == 0xD36B && r.available).and_then(|r| r.value.as_ref())) } else { None },
+        battery_note: (s.transport == TransportKind::Wifi).then_some(WIFI_BATTERY_NOTE),
         card: if connected { read("CaptureRemaining") } else { None },
         lens: None,
         owner: "serve",
@@ -584,6 +610,7 @@ mod tests {
                 row(0xD999, Value::Int(0), Form::None),
             ],
             groups: vec![],
+            shots: vec![],
             catalog: Some(cat),
             catalog_path: None,
             session_path: None,

@@ -50,7 +50,7 @@ export const commands = {
 	 *  Builds a plan against the live camera: names or codes to labels or raw values.
 	 *  Writes nothing.
 	 */
-	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null, slot: string | null) => typedError<Plan_Serialize, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from, slot })),
+	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null, slot: string | null, capture: boolean) => typedError<Plan_Serialize, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from, slot, capture })),
 	/**  Re-checks a plan, writes its steps in order, reads each back, and logs them. */
 	planApply: (planId: string) => typedError<Applied_Serialize, string>(__TAURI_INVOKE("plan_apply", { planId })),
 	/**  Searches the library on this Mac: presets, snapshots, favourites, the trash. */
@@ -71,6 +71,11 @@ export const commands = {
 	 *  power off timer. Remembered in `settings.json`.
 	 */
 	labKeepAwake: (on: boolean) => __TAURI_INVOKE<void>("lab_keep_awake", { on }),
+	/**
+	 *  How `serve` reaches the camera: `usb` or `wifi` (wireless tether). The owner
+	 *  closes the session cleanly and looks the other way. Remembered in `settings.json`.
+	 */
+	labTransport: (kind: TransportKind) => __TAURI_INVOKE<void>("lab_transport", { kind }),
 	/**  The Lab's connect switch: off stops the owner from connecting. */
 	labConnect: (on: boolean) => __TAURI_INVOKE<void>("lab_connect", { on }),
 	/**  A note in the session log, tied to a change group. */
@@ -131,6 +136,8 @@ export type Applied_Deserialize = {
 	side_effects: ChangeView[],
 	/**  What went wrong around the steps: a slot selector that was not restored. */
 	warnings?: string[],
+	/**  A capture plan's shots, saved on this Mac. */
+	shots?: Shot[],
 };
 
 export type Applied_Serialize = {
@@ -145,6 +152,8 @@ export type Applied_Serialize = {
 	side_effects: ChangeView[],
 	/**  What went wrong around the steps: a slot selector that was not restored. */
 	warnings?: string[],
+	/**  A capture plan's shots, saved on this Mac. */
+	shots?: Shot[],
 };
 
 export type Capture = "stills" | "movie";
@@ -674,6 +683,8 @@ export type Plan_Deserialize = {
 	recipe?: string | null,
 	/**  Things the plan cannot do as asked, besides blocked steps. */
 	warnings?: string[],
+	/**  A capture plan: its steps are one owner request, not separate writes. */
+	capture?: boolean,
 };
 
 export type Plan_Serialize = {
@@ -695,6 +706,8 @@ export type Plan_Serialize = {
 	recipe?: string | null,
 	/**  Things the plan cannot do as asked, besides blocked steps. */
 	warnings?: string[],
+	/**  A capture plan: its steps are one owner request, not separate writes. */
+	capture?: boolean,
 };
 
 /**
@@ -746,6 +759,11 @@ export type Prefs = {
 	 *  half-press, which closes the menu, and one retry.
 	 */
 	close_menu_to_write?: boolean,
+	/**
+	 *  How `serve` reaches the camera: `usb` or `wifi` (wireless tether).
+	 *  `UKIYO_TRANSPORT` overrides it for one run.
+	 */
+	transport?: TransportKind,
 };
 
 /**  A change to some preferences. `None` leaves a field alone. */
@@ -756,6 +774,7 @@ export type PrefsPatch = {
 	keep_awake?: boolean | null,
 	in_use_minutes?: number | null,
 	close_menu_to_write?: boolean | null,
+	transport?: TransportKind | null,
 };
 
 /**
@@ -1181,6 +1200,17 @@ export type Settings_Serialize = {
 	monochromaticColorMg?: number | null,
 };
 
+/**  One shot from the tether buffer, saved on this Mac. */
+export type Shot = {
+	/**  The camera's file name: `DSCF0001.JPG`. */
+	name: string,
+	path: string,
+	bytes: number,
+	jpeg: boolean,
+	/**  Wall-clock ms. */
+	at: number | null,
+};
+
 export type SlotField = {
 	code: string,
 	name: string | null,
@@ -1235,6 +1265,8 @@ export type Snapshot_Deserialize = {
 	sessionPath: string | null,
 	fake: boolean,
 	noisy: number[],
+	/**  The latest shots from the tether buffer, newest first. */
+	shots?: Shot[],
 };
 
 export type Snapshot_Serialize = {
@@ -1246,6 +1278,8 @@ export type Snapshot_Serialize = {
 	sessionPath: string | null,
 	fake: boolean,
 	noisy: number[],
+	/**  The latest shots from the tether buffer, newest first. */
+	shots: Shot[],
 };
 
 /**  A site that publishes recipes. */
@@ -1264,6 +1298,8 @@ export type SourceInfo = {
 
 export type Status = {
 	link: Link,
+	/**  How the owner reaches the camera: the USB cable or wireless tether. */
+	transport?: TransportKind,
 	/**  Why the link is in its state, for the status bar ("auto power off", "unplugged"). */
 	reason: string | null,
 	model: string | null,
@@ -1315,6 +1351,16 @@ export type Step = {
 
 /**  The window's theme. */
 export type Theme = "system" | "light" | "dark";
+
+/**  How the owner reaches the camera. */
+export type TransportKind = 
+/**  The USB cable (CONNECTION MODE: USB TETHER SHOOTING FIXED, USB RAW CONV. ...). */
+"usb" | 
+/**
+ *  Wireless tether (CONNECTION MODE: WIRELESS TETHER SHOOTING FIXED), on the Mac's
+ *  network.
+ */
+"wifi";
 
 export type Trashed = {
 	id: string,

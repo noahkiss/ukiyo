@@ -190,7 +190,7 @@ pub fn snapshots_diff(out: Out, a: &str, b: Option<&str>, allow_unconfirmed: boo
     let c = conn::client(out, None);
     let r = (|| {
         conn::settled(&c, None)?;
-        match c.call(Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed, from: Some(a.clone()), slot: None })? {
+        match c.call(Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed, from: Some(a.clone()), slot: None, capture: false })? {
             Response::PlanCreate(p) => {
                 let _ = c.call(Request::PlanDiscard { plan_id: p.plan_id.clone() });
                 Ok(*p)
@@ -290,6 +290,11 @@ pub fn prefs_set(out: Out, pairs: &[String]) -> Result<i32, Fail> {
     if let Some(on) = patch.keep_awake {
         let c = conn::existing(Duration::from_millis(500));
         let _ = c.call(Request::LabKeepAwake { on });
+        c.close();
+    }
+    if let Some(kind) = patch.transport {
+        let c = conn::existing(Duration::from_millis(500));
+        let _ = c.call(Request::LabTransport { kind });
         c.close();
     }
     let p = call::prefs_set(&data(), &patch)?;

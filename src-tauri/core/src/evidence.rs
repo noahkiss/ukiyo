@@ -74,7 +74,7 @@ mod tests {
     use crate::camera::ptp::Form;
 
     fn snap(rows: Vec<PropRow>, groups: Vec<ChangeGroup>) -> Snapshot {
-        Snapshot { status: Status::default(), rows, groups, catalog: None, catalog_path: None, session_path: None, fake: true, noisy: vec![] }
+        Snapshot { status: Status::default(), rows, groups, catalog: None, catalog_path: None, session_path: None, fake: true, noisy: vec![], shots: vec![] }
     }
 
     fn row(code: u16, value: Value) -> PropRow {

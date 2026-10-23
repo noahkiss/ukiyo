@@ -570,10 +570,28 @@ function SettingLine({ row, hit, onChange }: { row: Line; hit: boolean; onChange
 function Connection() {
   const { status } = useCamera();
   const on = status?.keepAwake.enabled ?? false;
+  const transport = status?.transport ?? "usb";
   return (
     <section className="card settings-list" aria-labelledby="connection-title" data-component="connection">
       <div className="settings-list-head">
         <h2 id="connection-title">Camera connection</h2>
+      </div>
+      <div className="setting">
+        <div className="setting-name">
+          <span id="transport-label">Connect over</span>
+          <span className="tiny muted">
+            {transport === "wifi"
+              ? "Set CONNECTION MODE to WIRELESS TETHER SHOOTING FIXED, on this Mac's network. Wi-Fi drains the camera's battery faster than USB."
+              : "Set CONNECTION MODE to a USB mode and plug in the cable."}
+          </span>
+        </div>
+        <div className="seg compact" role="group" aria-labelledby="transport-label" data-action="transport">
+          {(["usb", "wifi"] as const).map((k) => (
+            <button key={k} type="button" aria-pressed={transport === k} disabled={!inTauri} onClick={() => void commands.labTransport(k)}>
+              {k === "usb" ? "USB" : "Wi-Fi"}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="setting">
         <div className="setting-name">

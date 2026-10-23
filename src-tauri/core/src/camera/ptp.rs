@@ -12,6 +12,16 @@ pub const OP_GET_PROP_VALUE: u16 = 0x1015;
 pub const OP_SET_PROP_VALUE: u16 = 0x1016;
 /// InitiateCapture(0, 0): performs the gesture written to D208 first.
 pub const OP_INITIATE_CAPTURE: u16 = 0x100E;
+/// GetObjectHandles(storage, format, parent): the tether buffer's objects.
+pub const OP_GET_OBJECT_HANDLES: u16 = 0x1007;
+pub const OP_GET_OBJECT_INFO: u16 = 0x1008;
+pub const OP_GET_OBJECT: u16 = 0x1009;
+/// DeleteObject(handle, 0). Ukiyo sends it only for a tether buffer object it has saved.
+pub const OP_DELETE_OBJECT: u16 = 0x100B;
+/// Every storage, for GetObjectHandles.
+pub const ALL_STORAGES: u32 = 0xFFFF_FFFF;
+/// The JPEG object format.
+pub const FORMAT_JPEG: u16 = 0x3801;
 
 pub const RC_OK: u16 = 0x2001;
 pub const RC_OPERATION_NOT_SUPPORTED: u16 = 0x2005;
@@ -21,6 +31,10 @@ pub const RC_DEVICE_BUSY: u16 = 0x2019;
 pub const RC_SESSION_ALREADY_OPEN: u16 = 0x201E;
 /// Fujifilm: every property answers this while a menu is open on the camera.
 pub const RC_FUJI_MENU: u16 = 0xA001;
+/// Fujifilm, wireless tether: every write answers this while the tether buffer holds shots,
+/// until the client downloads and deletes them (docs/wifi.md).
+pub const RC_FUJI_BUFFER: u16 = 0xA002;
+pub const RC_INVALID_OBJECT_HANDLE: u16 = 0x2009;
 pub const RC_GENERAL_ERROR: u16 = 0x2002;
 
 pub const KIND_COMMAND: u16 = 1;
@@ -382,6 +396,51 @@ pub fn encode_device_info(i: &DeviceInfo) -> Vec<u8> {
     b
 }
 
+/// The parts of an ObjectInfo dataset Ukiyo uses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectInfo {
+    pub storage: u32,
+    pub format: u16,
+    pub size: u32,
+    pub filename: String,
+}
+
+/// Parses an ObjectInfo dataset: storage, format, protection, size, the thumbnail and image
+/// fields, then the file name.
+pub fn object_info(b: &[u8]) -> Result<ObjectInfo, DecodeError> {
+    let mut r = Reader::new(b);
+    let storage = r.u32()?;
+    let format = r.u16()?;
+    r.u16()?;
+    let size = r.u32()?;
+    // Thumb format, thumb size, thumb w/h, image w/h, bit depth, parent, association
+    // type and description, sequence number: 2 + 6 * 4 + 2 + 2 * 4 bytes ...
+    r.take(2 + 4 * 7 + 2 + 4 + 4)?;
+    let filename = r.string()?;
+    Ok(ObjectInfo { storage, format, size, filename })
+}
+
+/// Bytes for an ObjectInfo dataset, for the fake camera and tests.
+pub fn encode_object_info(o: &ObjectInfo) -> Vec<u8> {
+    let mut b = vec![];
+    b.extend(o.storage.to_le_bytes());
+    b.extend(o.format.to_le_bytes());
+    b.extend(0u16.to_le_bytes());
+    b.extend(o.size.to_le_bytes());
+    b.extend([0u8; 2 + 4 * 7 + 2 + 4 + 4]);
+    b.extend(encode(0xFFFF, &Value::Str(o.filename.clone())).unwrap_or_default());
+    // Capture date, modification date, keywords: empty strings.
+    b.extend([0u8; 3]);
+    b
+}
+
+/// A u32 array dataset (GetObjectHandles, GetStorageIDs).
+pub fn u32_array(b: &[u8]) -> Result<Vec<u32>, DecodeError> {
+    let mut r = Reader::new(b);
+    let n = r.u32()? as usize;
+    (0..n).map(|_| r.u32()).collect()
+}
+
 /// Bytes for a value dataset, for the fake camera and tests.
 pub fn encode_any(t: u16, v: &Value) -> Vec<u8> {
     match v {
@@ -437,6 +496,8 @@ pub fn rc_name(rc: u16) -> &'static str {
         0x201C => "InvalidDevicePropFormat",
         0x201D => "InvalidDevicePropValue",
         RC_FUJI_MENU => "CameraInMenu",
+        RC_FUJI_BUFFER => "TetherBufferFull",
+        RC_INVALID_OBJECT_HANDLE => "InvalidObjectHandle",
         _ => "unknown",
     }
 }
@@ -495,6 +556,18 @@ mod tests {
             properties: vec![0xD22E, 0xD381],
         };
         assert_eq!(device_info(&encode_device_info(&i)).unwrap(), i);
+    }
+
+    #[test]
+    fn object_info_round_trips() {
+        let o = ObjectInfo { storage: 0x1000_0001, format: FORMAT_JPEG, size: 1234, filename: "DSCF0001.JPG".into() };
+        assert_eq!(object_info(&encode_object_info(&o)).unwrap(), o);
+        // The layout fujiptpip.parse_object_info reads: the file name at byte 52.
+        assert_eq!(encode_object_info(&o)[52], 13);
+        let mut a = 2u32.to_le_bytes().to_vec();
+        a.extend(7u32.to_le_bytes());
+        a.extend(9u32.to_le_bytes());
+        assert_eq!(u32_array(&a).unwrap(), vec![7, 9]);
     }
 
     #[test]

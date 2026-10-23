@@ -3,7 +3,7 @@ import { commands, type Applied, type Plan } from "../bindings";
 /** Builds a plan of confirmed settings: `set`, or a library item (`preset:x`, `snapshot:x`).
  * Writes nothing. A plan with nothing to write comes back as its reason. */
 export async function makePlan(set: Record<string, string>, from: string | null = null): Promise<Plan | string> {
-  const r = await commands.planCreate(set, false, from, null);
+  const r = await commands.planCreate(set, false, from, null, false);
   return r.status === "ok" ? r.data : r.error;
 }
 

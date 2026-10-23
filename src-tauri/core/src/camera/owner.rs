@@ -17,7 +17,7 @@
 
 use super::clock::Clock;
 use super::ptp::{self, DeviceInfo, Form, PropDesc, Value};
-use super::transport::{Connector, Reply, Transport, TransportError};
+use super::transport::{Connector, Reply, Transport, TransportError, TransportKind};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::{BTreeMap, HashSet, VecDeque};
@@ -34,6 +34,13 @@ pub const RELEASE: u16 = 0xD208;
 pub const RELEASE_HALF_PRESS: i64 = 0x0200;
 /// D208: release S1.
 pub const RELEASE_S1_OFF: i64 = 0x0004;
+/// D208: S1 and S2 on, then off: the release (docs/wifi.md, "Capture").
+pub const RELEASE_SHOOT: i64 = 0x0304;
+/// D01B, live zoom: PC priority needs it at 1.
+pub const LIVE_ZOOM: u16 = 0xD01B;
+/// D207: 1 camera priority, 2 PC priority.
+pub const PRIORITY: u16 = 0xD207;
+pub const PRIORITY_PC: i64 = 2;
 /// D381's OFF value.
 pub const AUTO_POWER_OFF_OFF: i64 = 3;
 /// Selects the custom slot (1-7) that the slot fields read and write (RAW CONV. mode).
@@ -105,6 +112,14 @@ pub struct Config {
     pub close_menu_to_write: bool,
     /// How long the half-press holds S1 before the release.
     pub half_press_hold: Duration,
+    /// Where shots from the tether buffer are saved (`<dir>/<date>/<file>`). `None`: the
+    /// owner never downloads or deletes a buffer object.
+    pub shots_dir: Option<std::path::PathBuf>,
+    /// How often the owner looks in the tether buffer over Wi-Fi (shots taken on the body).
+    pub buffer_every: Duration,
+    /// A capture: the half-press before the release, and how long to wait for the shot.
+    pub capture_focus: Duration,
+    pub capture_wait: Duration,
 }
 
 impl Default for Config {
@@ -124,6 +139,10 @@ impl Default for Config {
             restore_retry: Duration::from_secs(1),
             close_menu_to_write: true,
             half_press_hold: Duration::from_millis(500),
+            shots_dir: None,
+            buffer_every: Duration::from_secs(2),
+            capture_focus: Duration::from_millis(800),
+            capture_wait: Duration::from_secs(10),
         }
     }
 }
@@ -204,6 +223,9 @@ pub struct KeepAwake {
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     pub link: Link,
+    /// How the owner reaches the camera: the USB cable or wireless tether.
+    #[serde(default)]
+    pub transport: TransportKind,
     /// Why the link is in its state, for the status bar ("auto power off", "unplugged").
     pub reason: Option<String>,
     pub model: Option<String>,
@@ -235,6 +257,7 @@ impl Default for Status {
     fn default() -> Self {
         Self {
             link: Link::Searching,
+            transport: TransportKind::Usb,
             reason: None,
             model: None,
             firmware: None,
@@ -347,6 +370,40 @@ pub mod refusal {
     pub const LOST: &str = "connection lost";
     /// Slot reads and writes work only in USB RAW CONV./BACKUP RESTORE mode.
     pub const NOT_RAWCONV: &str = "not in RAW CONV. mode";
+    /// A capture needs tether mode (USB or wireless).
+    pub const NOT_TETHER: &str = "not in tether mode";
+    /// A capture needs the STILL/MOVIE switch on STILL.
+    pub const NOT_STILLS: &str = "not in stills";
+}
+
+/// One shot from the tether buffer, saved on this Mac.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Shot {
+    /// The camera's file name: `DSCF0001.JPG`.
+    pub name: String,
+    pub path: String,
+    pub bytes: u32,
+    pub jpeg: bool,
+    /// Wall-clock ms.
+    pub at: f64,
+}
+
+/// What a capture did (`Request::Capture`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct CaptureOutcome {
+    /// Why nothing was sent, or what went wrong on the way.
+    pub refused: Option<String>,
+    /// The release (D208 0x0304 + InitiateCapture) answered OK.
+    pub fired: bool,
+    /// The release's answer.
+    pub rc: Option<u16>,
+    /// The shots imported, any waiting before included.
+    pub shots: Vec<Shot>,
+    /// D207 and D01B read back at their values before.
+    pub restored: bool,
+    /// The D01B and D207 writes, each read back.
+    pub writes: Vec<WriteOutcome>,
 }
 
 /// A custom slot read or write (USB RAW CONV. mode). The owner selects the slot through
@@ -406,17 +463,23 @@ pub enum Request {
     /// Someone is using Ukiyo: a client request or window input.
     Activity,
     Export(Sender<Result<Dump, String>>),
+    /// One shot (a capture plan's apply): PC priority, half-press, release, the shot from
+    /// the tether buffer, priority back. Queued with the writes.
+    Capture { actor: Option<String>, reply: Sender<CaptureOutcome> },
     /// Closes the session (AUTO POWER OFF back at the owner's value), and stays off until
     /// `Connect`.
     Disconnect,
     Connect,
+    /// Closes the session cleanly and looks for the camera through another connector (USB
+    /// or Wi-Fi) from now on.
+    UseConnector(Box<dyn Connector>),
     /// A clean disconnect, then the thread ends.
     Shutdown,
 }
 
 impl Request {
     fn is_write(&self) -> bool {
-        matches!(self, Request::Write { .. } | Request::Slot { .. })
+        matches!(self, Request::Write { .. } | Request::Slot { .. } | Request::Capture { .. })
     }
 }
 
@@ -450,6 +513,8 @@ pub enum Event {
     /// Every property, after the camera was described (connect, mode switch).
     Props(Vec<PropRow>),
     Changes(ChangeGroup),
+    /// A shot downloaded from the tether buffer and saved; the buffer copy is deleted.
+    Shot(Shot),
     /// One line for the session log.
     Log(String),
 }
@@ -512,6 +577,8 @@ struct Session {
     op_time: Duration,
     /// The next link check while nothing is readable (`poll_step`).
     next_link_check: Duration,
+    /// When the owner next looks in the tether buffer (Wi-Fi).
+    next_buffer: Duration,
 }
 
 enum Phase {
@@ -555,6 +622,7 @@ pub struct Owner {
 
 impl Owner {
     pub fn new(connector: Box<dyn Connector>, clock: Arc<dyn Clock>, sink: Sink, rx: Receiver<Request>, cfg: Config) -> Self {
+        let status = Status { transport: connector.kind(), ..Status::default() };
         Self {
             connector,
             clock,
@@ -563,7 +631,7 @@ impl Owner {
             queue: RequestQueue::default(),
             cfg,
             phase: Phase::Idle { next_check: Duration::ZERO },
-            status: Status::default(),
+            status,
             last_status: None,
             last_status_at: Duration::ZERO,
             blocked_since: None,
@@ -678,6 +746,10 @@ impl Owner {
             Request::SetPinned(codes) => self.pinned = codes.into_iter().collect(),
             Request::KeepAwake(on) => self.status.keep_awake.enabled = on,
             Request::Activity => self.last_activity = Some(self.clock.now()),
+            Request::Capture { actor, reply } => {
+                let out = self.capture(actor);
+                let _ = reply.send(out);
+            }
             Request::Export(tx) => {
                 let _ = tx.send(self.export());
             }
@@ -693,6 +765,21 @@ impl Owner {
                     self.status.link = if self.blocked_since.is_some() { Link::Waiting } else { Link::Searching };
                     self.status.reason = None;
                 }
+            }
+            Request::UseConnector(c) => {
+                let (from, to) = (self.status.transport, c.kind());
+                self.close_clean();
+                self.connector = c;
+                self.status.transport = to;
+                self.status.model = None;
+                self.status.firmware = None;
+                // A clean close: the other connector may open at once.
+                self.blocked_since = None;
+                self.restore = None;
+                self.log(format!("transport: {} -> {}", from.label(), to.label()));
+                let link = if self.stopped { Link::Stopped } else { Link::Searching };
+                self.set_idle(link, None);
+                self.phase = Phase::Idle { next_check: self.clock.now() };
             }
             Request::Shutdown => {
                 self.close_clean();
@@ -733,6 +820,23 @@ impl Owner {
             Ok(x) => x,
             Err(attempts) => return WriteOutcome { attempts, ..refuse(code, LOST) },
         };
+        if rc == ptp::RC_FUJI_BUFFER {
+            // Shots wait in the tether buffer: the camera takes no write until they are
+            // downloaded and deleted. Import them, then one more try.
+            self.log(format!("write {code:#06x}: the tether buffer holds shots (0xA002); importing them"));
+            match self.import_buffer() {
+                Ok(n) if !n.is_empty() => match self.send_set(code, &bytes) {
+                    Ok((r, a)) => {
+                        rc = r;
+                        attempts += a;
+                    }
+                    Err(a) => return WriteOutcome { attempts: attempts + a, ..refuse(code, LOST) },
+                },
+                Ok(_) => {}
+                Err(why) if why == LOST => return WriteOutcome { attempts, ..refuse(code, LOST) },
+                Err(why) => self.log(format!("tether buffer not imported: {why}")),
+            }
+        }
         let mut closed_menu = false;
         let mut result: Option<&str> = None;
         if rc == ptp::RC_FUJI_MENU {
@@ -922,7 +1026,20 @@ impl Owner {
             }
         }
         match self.select_slot(selected) {
-            Ok(ptp::RC_OK) => out.restored = true,
+            // Read back like every write: an OK that left another slot selected is a failed
+            // restore.
+            Ok(ptp::RC_OK) => match self.get_typed(SLOT_SELECT, 0x0004) {
+                Ok(Ok(Value::Int(n))) if n == selected => out.restored = true,
+                Ok(back) => {
+                    let got = match back {
+                        Ok(v) => v.key(),
+                        Err(rc) => ptp::rc_name(rc).to_string(),
+                    };
+                    self.log(format!("slot selector D18C not restored to {selected}: read back {got}"));
+                    out.refused.get_or_insert_with(|| format!("the slot selector D18C reads back {got}, not {selected}"));
+                }
+                Err(()) => return refuse(out, LOST),
+            },
             Ok(rc) => self.log(format!("slot selector D18C not restored to {selected}: {}", ptp::rc_name(rc))),
             Err(()) => return refuse(out, LOST),
         }
@@ -941,24 +1058,230 @@ impl Owner {
     /// taken. The release is sent whatever the press answered. `false`: the connection was
     /// lost (already handled).
     fn half_press(&mut self) -> bool {
-        let gesture = |owner: &mut Self, v: i64| -> bool {
-            let Ok(bytes) = ptp::encode(0x0004, &Value::Int(v)) else { return true };
-            if owner.send_set(RELEASE, &bytes).is_err() {
-                return false;
-            }
-            match owner.op(ptp::OP_INITIATE_CAPTURE, &[0, 0], None) {
-                Ok(_) => true,
-                Err(e) => {
-                    owner.lost(e);
-                    false
-                }
-            }
-        };
-        if !gesture(self, RELEASE_HALF_PRESS) {
+        if self.gesture(RELEASE_HALF_PRESS).is_err() {
             return false;
         }
         self.clock.sleep(self.cfg.half_press_hold);
-        gesture(self, RELEASE_S1_OFF)
+        self.gesture(RELEASE_S1_OFF).is_ok()
+    }
+
+    /// D208 = `v`, then InitiateCapture(0, 0). Returns the two answers; `Err` when the
+    /// connection was lost (already handled). D208 is a command code: nothing reads it back.
+    fn gesture(&mut self, v: i64) -> Result<(u16, u16), ()> {
+        let bytes = ptp::encode(0x0004, &Value::Int(v)).map_err(|_| ())?;
+        let (set, _) = self.send_set(RELEASE, &bytes).map_err(|_| ())?;
+        match self.op(ptp::OP_INITIATE_CAPTURE, &[0, 0], None) {
+            Ok(r) => Ok((set, r.rc)),
+            Err(e) => {
+                self.lost(e);
+                Err(())
+            }
+        }
+    }
+
+    // ---- the tether buffer and capture ----
+
+    /// The tether buffer's handles; `Err` with the reason (`refusal::LOST` when the
+    /// connection was lost, already handled).
+    fn buffer_handles(&mut self) -> Result<Vec<u32>, String> {
+        match self.op(ptp::OP_GET_OBJECT_HANDLES, &[ptp::ALL_STORAGES, 0, 0], None) {
+            Ok(r) if r.rc == ptp::RC_OK => ptp::u32_array(&r.data).map_err(|e| e.0),
+            Ok(r) => Err(format!("GetObjectHandles answered {}", ptp::rc_name(r.rc))),
+            Err(e) => {
+                self.lost(e);
+                Err(refusal::LOST.into())
+            }
+        }
+    }
+
+    /// Downloads every tether buffer object (the JPEG first), saves it under `shots_dir`,
+    /// and deletes the buffer copy only once the file is written. An object that fails to
+    /// download or save stays in the buffer.
+    fn import_buffer(&mut self) -> Result<Vec<Shot>, String> {
+        let Some(dir) = self.cfg.shots_dir.clone() else { return Err("no folder for shots".into()) };
+        let handles = self.buffer_handles()?;
+        if handles.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut items = vec![];
+        for h in handles {
+            match self.op(ptp::OP_GET_OBJECT_INFO, &[h], None) {
+                Ok(r) if r.rc == ptp::RC_OK => items.push((h, ptp::object_info(&r.data).ok())),
+                Ok(_) => items.push((h, None)),
+                Err(e) => {
+                    self.lost(e);
+                    return Err(refusal::LOST.into());
+                }
+            }
+        }
+        // The JPEG first: the window can show it while the RAW downloads.
+        items.sort_by_key(|(_, i)| i.as_ref().is_none_or(|i| i.format != ptp::FORMAT_JPEG));
+        let day = dir.join(chrono::Local::now().format("%Y-%m-%d").to_string());
+        if let Err(e) = std::fs::create_dir_all(&day) {
+            return Err(format!("cannot create {}: {e}", day.display()));
+        }
+        let mut shots = vec![];
+        for (h, info) in items {
+            let name = info.as_ref().map(|i| i.filename.clone()).filter(|n| !n.is_empty() && !n.contains('/')).unwrap_or_else(|| format!("object-{h:08x}"));
+            let data = match self.op(ptp::OP_GET_OBJECT, &[h], None) {
+                Ok(r) if r.rc == ptp::RC_OK => r.data,
+                Ok(r) => {
+                    self.log(format!("shot {name}: GetObject answered {}; left in the tether buffer", ptp::rc_name(r.rc)));
+                    continue;
+                }
+                Err(e) => {
+                    self.lost(e);
+                    return Err(refusal::LOST.into());
+                }
+            };
+            let path = unique_path(&day, &name);
+            if let Err(e) = std::fs::write(&path, &data) {
+                self.log(format!("shot {name}: not saved ({e}); left in the tether buffer"));
+                continue;
+            }
+            match self.op(ptp::OP_DELETE_OBJECT, &[h, 0], None) {
+                Ok(r) if r.rc != ptp::RC_OK => self.log(format!("shot {name}: saved, but DeleteObject answered {}", ptp::rc_name(r.rc))),
+                Ok(_) => {}
+                Err(e) => {
+                    self.lost(e);
+                    return Err(refusal::LOST.into());
+                }
+            }
+            let shot = Shot {
+                name,
+                path: path.display().to_string(),
+                bytes: data.len() as u32,
+                jpeg: info.as_ref().is_some_and(|i| i.format == ptp::FORMAT_JPEG),
+                at: self.clock.wall_ms() as f64,
+            };
+            self.log(format!("shot {}: {} bytes saved; buffer copy deleted", shot.name, shot.bytes));
+            self.emit(Event::Shot(shot.clone()));
+            shots.push(shot);
+        }
+        Ok(shots)
+    }
+
+    /// One write with its read-back as a change group of the request. `None` when the
+    /// connection was lost.
+    fn set_read_back(&mut self, code: u16, v: i64, actor: Option<String>) -> Option<WriteOutcome> {
+        let datatype = self.session()?.props.get(&code).map(|p| p.datatype()).filter(|t| *t != 0).unwrap_or(0x0004);
+        let before = self.session()?.props.get(&code).and_then(|p| p.value.clone());
+        let bytes = ptp::encode(datatype, &Value::Int(v)).ok()?;
+        let (rc, attempts) = self.send_set(code, &bytes).ok()?;
+        let readback = self.read_value(code, ChangeSource::Write, actor);
+        self.session()?;
+        Some(WriteOutcome { code, ok: rc == ptp::RC_OK && readback == Some(Value::Int(v)), result: ptp::rc_name(rc).into(), before, readback, rc: Some(rc), attempts, closed_menu: false })
+    }
+
+    /// A capture: the tether buffer emptied first, D01B (live zoom) to 1 and D207 to PC
+    /// priority, half-press, release, wait for the shot and import it, then D207 and D01B
+    /// back to their values before. Every write is read back.
+    fn capture(&mut self, actor: Option<String>) -> CaptureOutcome {
+        use refusal::*;
+        let mut out = CaptureOutcome::default();
+        let refuse = |mut out: CaptureOutcome, why: &str| {
+            out.refused = Some(why.into());
+            out
+        };
+        let Phase::Connected(s) = &self.phase else { return refuse(out, NOT_CONNECTED) };
+        if !matches!(s.pause, Pause::None) {
+            return refuse(out, PAUSED);
+        }
+        if s.mode != UsbMode::Tether {
+            return refuse(out, NOT_TETHER);
+        }
+        if self.status.capture != Some(Capture::Stills) {
+            return refuse(out, NOT_STILLS);
+        }
+        if self.cfg.shots_dir.is_none() {
+            return refuse(out, "no folder for shots");
+        }
+        // Shots already waiting block every write, priority included.
+        match self.import_buffer() {
+            Ok(s) => out.shots.extend(s),
+            Err(why) if why == LOST => return refuse(out, LOST),
+            Err(why) => return refuse(out, &why),
+        }
+        let value = |owner: &mut Self, code: u16| match owner.get_typed(code, 0x0004) {
+            Ok(Ok(Value::Int(n))) => Ok(Some(n)),
+            Ok(_) => Ok(None),
+            Err(()) => Err(()),
+        };
+        let Ok(zoom) = value(self, LIVE_ZOOM) else { return refuse(out, LOST) };
+        let Ok(prio) = value(self, PRIORITY) else { return refuse(out, LOST) };
+        let by = actor.as_deref().map(|a| format!(" by {a}")).unwrap_or_default();
+        self.log(format!("capture{by}: D01B {zoom:?}, D207 {prio:?}"));
+        // Writes made, to put back: (code, value before).
+        let mut back: Vec<(u16, i64)> = vec![];
+        for (code, want, was) in [(LIVE_ZOOM, 1, zoom), (PRIORITY, PRIORITY_PC, prio)] {
+            if was == Some(want) {
+                continue;
+            }
+            let Some(w) = self.set_read_back(code, want, actor.clone()) else { return refuse(out, LOST) };
+            let good = w.ok;
+            out.writes.push(w);
+            if let Some(v) = was {
+                back.push((code, v));
+            }
+            if !good {
+                out.refused = Some(format!("{code:#06x} did not take {want}"));
+                return self.capture_restore(out, back, actor);
+            }
+        }
+        let Ok(before) = self.buffer_handles() else { return refuse(out, LOST) };
+        if self.gesture(RELEASE_HALF_PRESS).is_err() {
+            return refuse(out, LOST);
+        }
+        self.clock.sleep(self.cfg.capture_focus);
+        let Ok((set, rc)) = self.gesture(RELEASE_SHOOT) else { return refuse(out, LOST) };
+        out.rc = Some(if set != ptp::RC_OK { set } else { rc });
+        out.fired = set == ptp::RC_OK && rc == ptp::RC_OK;
+        self.log(format!("capture{by}: release answered {} / {}", ptp::rc_name(set), ptp::rc_name(rc)));
+        if out.fired {
+            let end = self.clock.now() + self.cfg.capture_wait;
+            loop {
+                match self.buffer_handles() {
+                    Ok(h) if h.iter().any(|x| !before.contains(x)) => {
+                        // RAW and JPEG arrive as two objects; give the second a moment.
+                        self.clock.sleep(Duration::from_millis(500));
+                        break;
+                    }
+                    Ok(_) if self.clock.now() >= end => {
+                        out.refused = Some("no shot arrived in the tether buffer".into());
+                        break;
+                    }
+                    Ok(_) => self.clock.sleep(Duration::from_millis(250)),
+                    Err(_) => return refuse(out, LOST),
+                }
+            }
+            match self.import_buffer() {
+                Ok(s) => out.shots.extend(s),
+                Err(why) if why == LOST => return refuse(out, LOST),
+                Err(why) => out.refused = Some(why),
+            }
+        } else {
+            out.refused = Some(format!("the camera did not fire ({})", ptp::rc_name(out.rc.unwrap_or(0))));
+        }
+        self.capture_restore(out, back, actor)
+    }
+
+    /// Puts D207 and D01B back, in reverse order, each read back.
+    fn capture_restore(&mut self, mut out: CaptureOutcome, back: Vec<(u16, i64)>, actor: Option<String>) -> CaptureOutcome {
+        out.restored = true;
+        for (code, v) in back.into_iter().rev() {
+            match self.set_read_back(code, v, actor.clone()) {
+                Some(w) => {
+                    out.restored &= w.ok;
+                    out.writes.push(w);
+                }
+                None => {
+                    out.restored = false;
+                    out.refused.get_or_insert_with(|| refusal::LOST.into());
+                    return out;
+                }
+            }
+        }
+        out
     }
 
     /// SetDevicePropValue, sent again on 0x2019 ("not now") on the same session after each
@@ -1232,10 +1555,15 @@ impl Owner {
         let last_busy = self.session().and_then(|s| s.last_busy);
         let present = e != TransportError::Gone && self.connector.present();
         self.blocked_since = Some(now);
+        let wifi = self.status.transport == TransportKind::Wifi;
         let (link, reason) = if present {
-            (Link::Waiting, format!("USB error: {e}"))
+            (Link::Waiting, format!("{} error: {e}", self.status.transport.label()))
         } else if last_busy.is_some_and(|t| now.saturating_sub(t) <= self.cfg.power_off_window) {
             (Link::Asleep, "auto power off".to_string())
+        } else if wifi {
+            // Over Wi-Fi a camera that powered off and one that left the network look the
+            // same: the socket closes or stops answering.
+            (Link::Searching, "off or out of reach".to_string())
         } else {
             (Link::Searching, "unplugged".to_string())
         };
@@ -1261,6 +1589,9 @@ impl Owner {
             if self.status.link == Link::Waiting {
                 self.status.link = Link::Searching;
             }
+            if let Some(p) = self.connector.problem() {
+                self.status.reason = Some(p);
+            }
             return;
         }
         if !wait_over {
@@ -1280,7 +1611,8 @@ impl Owner {
         let t = loop {
             match self.open_session(reset_used) {
                 Ok(t) => break t,
-                Err(OpenFail { why, reset_ok: true }) if !reset_used && self.connector.present() => {
+                // A USB reset only: Wi-Fi has none, and its invitation opens once.
+                Err(OpenFail { why, reset_ok: true }) if !reset_used && self.status.transport == TransportKind::Usb && self.connector.present() => {
                     // OpenSession on a fresh claim failed: reset once and try again.
                     self.log(format!("OpenSession failed ({why}); resetting USB once"));
                     reset_used = true;
@@ -1322,6 +1654,7 @@ impl Owner {
             ops: 0,
             op_time: Duration::ZERO,
             next_link_check: now,
+            next_buffer: now,
         });
         let info = match s.t.op(ptp::OP_GET_DEVICE_INFO, &[], None) {
             Ok(r) if r.rc == ptp::RC_OK => {
@@ -1506,6 +1839,17 @@ impl Owner {
         if s.redescribe {
             return self.describe();
         }
+        // Over Wi-Fi, shots taken on the body wait in the tether buffer and block every write:
+        // import them as they come.
+        if self.status.transport == TransportKind::Wifi && s.mode == UsbMode::Tether && now >= s.next_buffer && self.cfg.shots_dir.is_some() {
+            s.next_buffer = now + self.cfg.buffer_every;
+            if let Err(why) = self.import_buffer() {
+                if why != refusal::LOST {
+                    self.log(format!("tether buffer not imported: {why}"));
+                }
+            }
+            return;
+        }
         if s.plan.is_empty() {
             self.finish_cycle();
             self.plan_cycle();
@@ -1683,6 +2027,16 @@ impl Owner {
             }
         }
     }
+}
+
+/// `dir/name`, or `dir/stem-2.ext` and on when a file of that name is there.
+fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let p = dir.join(name);
+    if !p.exists() {
+        return p;
+    }
+    let (stem, ext) = name.rsplit_once('.').map_or((name, String::new()), |(s, e)| (s, format!(".{e}")));
+    (2..).map(|n| dir.join(format!("{stem}-{n}{ext}"))).find(|p| !p.exists()).expect("a free name")
 }
 
 pub fn screen_of(v: &Value) -> Screen {

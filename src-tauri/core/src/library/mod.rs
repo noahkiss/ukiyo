@@ -715,7 +715,7 @@ impl Store {
             SaveKind::Prefs => {
                 let patch: prefs::PrefsPatch = serde_json::from_value(item).map_err(|e| Error::new(ErrorCode::BadRequest, format!("prefs: {e}")))?;
                 if patch.is_empty() {
-                    return Err(Error::new(ErrorCode::BadRequest, "prefs: name at least one of theme, brand_mark, app_icon, keep_awake, in_use_minutes, close_menu_to_write"));
+                    return Err(Error::new(ErrorCode::BadRequest, "prefs: name at least one of theme, brand_mark, app_icon, keep_awake, in_use_minutes, close_menu_to_write, transport"));
                 }
                 prefs::update(&self.data_dir, &patch)?;
                 self.log(actor, "save", "prefs", serde_json::json!({ "patch": patch }));

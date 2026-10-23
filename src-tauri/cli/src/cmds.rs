@@ -87,8 +87,11 @@ pub(crate) fn status_lines(v: &StatusView) -> Vec<String> {
     if !state.is_empty() {
         head.push(state.join(", "));
     }
-    if let Some(b) = &v.battery {
-        head.push(format!("battery {b}"));
+    head.push(format!("over {}", v.transport.label()));
+    match (&v.battery_percent, &v.battery) {
+        (Some(p), _) => head.push(format!("battery {p}%")),
+        (None, Some(b)) => head.push(format!("battery {b}")),
+        _ => {}
     }
     if let Some(c) = &v.card {
         head.push(format!("card {c} left"));
@@ -100,6 +103,7 @@ pub(crate) fn status_lines(v: &StatusView) -> Vec<String> {
     }
     head.push(owner_text(v));
     let mut lines = vec![head.join(" · ")];
+    lines.extend(v.battery_note.map(str::to_string));
     lines.extend(v.notices.iter().map(|n| n.text.to_string()));
     let tether = "settings, presets, snapshots, owner strings";
     match v.mode {
