@@ -708,7 +708,9 @@ the window's Recipes page (`app/src/lib/recipes.ts`, `app/src/views/PlanCard.tsx
   so the CLI, MCP and `serve` search it with no file to find. `library_search {kind:
   catalogue}` sorts by popularity; `sensor` and `film_sim` filter both recipes and the
   catalogue.
-- **`recipe_parse {url}`** fetches one page (20 s limit, 8 MB, a User-Agent naming ukiyo).
+- **`recipe_parse {url}`** fetches one page (20 s limit, 8 MB, a User-Agent naming ukiyo),
+  from a public host only: a link to this machine or its network is refused, at the first hop
+  and at each of at most five redirects (docs/recipes.md, "Import from a link").
   A page on a catalogue site goes through that site's adapter; any other host gets the generic
   reading: the recipe blocks inside its `<article>`, or the whole page. Further recipes in the
   post come back as `others`. The window runs it in its own process, off the main thread.
