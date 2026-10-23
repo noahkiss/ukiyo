@@ -288,6 +288,33 @@ fn a_prerequisite_is_set_for_the_write_and_put_back() {
     r.done();
 }
 
+/// The apply stops at the failed step, before the restore steps. The camera has already
+/// reset Color for the temporary film simulation, so the undo plan must put Color back too,
+/// not only the codes the steps wrote.
+#[test]
+fn the_undo_of_a_failed_apply_puts_back_what_a_prerequisite_reset() {
+    let r = rig();
+    r.set_on_camera(FILM_SIM, Value::Int(1));
+    r.set_on_camera(COLOR, Value::Int(20));
+    r.set_on_camera(MONO_WC, Value::Int(0));
+    // The camera holds 1 whatever is written to Monochromatic Color: a read-back mismatch.
+    r.cam.with(|s| s.write_coerce.insert(MONO_WC, Value::Int(1)));
+    let p = r.plan(&[("MonochromaticColorWC", "30")], false).unwrap();
+    assert_eq!(p.steps.len(), 4, "{p:#?}");
+    let out = r.lab.apply("cli", &p.plan_id).unwrap();
+    assert_eq!((out.applied, out.failed, out.not_attempted), (1, 1, 2), "{out:?}");
+    assert_eq!(r.cam.value(COLOR), Some(Value::Int(0)), "the temporary simulation reset Color");
+    r.cam.with(|s| s.write_coerce.clear());
+    let u = r.lab.plan_show(out.undo_plan_id.as_deref().unwrap()).unwrap();
+    assert!(u.steps.iter().any(|s| s.code == "0xd008" && s.after == "2"), "the undo restores Color: {u:#?}");
+    let ua = r.lab.apply("cli", &u.plan_id).unwrap();
+    assert_eq!(ua.failed, 0, "{ua:#?}");
+    assert_eq!(r.cam.value(FILM_SIM), Some(Value::Int(1)));
+    assert_eq!(r.cam.value(MONO_WC), Some(Value::Int(0)));
+    assert_eq!(r.cam.value(COLOR), Some(Value::Int(20)), "Color is back");
+    r.done();
+}
+
 /// A setting the camera resets with another goes after it, whatever the order asked.
 #[test]
 fn a_reset_setting_is_written_after_the_one_that_resets_it() {

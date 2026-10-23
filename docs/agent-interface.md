@@ -821,8 +821,9 @@ The core enforces every rule here. The front ends only show them.
   resets after the write that resets it ("The recipes as built", section 4). A slot write is:
   select the slot (D18C), write the fields and name (D18D), restore D18C, in one owner
   request. Apply stops at the first failure and returns an undo plan. The undo plan puts back
-  every code a step wrote that the camera answered OK, a read-back mismatch included, and is
-  ordered the same way.
+  every code a step wrote that the camera answered OK, a read-back mismatch included, and
+  every code the camera reset for such a step (the catalog's `resets`) that no later step put
+  back. It is ordered the same way.
 - A write the camera answers 0x2019 (busy) is sent again on the same session after 100, 200,
   400, 800 and 1600 ms (3.1 s in all), then fails with `busy`. After a half-press release the
   X-T5 answers writes busy for about 0.2 s (docs/protocol.md). The owner never reconnects to
