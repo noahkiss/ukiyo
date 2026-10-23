@@ -239,6 +239,30 @@ fn every_write_is_read_back() {
     assert_eq!(r.ops_since(t)[1].code, ptp::OP_GET_PROP_VALUE);
 }
 
+/// The poll holds a cycle's changes until the cycle ends. A write's read-back of the same code
+/// in the meantime must not be undone by them: in the order emitted, the last value is the
+/// read-back's. (The Lab's mirror applies the groups in that order.)
+#[test]
+fn a_write_in_mid_cycle_is_not_overwritten_by_the_poll_changes_held_before_it() {
+    let mut r = rig();
+    r.connect();
+    // Make the code hot, so the poll reads it every cycle.
+    r.cam.set(0xD023, Value::Int(5));
+    assert!(r.run_until(Duration::from_secs(5), |r| r.changed_codes().contains(&0xD023)));
+    let groups_before = r.groups().len();
+    // Someone turns it on the camera; step until the poll has read it, not yet reported it.
+    r.cam.set(0xD023, Value::Int(2));
+    let t = r.now();
+    assert!(r.run_until(Duration::from_secs(1), |r| r.ops_since(t).iter().any(|o| o.code == ptp::OP_GET_PROP_VALUE && o.param == Some(0xD023))));
+    assert_eq!(r.groups().len(), groups_before, "the poll's change is still held for the cycle's end");
+    let out = r.write(0xD023, 3);
+    assert_eq!(out.readback, Some(Value::Int(3)));
+    r.run_for(Duration::from_millis(500));
+    let last = r.groups().iter().flat_map(|g| g.changes.clone()).rfind(|c| c.code == 0xD023).unwrap();
+    assert_eq!(last.new, Some(Value::Int(3)), "{:#?}", r.groups());
+    assert_eq!(r.cam.value(0xD023), Some(Value::Int(3)));
+}
+
 #[test]
 fn read_only_properties_are_never_written() {
     let mut r = rig();

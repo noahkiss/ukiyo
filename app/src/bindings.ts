@@ -226,7 +226,10 @@ export type Change = {
 	new: Value | null,
 };
 
-/**  The changes one poll cycle found: usually one physical action. */
+/**
+ *  The changes one poll cycle found: usually one physical action. A write or a pause in
+ *  mid-cycle ends the group early, so groups arrive in the order the owner saw the values.
+ */
 export type ChangeGroup = {
 	id: number,
 	at: number | null,

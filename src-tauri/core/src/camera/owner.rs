@@ -288,7 +288,8 @@ pub enum ChangeSource {
     Write,
 }
 
-/// The changes one poll cycle found: usually one physical action.
+/// The changes one poll cycle found: usually one physical action. A write or a pause in
+/// mid-cycle ends the group early, so groups arrive in the order the owner saw the values.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangeGroup {
@@ -1012,6 +1013,11 @@ impl Owner {
     }
 
     fn emit_group(&mut self, source: ChangeSource, changes: Vec<Change>, actor: Option<String>) {
+        if source == ChangeSource::Write {
+            // The poll's changes so far this cycle come first: emitted after the read-back,
+            // an older value of the same code would undo it in the Lab's mirror.
+            self.emit_held();
+        }
         self.group_id += 1;
         let closed_menu = source == ChangeSource::Write && self.group_closed_menu;
         let g = ChangeGroup { id: self.group_id, at: self.clock.wall_ms() as f64, source, changes, actor, closed_menu };
@@ -1465,13 +1471,14 @@ impl Owner {
     fn enter_pause(&mut self, pause: Pause, redescribe: bool) {
         let now = self.clock.now();
         let probe = self.cfg.probe_every;
+        // The props hold what the poll saw this cycle: report it, or the mirror never gets it.
+        self.emit_held();
         let Phase::Connected(s) = &mut self.phase else { return };
         let menu = matches!(pause, Pause::Menu);
         s.pause = pause;
         s.next_probe = now + probe;
         s.redescribe |= redescribe;
         s.plan.clear();
-        s.cycle_changes.clear();
         if menu {
             if self.status.screen != Some(Screen::Playback) {
                 self.status.screen = Some(Screen::Menu);
@@ -1602,12 +1609,19 @@ impl Owner {
 
     fn finish_cycle(&mut self) {
         let now = self.clock.now();
+        self.emit_held();
         let Phase::Connected(s) = &mut self.phase else { return };
-        let changes = std::mem::take(&mut s.cycle_changes);
         let cycle = now.saturating_sub(s.cycle_start);
         let op_ms = if s.ops > 0 { s.op_time.as_secs_f64() * 1000.0 / s.ops as f64 } else { 0.0 };
         self.status.cycle_ms = cycle.as_secs_f64() * 1000.0;
         self.status.op_ms = op_ms;
+    }
+
+    /// Emits the changes the poll has seen this cycle, as one camera group. The owner's
+    /// props hold them already; until emitted, the Lab's mirror does not.
+    fn emit_held(&mut self) {
+        let Phase::Connected(s) = &mut self.phase else { return };
+        let changes = std::mem::take(&mut s.cycle_changes);
         if !changes.is_empty() {
             self.emit_group(ChangeSource::Camera, changes, None);
         }
