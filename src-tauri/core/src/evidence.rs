@@ -25,7 +25,8 @@ pub fn check(snap: &Snapshot, actor: &str, patch: &LabelPatch) -> Result<(), Err
             .hint("Change it on the camera while camera_watch runs, or write it through a plan, then label it again. Use likely until then."));
     }
     let private = private_strings(snap);
-    let texts = [patch.name.as_deref(), patch.menu.as_deref(), patch.notes.as_deref()].into_iter().flatten().chain(patch.values.iter().map(|(_, l)| l.as_str()));
+    // Value keys too: for a string property the key is the string itself (docs/catalog.md).
+    let texts = [patch.name.as_deref(), patch.menu.as_deref(), patch.notes.as_deref()].into_iter().flatten().chain(patch.values.iter().flat_map(|(k, l)| [k.as_str(), l.as_str()]));
     for t in texts {
         let t = t.to_lowercase();
         if private.iter().any(|p| t.contains(p.as_str())) {
@@ -102,6 +103,9 @@ mod tests {
         assert_eq!(check(&s, "cli", &named("Owner jane doe")).unwrap_err().code, ErrorCode::PrivateText);
         assert_eq!(check(&s, "cli", &LabelPatch { notes: Some("serial 4ab12345".into()), ..patch(0xd36d) }).unwrap_err().code, ErrorCode::PrivateText);
         assert_eq!(check(&s, "cli", &LabelPatch { values: vec![("1".into(), "Jane Doe".into())], ..patch(0xd215) }).unwrap_err().code, ErrorCode::PrivateText);
+        // A string property's value key is the string itself.
+        assert_eq!(check(&s, "mcp:test", &LabelPatch { values: vec![("Jane Doe".into(), "Owner".into())], ..patch(0xd215) }).unwrap_err().code, ErrorCode::PrivateText);
+        assert_eq!(check(&s, "mcp:test", &LabelPatch { values: vec![("4AB12345".into(), "".into())], ..patch(0xd36d) }).unwrap_err().code, ErrorCode::PrivateText);
         assert!(check(&s, "cli", &named("Copyright")).is_ok());
         assert!(check(&s, "app", &named("Jane Doe")).is_ok());
     }
