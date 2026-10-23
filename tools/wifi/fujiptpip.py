@@ -110,7 +110,9 @@ def pack_value(dtype, v):
     if dtype in SCALAR:
         return struct.pack("<" + SCALAR[dtype], v)
     if dtype == 0xFFFF:
-        return ptp_string(v)
+        # Never a zero-length string on the wire: the X-T5 left junk in D20B after one
+        # (docs/wifi.md). An empty value goes as the terminator alone, which clears the property.
+        return ptp_string(v) if v else b"\x01\x00\x00"
     raise PTPError(f"cannot pack datatype {dtype:#x}")
 
 
