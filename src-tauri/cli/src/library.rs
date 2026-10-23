@@ -190,7 +190,7 @@ pub fn snapshots_diff(out: Out, a: &str, b: Option<&str>, allow_unconfirmed: boo
     let c = conn::client(out, None);
     let r = (|| {
         conn::settled(&c, None)?;
-        match c.call(Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed, from: Some(a.clone()), slot: None })? {
+        match c.call(Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed, from: Some(a.clone()), slot: None, capture: false })? {
             Response::PlanCreate(p) => {
                 let _ = c.call(Request::PlanDiscard { plan_id: p.plan_id.clone() });
                 Ok(*p)

@@ -220,6 +220,20 @@ USB and Wi-Fi alike, so the window, CLI and MCP server never open a second one.
 - Tests: `camera/fake_wifi.rs` puts the fake X-T5 behind a loopback endpoint that answers PCSS,
   checks the GUID, answers the first init busy, and passes each container to the fake. With
   `UKIYO_FAKE_CAMERA=1` and the Wi-Fi transport the Lab runs that endpoint.
+- Stage 2, the tether buffer and capture (2026-10-23, fake camera only):
+  - A write the camera answers 0xA002 makes the owner import the tether buffer: for each
+    object (the JPEG first) GetObjectInfo, GetObject, save to `shots/<date>/<file>` in the data
+    folder, and only then DeleteObject. Then one more try of the write. An object that fails
+    to download or save stays in the buffer. With no folder for shots the owner deletes nothing.
+  - Over Wi-Fi in tether mode the owner looks in the buffer every 2 s between polls, so shots
+    taken on the body are imported as they come and writes stay unblocked.
+  - Capture is its own plan kind: `plan_create` with `capture: true`. D208 stays `never_write`;
+    a `set` of D208 is still refused. The plan lists D01B = 1 and D207 = 2 (prerequisites,
+    when not already set), the half-press and the release (D208 0x0200 and 0x0304, each with
+    InitiateCapture), and the restores. `plan_apply` sends it to the owner as one request:
+    buffer emptied first, each D01B and D207 write read back, the shot awaited (10 s) and
+    imported, D207 and D01B put back and read back. The result lists the saved `shots`.
+  - A large RAF downloads in the owner thread at about 2.3 MB/s; polling waits meanwhile.
 - Later: live view and events. If they need the extra sockets (55741, 55742) they belong to the
   transport, opened after InitiateOpenCapture; the X-T5 serves frames on the command socket
   (object 0x80000001), so the owner sees frames as data, not as a new connection.

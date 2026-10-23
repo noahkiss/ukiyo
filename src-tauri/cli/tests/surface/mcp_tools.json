@@ -119,7 +119,7 @@
     },
     {
       "name": "camera_plan",
-      "description": "Builds a change plan against the live camera. Writes nothing.\n\nBest for: every camera write: one setting, several, owner strings, a preset, a snapshot restore, or a recipe into a custom slot.\nReturns: { plan_id, expires_in_s, requires, steps: [{ code, name, menu, before, after, confidence, gate }], skipped: [{ code, name, value, reason, message }], blocked: [...], allow_unconfirmed }. blocked steps are not written; skipped ones need nothing (unchanged) or another mode.\nQuery tips: give exactly one source: set, preset (preset:<name>), snapshot (snapshot:<name>, a restore; the plan is also the snapshot's diff against the camera), or recipe (recipe:<name> or cat:<id>) with slot (C1-C7; USB RAW CONV. mode; the whole recipe or nothing). Steps come in a safe order: a step with purpose prerequisite sets what the next step needs for the time of the write, and a restore step puts it back; resets lists what the camera changes by itself. set maps a name to a value. The name is a catalog name (AutoPowerOff), a menu label (\"AUTO POWER OFF\") or a code (0xd381); the value is a value label (OFF) or a raw number. An unknown or ambiguous name or value fails with the valid choices.\nA plan with nothing to write fails with the reason (unconfirmed_property, needs_tether ...). allow_unconfirmed lets the plan write codes whose catalog confidence is not confirmed: only when the user asks.\nFollow up with camera_apply and the plan_id, after the user agrees to the steps.",
+      "description": "Builds a change plan against the live camera. Writes nothing.\n\nBest for: every camera write: one setting, several, owner strings, a preset, a snapshot restore, a recipe into a custom slot, or one shot (capture).\nReturns: { plan_id, expires_in_s, requires, steps: [{ code, name, menu, before, after, confidence, gate }], skipped: [{ code, name, value, reason, message }], blocked: [...], allow_unconfirmed }. blocked steps are not written; skipped ones need nothing (unchanged) or another mode.\nQuery tips: give exactly one source: capture: true (a shot: PC priority, half-press, release, the shot imported from the tether buffer to shots/ on this Mac; tether mode, stills; camera_apply returns shots: [{ name, path, bytes, jpeg }]), set, preset (preset:<name>), snapshot (snapshot:<name>, a restore; the plan is also the snapshot's diff against the camera), or recipe (recipe:<name> or cat:<id>) with slot (C1-C7; USB RAW CONV. mode; the whole recipe or nothing). Steps come in a safe order: a step with purpose prerequisite sets what the next step needs for the time of the write, and a restore step puts it back; resets lists what the camera changes by itself. set maps a name to a value. The name is a catalog name (AutoPowerOff), a menu label (\"AUTO POWER OFF\") or a code (0xd381); the value is a value label (OFF) or a raw number. An unknown or ambiguous name or value fails with the valid choices.\nA plan with nothing to write fails with the reason (unconfirmed_property, needs_tether ...). allow_unconfirmed lets the plan write codes whose catalog confidence is not confirmed: only when the user asks.\nFollow up with camera_apply and the plan_id, after the user agrees to the steps.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -159,6 +159,11 @@
           "allow_unconfirmed": {
             "type": "boolean",
             "default": false
+          },
+          "capture": {
+            "type": "boolean",
+            "default": false,
+            "description": "A capture plan: one shot. Alone, without other sources."
           }
         },
         "additionalProperties": false

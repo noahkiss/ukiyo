@@ -50,7 +50,7 @@ export const commands = {
 	 *  Builds a plan against the live camera: names or codes to labels or raw values.
 	 *  Writes nothing.
 	 */
-	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null, slot: string | null) => typedError<Plan_Serialize, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from, slot })),
+	planCreate: (set: { [key in string]: string }, allowUnconfirmed: boolean, from: string | null, slot: string | null, capture: boolean) => typedError<Plan_Serialize, string>(__TAURI_INVOKE("plan_create", { set, allowUnconfirmed, from, slot, capture })),
 	/**  Re-checks a plan, writes its steps in order, reads each back, and logs them. */
 	planApply: (planId: string) => typedError<Applied_Serialize, string>(__TAURI_INVOKE("plan_apply", { planId })),
 	/**  Searches the library on this Mac: presets, snapshots, favourites, the trash. */
@@ -136,6 +136,8 @@ export type Applied_Deserialize = {
 	side_effects: ChangeView[],
 	/**  What went wrong around the steps: a slot selector that was not restored. */
 	warnings?: string[],
+	/**  A capture plan's shots, saved on this Mac. */
+	shots?: Shot[],
 };
 
 export type Applied_Serialize = {
@@ -150,6 +152,8 @@ export type Applied_Serialize = {
 	side_effects: ChangeView[],
 	/**  What went wrong around the steps: a slot selector that was not restored. */
 	warnings?: string[],
+	/**  A capture plan's shots, saved on this Mac. */
+	shots?: Shot[],
 };
 
 export type Capture = "stills" | "movie";
@@ -676,6 +680,8 @@ export type Plan_Deserialize = {
 	recipe?: string | null,
 	/**  Things the plan cannot do as asked, besides blocked steps. */
 	warnings?: string[],
+	/**  A capture plan: its steps are one owner request, not separate writes. */
+	capture?: boolean,
 };
 
 export type Plan_Serialize = {
@@ -697,6 +703,8 @@ export type Plan_Serialize = {
 	recipe?: string | null,
 	/**  Things the plan cannot do as asked, besides blocked steps. */
 	warnings?: string[],
+	/**  A capture plan: its steps are one owner request, not separate writes. */
+	capture?: boolean,
 };
 
 /**
@@ -1189,6 +1197,17 @@ export type Settings_Serialize = {
 	monochromaticColorMg?: number | null,
 };
 
+/**  One shot from the tether buffer, saved on this Mac. */
+export type Shot = {
+	/**  The camera's file name: `DSCF0001.JPG`. */
+	name: string,
+	path: string,
+	bytes: number,
+	jpeg: boolean,
+	/**  Wall-clock ms. */
+	at: number | null,
+};
+
 export type SlotField = {
 	code: string,
 	name: string | null,
@@ -1243,6 +1262,8 @@ export type Snapshot_Deserialize = {
 	sessionPath: string | null,
 	fake: boolean,
 	noisy: number[],
+	/**  The latest shots from the tether buffer, newest first. */
+	shots?: Shot[],
 };
 
 export type Snapshot_Serialize = {
@@ -1254,6 +1275,8 @@ export type Snapshot_Serialize = {
 	sessionPath: string | null,
 	fake: boolean,
 	noisy: number[],
+	/**  The latest shots from the tether buffer, newest first. */
+	shots: Shot[],
 };
 
 /**  A site that publishes recipes. */

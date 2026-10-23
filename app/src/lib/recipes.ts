@@ -86,5 +86,5 @@ export async function readSlots(): Promise<SlotContent[]> {
 
 /** A plan that writes a recipe (`recipe:<slug>` or `cat:<id>`) to a slot. */
 export async function slotPlan(recipeId: string, slot: Slot, allowUnconfirmed: boolean): Promise<Plan> {
-  return err(await commands.planCreate({}, allowUnconfirmed, recipeId, slot));
+  return err(await commands.planCreate({}, allowUnconfirmed, recipeId, slot, false));
 }

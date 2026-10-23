@@ -319,6 +319,20 @@ impl Server {
     }
 
     fn plan(&mut self, x: PlanArgs) -> Result<(String, Value), Fail> {
+        if x.capture {
+            if !x.set.is_empty() || x.preset.is_some() || x.snapshot.is_some() || x.recipe.is_some() || x.slot.is_some() {
+                return Err(bad("capture is a plan of its own: give it alone"));
+            }
+            let c = self.link.client();
+            conn::settled(&c, None)?;
+            let plan: Plan = match c.call(Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false, from: None, slot: None, capture: true })? {
+                Response::PlanCreate(p) => *p,
+                r => return Err(unexpected(r)),
+            };
+            c.close();
+            let text = writes::plan_lines(&plan).join("\n");
+            return Ok((text, to_value(&plan)));
+        }
         let from = match (x.set.is_empty(), x.preset, x.snapshot, x.recipe) {
             (false, None, None, None) => None,
             (true, Some(p), None, None) => Some(prefixed("preset", &p)),
@@ -336,7 +350,7 @@ impl Server {
         }
         let c = self.link.client();
         conn::settled(&c, None)?;
-        let plan: Plan = match c.call(Request::PlanCreate { set: x.set, allow_unconfirmed: x.allow_unconfirmed, from, slot: x.slot })? {
+        let plan: Plan = match c.call(Request::PlanCreate { set: x.set, allow_unconfirmed: x.allow_unconfirmed, from, slot: x.slot, capture: false })? {
             Response::PlanCreate(p) => *p,
             r => return Err(unexpected(r)),
         };
@@ -617,6 +631,8 @@ struct PlanArgs {
     slot: Option<String>,
     #[serde(default)]
     allow_unconfirmed: bool,
+    #[serde(default)]
+    capture: bool,
 }
 
 #[derive(Deserialize)]

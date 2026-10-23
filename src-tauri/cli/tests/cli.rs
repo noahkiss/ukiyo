@@ -545,6 +545,13 @@ fn transport_switches_between_usb_and_wifi() {
     let (_, s) = env.json(&["status"]);
     assert!(s["data"]["battery_note"].as_str().is_some_and(|n| n.contains("Wi-Fi")), "{s}");
     assert!(text(&env.run(&["status"])).contains("over Wi-Fi"));
+    // A capture plan over Wi-Fi: the gesture and the shot, imported into shots/.
+    let (code, v) = env.json(&["camera", "capture", "--yes"]);
+    assert_eq!(code, 0, "{v}");
+    let shots = v["data"]["result"]["shots"].as_array().cloned().unwrap_or_default();
+    assert_eq!(shots.len(), 2, "{v}");
+    assert!(shots.iter().all(|s| Path::new(s["path"].as_str().unwrap()).is_file()));
+    assert!(v["data"]["plan"]["steps"].as_array().unwrap().iter().any(|s| s["code"] == "0xd208"));
     let (_, p) = env.json(&["camera", "transport"]);
     assert_eq!(p["data"]["saved"], "wifi");
     assert_eq!(env.json(&["camera", "transport", "usb"]).0, 0);

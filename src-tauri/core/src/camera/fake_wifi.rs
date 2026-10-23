@@ -330,7 +330,9 @@ mod tests {
                 }
             })
         };
-        let cfg = Config { presence_every: Duration::from_millis(100), reopen_after: Duration::from_secs(2), ..Config::default() };
+        let shots = tempfile::tempdir().unwrap();
+        h.with(|s| s.buffer_blocks_writes = true);
+        let cfg = Config { presence_every: Duration::from_millis(100), reopen_after: Duration::from_secs(2), shots_dir: Some(shots.path().into()), ..Config::default() };
         let (tx, th) = owner::spawn(Box::new(c), Arc::new(RealClock::new()), sink, cfg);
         wait("connected", 10, || {
             let s = status.lock().unwrap();
@@ -338,6 +340,9 @@ mod tests {
         });
         assert_eq!(status.lock().unwrap().transport, TransportKind::Wifi);
         assert_eq!(ep.stats.sessions.load(Ordering::Relaxed), 1);
+        // A shot taken on the body: the owner imports it from the tether buffer by itself.
+        h.shoot_on_body();
+        wait("the shot imported", 10, || h.with(|s| s.buffer.is_empty() && s.deleted.len() == 2));
         h.power_off();
         // Busy first (the power-off burst), then the socket closes.
         wait("lost", 15, || matches!(status.lock().unwrap().link, Link::Searching | Link::Asleep | Link::Waiting));

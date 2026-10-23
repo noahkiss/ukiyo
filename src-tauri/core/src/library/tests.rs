@@ -154,7 +154,7 @@ fn library_on_the_fake_camera() {
     let new = if old == RawValue::Int(2) { "3" } else { "2" };
     let mut set = IndexMap::new();
     set.insert("0xd023".to_string(), new.to_string());
-    let p = lab.plan(PlanInput { set, allow_unconfirmed: true, from: None, slot: None }).unwrap();
+    let p = lab.plan(PlanInput { set, allow_unconfirmed: true, ..Default::default() }).unwrap();
     assert_eq!(lab.apply("test", &p.plan_id).unwrap().applied, 1);
     let snap2 = lab.snapshot();
     s.save("test", &SaveInput { kind: SaveKind::Snapshot, name: Some("After".into()), item: None, from: None }, Context { camera: Some(&snap2), catalog: None }).unwrap();

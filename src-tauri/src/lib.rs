@@ -107,6 +107,7 @@ async fn lab_snapshot(app: AppHandle) -> Snapshot {
             session_path: None,
             fake: false,
             noisy: vec![],
+            shots: vec![],
         },
     }
 }

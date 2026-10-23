@@ -610,6 +610,7 @@ mod tests {
                 row(0xD999, Value::Int(0), Form::None),
             ],
             groups: vec![],
+            shots: vec![],
             catalog: Some(cat),
             catalog_path: None,
             session_path: None,

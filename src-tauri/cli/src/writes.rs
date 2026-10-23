@@ -138,6 +138,7 @@ pub(crate) fn applied_lines(a: &Applied, total: usize) -> Vec<String> {
         out.push(format!("Also changed: {} {}  {} -> {}", e.code, e.name.clone().unwrap_or_default(), label(&e.old_label, &e.old), label(&e.new_label, &e.new)));
     }
     out.extend(a.warnings.iter().map(|w| format!("Warning: {w}")));
+    out.extend(a.shots.iter().map(|s| format!("Saved {} ({} KB): {}", s.name, s.bytes / 1024, s.path)));
     if a.not_attempted > 0 {
         out.push(format!("{} step(s) not attempted after the failure.", a.not_attempted));
     }
@@ -211,13 +212,18 @@ fn apply(out: Out, c: &Client, plan: Plan) -> Result<i32, Fail> {
 
 /// Plans `set` and carries it through: the common body of `settings set` and `owner set`.
 fn set(out: Out, set: IndexMap<String, String>, flags: WriteFlags) -> Result<i32, Fail> {
-    plan_and_decide(out, Request::PlanCreate { set, allow_unconfirmed: flags.allow_unconfirmed, from: None, slot: None }, flags)
+    plan_and_decide(out, Request::PlanCreate { set, allow_unconfirmed: flags.allow_unconfirmed, from: None, slot: None, capture: false }, flags)
 }
 
 /// Plans a library item (`preset:<slug>`, `snapshot:<slug>`) and carries it through:
 /// `presets apply` and `snapshots restore`.
 pub fn plan_from(out: Out, from: String, flags: WriteFlags) -> Result<i32, Fail> {
-    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(from), slot: None }, flags)
+    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(from), slot: None, capture: false }, flags)
+}
+
+/// `ukiyo camera capture`: a capture plan, shown, then applied on yes.
+pub fn camera_capture(out: Out, flags: WriteFlags) -> Result<i32, Fail> {
+    plan_and_decide(out, Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false, from: None, slot: None, capture: true }, flags)
 }
 
 pub(crate) fn plan_and_decide(out: Out, req: Request, flags: WriteFlags) -> Result<i32, Fail> {

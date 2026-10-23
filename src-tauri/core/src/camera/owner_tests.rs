@@ -791,3 +791,91 @@ fn the_fake_refuses_mono_color_under_a_colour_simulation_and_acros_resets_color(
     assert!(r.write(0xD1B2, 18).ok);
     assert_eq!(r.cam.value(0xD032), Some(Value::Int(0)), "HEIF sets Clarity to 0");
 }
+
+// ---- the tether buffer and capture ----
+
+fn shots_rig(dir: &std::path::Path) -> Rig {
+    let cfg = Config { shots_dir: Some(dir.to_path_buf()), ..Config::default() };
+    rig_cfg(FakeMode::Tether, cfg, |c| c.with(|s| s.buffer_blocks_writes = true))
+}
+
+fn shots(r: &Rig) -> Vec<Shot> {
+    r.events.lock().unwrap().iter().filter_map(|e| if let Event::Shot(s) = e { Some(s.clone()) } else { None }).collect()
+}
+
+/// A write answered 0xA002 imports every buffer object (JPEG first), deletes each only once
+/// it is saved, and goes through on the one retry.
+#[test]
+fn a_write_blocked_by_the_tether_buffer_imports_the_shots() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = shots_rig(dir.path());
+    r.connect();
+    r.cam.shoot_on_body();
+    let out = r.write(AUTO_POWER_OFF, 2);
+    assert!(out.ok, "{out:?}");
+    assert_eq!(out.attempts, 2, "the blocked write, then the retry");
+    let s = shots(&r);
+    assert_eq!(s.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["DSCF0001.JPG", "DSCF0001.RAF"]);
+    assert!(s[0].jpeg && !s[1].jpeg);
+    for shot in &s {
+        assert_eq!(std::fs::metadata(&shot.path).unwrap().len(), u64::from(shot.bytes));
+    }
+    assert!(r.cam.with(|c| c.buffer.is_empty() && c.deleted.len() == 2));
+}
+
+/// Without a folder for shots the owner never deletes a buffer object: the write fails.
+#[test]
+fn no_shots_folder_leaves_the_buffer_alone() {
+    let mut r = rig_with(FakeMode::Tether, |c| c.with(|s| s.buffer_blocks_writes = true));
+    r.connect();
+    r.cam.shoot_on_body();
+    let out = r.write(AUTO_POWER_OFF, 2);
+    assert_eq!((out.ok, out.rc), (false, Some(ptp::RC_FUJI_BUFFER)));
+    assert!(r.cam.with(|c| c.buffer.len() == 2 && c.deleted.is_empty()));
+}
+
+fn capture(r: &mut Rig) -> CaptureOutcome {
+    let (tx, rx) = channel();
+    r.tx.send(Request::Capture { actor: Some("cli".into()), reply: tx }).unwrap();
+    r.owner.step();
+    rx.recv().unwrap()
+}
+
+/// A capture: priority to PC, half-press, release, the shot imported, priority back; the
+/// shots already waiting come first.
+#[test]
+fn a_capture_takes_one_shot_and_puts_priority_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = shots_rig(dir.path());
+    r.cam.set(PRIORITY, Value::Int(1));
+    r.connect();
+    r.cam.shoot_on_body();
+    let g0 = r.cam.with(|s| s.gestures.len());
+    let out = capture(&mut r);
+    assert!(out.fired && out.restored && out.refused.is_none(), "{out:?}");
+    assert_eq!(out.shots.len(), 4, "the waiting pair, then the new pair: {out:?}");
+    assert_eq!(out.shots[2].name, "DSCF0002.JPG");
+    assert_eq!(r.cam.with(|s| s.gestures[g0..].to_vec()), vec![RELEASE_HALF_PRESS, RELEASE_SHOOT]);
+    assert_eq!(r.cam.value(PRIORITY), Some(Value::Int(1)), "camera priority again");
+    let w: Vec<(u16, Option<Value>)> = out.writes.iter().map(|w| (w.code, w.readback.clone())).collect();
+    assert_eq!(w, vec![(PRIORITY, Some(Value::Int(2))), (PRIORITY, Some(Value::Int(1)))], "each write read back");
+    assert!(r.cam.with(|s| s.buffer.is_empty()));
+}
+
+/// A capture needs stills, and refuses in a menu without touching the camera.
+#[test]
+fn a_capture_needs_stills_and_no_menu() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = shots_rig(dir.path());
+    r.connect();
+    r.cam.set_movie(true);
+    r.run_for(Duration::from_secs(2));
+    let g0 = r.cam.with(|s| s.gestures.len());
+    assert_eq!(capture(&mut r).refused.as_deref(), Some(refusal::NOT_STILLS));
+    r.cam.set_movie(false);
+    r.run_for(Duration::from_secs(2));
+    r.cam.open_menu();
+    r.run_for(Duration::from_secs(2));
+    assert_eq!(capture(&mut r).refused.as_deref(), Some(refusal::PAUSED));
+    assert_eq!(r.cam.with(|s| s.gestures.len()), g0, "no gesture sent");
+}

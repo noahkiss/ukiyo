@@ -280,5 +280,5 @@ pub fn write(out: Out, slot_arg: &str, id: &str, flags: WriteFlags) -> Result<i3
     let n = slot::parse_slot(slot_arg).ok_or_else(|| Fail::usage(format!("no slot {slot_arg}: pick C1 to C7")))?;
     let id = recipe_id(id);
     call::library_read(&data(), &id, None)?;
-    writes::plan_and_decide(out, Request::PlanCreate { set: Default::default(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(id), slot: Some(slot::slot_name(n)) }, flags)
+    writes::plan_and_decide(out, Request::PlanCreate { set: Default::default(), allow_unconfirmed: flags.allow_unconfirmed, from: Some(id), slot: Some(slot::slot_name(n)), capture: false }, flags)
 }

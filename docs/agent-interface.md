@@ -224,6 +224,7 @@ ukiyo status                                   link, mode, model, battery, card,
 ukiyo camera  watch [--code C]... [--for 60s]  the change feed, live
               connect | disconnect             the Lab's connect switch
               transport [usb|wifi]             how serve reaches the camera
+              capture [--yes]                  one shot, through a capture plan
               export                           write a full dump to dumps/
 ukiyo settings [QUERY] [--menu PATH] [--code C]... [--favourites] [--unnamed] [--unconfirmed] [--menus]
               set NAME=VALUE...                one or more settings, through a plan
@@ -452,6 +453,11 @@ $ ukiyo snapshots save before-trip && ukiyo snapshots diff before-trip
   `stopped`; with no `serve` running it does nothing. **`camera connect`** spawns `serve` when
   needed and turns the switch on; the owner then follows its 3 s and 30 s rules.
   **`camera export`** writes the Lab dump and prints its path.
+- **`camera capture [--yes] [--dry-run]`** builds a capture plan (`plan_create` with
+  `capture: true`), shows it, and applies it on yes: PC priority, half-press, release, the
+  shot from the tether buffer saved to `shots/<date>/` in the data folder, priority back. It
+  needs tether mode and stills. MCP: `camera_plan` with `capture: true`, then `camera_apply`;
+  the result's `shots` lists `{ name, path, bytes, jpeg }`. D208 stays `never_write`.
 - **`camera transport usb|wifi`** saves `transport` in `settings.json`, and a running `serve`
   switches at once (`lab_transport`): the owner closes the session cleanly and looks the other
   way under its 3 s and 30 s rules. It never starts `serve`. Without a value it prints the

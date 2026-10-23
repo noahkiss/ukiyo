@@ -11,6 +11,7 @@ mcp.action fake_camera.stills
 mcp.action fake_camera.unplug
 mcp.param camera_apply.plan_id string
 mcp.param camera_plan.allow_unconfirmed boolean
+mcp.param camera_plan.capture boolean
 mcp.param camera_plan.preset string
 mcp.param camera_plan.recipe string
 mcp.param camera_plan.set object

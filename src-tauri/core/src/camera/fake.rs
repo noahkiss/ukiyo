@@ -129,6 +129,14 @@ pub struct FakeState {
     /// The C1-C7 custom slots: D18D and D18E-D1A5 per slot. D18C selects which one those
     /// codes read and write.
     pub slots: Vec<BTreeMap<u16, Value>>,
+    /// The tether buffer: shots waiting for the client, by handle.
+    pub buffer: Vec<FakeObject>,
+    /// While the buffer holds a shot, every write answers 0xA002, as the X-T5 does over
+    /// wireless tether. Off by default (not seen on USB).
+    pub buffer_blocks_writes: bool,
+    /// Every DeleteObject handle.
+    pub deleted: Vec<u32>,
+    next_object: u32,
     /// The session generation: a transport from an earlier claim is dead.
     generation: u64,
     seed: u64,
@@ -296,6 +304,29 @@ impl FakeState {
     }
 }
 
+/// One object in the fake tether buffer.
+#[derive(Debug, Clone)]
+pub struct FakeObject {
+    pub handle: u32,
+    pub filename: String,
+    pub format: u16,
+    pub data: Vec<u8>,
+}
+
+impl FakeState {
+    fn add_shot(&mut self) {
+        let n = self.next_object;
+        self.next_object += 2;
+        let stem = format!("DSCF{:04}", n.div_ceil(2));
+        // 0x3000: an undefined format, as a RAF reports.
+        self.buffer.push(FakeObject { handle: 0x0100_0000 + n, filename: format!("{stem}.RAF"), format: 0x3000, data: vec![0x46; 4096] });
+        let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
+        jpeg.resize(2048, 0);
+        jpeg.extend([0xFF, 0xD9]);
+        self.buffer.push(FakeObject { handle: 0x0100_0001 + n, filename: format!("{stem}.JPG"), format: ptp::FORMAT_JPEG, data: jpeg });
+    }
+}
+
 #[derive(Clone)]
 pub struct FakeHandle {
     state: Arc<Mutex<FakeState>>,
@@ -376,6 +407,10 @@ impl FakeCamera {
             gestures: Vec::new(),
             slots: (0..7).map(fake_slot).collect(),
             generation: 0,
+            buffer: Vec::new(),
+            buffer_blocks_writes: false,
+            deleted: Vec::new(),
+            next_object: 1,
             seed: 0x9E37_79B9_7F4A_7C15,
         };
         state.mono_ranges();
@@ -485,6 +520,12 @@ impl FakeHandle {
     pub fn power_off(&self) {
         let now = self.clock.now();
         self.with(|s| s.off_at = Some(now + POWER_OFF_BUSY))
+    }
+
+    /// A shot: RAW and JPEG land in the tether buffer, as when the person presses the
+    /// shutter on the body.
+    pub fn shoot_on_body(&self) {
+        self.with(|s| s.add_shot())
     }
 
     /// The person turns the camera on again.
@@ -712,6 +753,9 @@ impl Transport for FakeTransport {
                             if !allowed {
                                 return rc(0x201D); // InvalidDevicePropValue
                             }
+                            if s.buffer_blocks_writes && !s.buffer.is_empty() {
+                                return rc(ptp::RC_FUJI_BUFFER);
+                            }
                             if s.write_busy > 0 {
                                 s.write_busy -= 1;
                                 return rc(ptp::RC_DEVICE_BUSY);
@@ -746,6 +790,29 @@ impl Transport for FakeTransport {
                         }
                     }
                 }
+                ptp::OP_GET_OBJECT_HANDLES => {
+                    let mut b = (s.buffer.len() as u32).to_le_bytes().to_vec();
+                    for o in &s.buffer {
+                        b.extend(o.handle.to_le_bytes());
+                    }
+                    ok(b)
+                }
+                ptp::OP_GET_OBJECT_INFO | ptp::OP_GET_OBJECT | ptp::OP_DELETE_OBJECT => {
+                    let h = param.unwrap_or(0);
+                    let Some(i) = s.buffer.iter().position(|o| o.handle == h) else { return rc(ptp::RC_INVALID_OBJECT_HANDLE) };
+                    match code {
+                        ptp::OP_GET_OBJECT_INFO => {
+                            let o = &s.buffer[i];
+                            ok(ptp::encode_object_info(&ptp::ObjectInfo { storage: 0x1000_0001, format: o.format, size: o.data.len() as u32, filename: o.filename.clone() }))
+                        }
+                        ptp::OP_GET_OBJECT => ok(s.buffer[i].data.clone()),
+                        _ => {
+                            s.buffer.remove(i);
+                            s.deleted.push(h);
+                            ok(Vec::new())
+                        }
+                    }
+                }
                 ptp::OP_INITIATE_CAPTURE if s.menu_open => rc(ptp::RC_FUJI_MENU),
                 ptp::OP_INITIATE_CAPTURE => {
                     let g = match s.props.get(&D208).map(|p| &p.value) {
@@ -753,6 +820,12 @@ impl Transport for FakeTransport {
                         _ => 0,
                     };
                     s.gestures.push(g);
+                    if s.buffer_blocks_writes && !s.buffer.is_empty() {
+                        return rc(ptp::RC_FUJI_BUFFER);
+                    }
+                    if g == 0x0304 {
+                        s.add_shot();
+                    }
                     if g == 0x0200 {
                         // A half-press closes any menu and restarts the auto power off timer.
                         s.main_menu = false;

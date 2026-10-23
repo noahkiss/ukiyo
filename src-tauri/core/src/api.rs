@@ -78,8 +78,12 @@ macro_rules! ukiyo_api_table {
                     /// The custom slot a recipe goes to: `C1` to `C7`.
                     #[serde(default)]
                     slot: Option<String>,
+                    /// A capture plan: one shot, imported from the tether buffer. Alone, without
+                    /// `set`, `from` or `slot`.
+                    #[serde(default)]
+                    capture: bool,
                 } -> Box<$crate::plan::Plan> = |lab, actor| {
-                    $crate::api::call::plan_create(lab, $crate::plan::PlanInput { set, allow_unconfirmed, from, slot }).map(Box::new)
+                    $crate::api::call::plan_create(lab, $crate::plan::PlanInput { set, allow_unconfirmed, from, slot, capture }).map(Box::new)
                 };
                 /// Re-checks a plan, writes its steps in order, reads each back, and logs them.
                 plan_apply: PlanApply { plan_id: String } -> Box<$crate::plan::Applied> =
@@ -597,7 +601,7 @@ mod tests {
             Request::LabNote { group: None, text: String::new() },
             Request::LabFake { action: FakeAction::Nudge },
             Request::RecipeParse { text: None, url: None },
-            Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false, from: None, slot: None },
+            Request::PlanCreate { set: IndexMap::new(), allow_unconfirmed: false, from: None, slot: None, capture: false },
             Request::PlanShow { plan_id: String::new() },
             Request::PlanApply { plan_id: String::new() },
             Request::PlanDiscard { plan_id: String::new() },

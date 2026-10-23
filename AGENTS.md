@@ -76,7 +76,7 @@ what comes next.
   `tests/cli.rs` and `tests/mcp.rs` on the fake camera. Its read views live in core `read.rs`, `modes.rs`,
   `session.rs`. Built so far: `serve`, `status`, `settings`, `camera watch`, `catalog show`,
   `log show`, `help modes`, `settings set`, `owner`, `plan`,
-  `camera connect|disconnect|export|transport`, `log note`, `mcp`, `presets`, `snapshots`,
+  `camera connect|disconnect|export|transport|capture`, `log note`, `mcp`, `presets`, `snapshots`,
   `settings fav`, `prefs`, `trash`, `status --history`, `recipes`.
 - `src-tauri/tauri.bundle.conf.json` — the overlay config for a bundle: adds `ukiyo-cli` as an
   `externalBin` (`Contents/MacOS/ukiyo-cli`) and builds it first with
@@ -147,7 +147,8 @@ what comes next.
 - App data (`~/Library/Application Support/com.nkmkdigital.ukiyo/`): `sessions/*.jsonl`, `dumps/`,
   `settings.json` (theme, brand mark, app icon, `keep_awake`, `in_use_minutes`,
   `close_menu_to_write`, `transport`), `library/` (presets, snapshots, recipes, favourites, `.trash/`, `log.jsonl`),
-  `history/` (per-camera history and its salt), `owner.lock`, `ukiyo.sock`, `serve.log`.
+  `history/` (per-camera history and its salt), `shots/` (shots from the tether buffer, by
+  date; their EXIF holds the camera serial), `owner.lock`, `ukiyo.sock`, `serve.log`.
 
 ## Build, test, run
 
