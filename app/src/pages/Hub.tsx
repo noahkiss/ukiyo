@@ -142,6 +142,7 @@ function liveData(status: ReturnType<typeof useCamera>["status"], live: Live, hi
 function useHistory(cameraId: string | null | undefined, link: string | undefined) {
   const [hist, setHist] = useState<HistoryView | null>(null);
   const load = useCallback(async () => {
+    if (!inTauri) return;
     const r = await commands.libraryRead("history", null);
     if (r.status !== "ok" || r.data.kind !== "history") return;
     const all = r.data.item;
@@ -149,7 +150,7 @@ function useHistory(cameraId: string | null | undefined, link: string | undefine
     setHist(mine ?? [...all].sort((a, b) => (b.last_connected ?? 0) - (a.last_connected ?? 0))[0] ?? null);
   }, [cameraId]);
   useEffect(() => {
-    if (inTauri) void load();
+    void load();
   }, [load, link]);
   return { hist, reload: load };
 }
@@ -332,7 +333,9 @@ const fmtMonth = (ym: string) => new Date(ym + "-15T12:00:00").toLocaleDateStrin
 
 function ShotHistory({ perDay: shotsPerDay, perMonth: shotsPerMonth }: { perDay: DayShots[]; perMonth: Array<{ month: string; shots: number }> }) {
   const [range, setRange] = useState<Range>("day");
-  const [since, setSince] = useState(shotsPerDay[0]?.date ?? "");
+  const [since, setSince] = useState("");
+  // Until a date is picked: the first day on record. The record arrives after mount in the app.
+  const from = since || (shotsPerDay[0]?.date ?? "");
 
   const view = useMemo(() => {
     if (range === "month") {
@@ -350,7 +353,7 @@ function ShotHistory({ perDay: shotsPerDay, perMonth: shotsPerMonth }: { perDay:
         unit: "month",
       };
     }
-    const days = range === "since" ? shotsPerDay.filter((d) => d.date >= since) : shotsPerDay;
+    const days = range === "since" ? shotsPerDay.filter((d) => d.date >= from) : shotsPerDay;
     const bars = days.map((d) => ({ key: d.date, label: fmtDay(d.date), shots: d.shots }));
     const total = bars.reduce((a, b) => a + b.shots, 0);
     const best = bars.length ? bars.reduce((a, b) => (b.shots > a.shots ? b : a)) : null;
@@ -359,14 +362,14 @@ function ShotHistory({ perDay: shotsPerDay, perMonth: shotsPerMonth }: { perDay:
     return {
       bars,
       stats: [
-        [range === "since" ? `Since ${fmtDay(since)}` : "Last 30 days", n(total)],
+        [range === "since" ? (from ? `Since ${fmtDay(from)}` : "Since a date") : "Last 30 days", n(total)],
         ["Daily average", n(bars.length ? Math.round(total / bars.length) : 0)],
         ["Busiest day", best?.shots ? n(best.shots) : "—", best?.shots ? best.label : undefined],
       ] as Array<[string, string, string?]>,
       ticks,
       unit: "day",
     };
-  }, [range, since, shotsPerDay, shotsPerMonth]);
+  }, [range, from, shotsPerDay, shotsPerMonth]);
 
   const max = Math.max(1, ...view.bars.map((b) => b.shots));
   const top = niceTop(max);
@@ -395,7 +398,7 @@ function ShotHistory({ perDay: shotsPerDay, perMonth: shotsPerMonth }: { perDay:
       {range === "since" && (
         <label className="field inline-field">
           From
-          <input type="date" value={since} min={shotsPerDay[0]?.date} max={shotsPerDay[shotsPerDay.length - 1]?.date} onChange={(e) => e.target.value && setSince(e.target.value)} />
+          <input type="date" value={from} min={shotsPerDay[0]?.date} max={shotsPerDay[shotsPerDay.length - 1]?.date} onChange={(e) => e.target.value && setSince(e.target.value)} />
         </label>
       )}
       <div className="stats">
