@@ -731,6 +731,26 @@ fn slot_reads_select_each_slot_and_restore_the_selector() {
     assert_eq!(r.cam.value(SLOT_SELECT), Some(Value::Int(4)));
 }
 
+/// The restore of D18C is read back: an OK that leaves another slot selected is a failed
+/// restore.
+#[test]
+fn a_slot_selector_restore_that_reads_back_wrong_is_not_restored() {
+    use crate::recipes::slot;
+    let mut r = rig_with(FakeMode::RawConv, |c| {
+        c.with(|s| {
+            s.props.get_mut(&SLOT_SELECT).unwrap().value = Value::Int(4);
+            // Every D18C write lands on C2: the select works, the restore to C4 does not.
+            s.write_coerce.insert(SLOT_SELECT, Value::Int(2));
+        })
+    });
+    r.connect();
+    let out = slot_op(&mut r, SlotOp::Read { slots: vec![2], fields: vec![(slot::FILM_SIM, slot::UINT16)] });
+    assert_eq!(out.reads.len(), 1, "{out:?}");
+    assert!(!out.restored, "{out:?}");
+    assert!(out.refused.as_deref().is_some_and(|m| m.contains("reads back 2")), "{out:?}");
+    assert_eq!(r.cam.value(SLOT_SELECT), Some(Value::Int(2)));
+}
+
 #[test]
 fn slot_writes_read_back_and_stop_at_the_first_refusal() {
     use crate::recipes::slot;

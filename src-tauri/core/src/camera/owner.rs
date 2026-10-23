@@ -944,7 +944,20 @@ impl Owner {
             }
         }
         match self.select_slot(selected) {
-            Ok(ptp::RC_OK) => out.restored = true,
+            // Read back like every write: an OK that left another slot selected is a failed
+            // restore.
+            Ok(ptp::RC_OK) => match self.get_typed(SLOT_SELECT, 0x0004) {
+                Ok(Ok(Value::Int(n))) if n == selected => out.restored = true,
+                Ok(back) => {
+                    let got = match back {
+                        Ok(v) => v.key(),
+                        Err(rc) => ptp::rc_name(rc).to_string(),
+                    };
+                    self.log(format!("slot selector D18C not restored to {selected}: read back {got}"));
+                    out.refused.get_or_insert_with(|| format!("the slot selector D18C reads back {got}, not {selected}"));
+                }
+                Err(()) => return refuse(out, LOST),
+            },
             Ok(rc) => self.log(format!("slot selector D18C not restored to {selected}: {}", ptp::rc_name(rc))),
             Err(()) => return refuse(out, LOST),
         }
@@ -1305,7 +1318,8 @@ impl Owner {
         let t = loop {
             match self.open_session(reset_used) {
                 Ok(t) => break t,
-                Err(OpenFail { why, reset_ok: true }) if !reset_used && self.connector.present() => {
+                // A USB reset only: Wi-Fi has none, and its invitation opens once.
+                Err(OpenFail { why, reset_ok: true }) if !reset_used && self.status.transport == TransportKind::Usb && self.connector.present() => {
                     // OpenSession on a fresh claim failed: reset once and try again.
                     self.log(format!("OpenSession failed ({why}); resetting USB once"));
                     reset_used = true;
