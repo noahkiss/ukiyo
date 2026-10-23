@@ -170,8 +170,12 @@ catalogue and the app's paste-text import (`recipe_parse`) use the same code.
   Sharpness, "Grain" is Grain Effect, "Col. Chr. Blue" is Color Chrome FX Blue. A label
   joining two settings ("Highlight & Shadow: +2") sets both. FilmKit's
   `parse-text-preset.ts` (MIT) was a reference for label variants; no code is taken from it.
-- Tone values may carry a name, "+1 (Medium-Hard)". White balance is a preset or Kelvin,
-  then the shift: "5200K, +2 Red & -4 Blue".
+- Tone values may carry a name, "+1 (Medium-Hard)", or be one: "Medium Hard" is +1, "Low"
+  is -2. A decimal comma reads ("2,5"). White balance is a preset or Kelvin, then the shift:
+  "5200K, +2 Red & -4 Blue". Kelvin also reads as "K6300", "Kelvin 5200", "10,000K", "10k"
+  or a bare "5400". A shift reads with the number before its letter ("+2 Red", "+2R") or
+  after it ("R+2 B-4", "Red -3 Blue +3", "R:4 B:-5"); the form that reads more shifts wins,
+  and a number past ±9 is never a shift, so Kelvin digits stay Kelvin.
 - Alternatives for other cameras ("Off (X-Trans V); Weak (X-Trans IV)") read the first
   value and warn about the rest. "N/A" leaves a setting unset with no warning.
 - Bare values name their setting: "DR400", "5200K", "R+2 B-4". A shift may have its own
@@ -188,6 +192,11 @@ come out as in the catalogue. On any other host the parser looks for recipe bloc
 the page's `<article>`, or the whole page when it has none; the name comes from the page
 title. Further recipes in the post come back as `others`. Nothing is stored until the
 person saves it.
+
+The import reads public hosts only. A link to this machine or its network (loopback,
+private, link-local or carrier-NAT addresses, `localhost`, `.local`, or a name that resolves
+to one of them) is refused, at the first hop and at each redirect; at most five redirects
+are followed. The page is read for 20 s at most and up to 8 MB.
 
 ## Your recipes
 

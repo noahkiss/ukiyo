@@ -16,4 +16,5 @@ export const fxwPasteResult: CatalogEntry = {
   popularity: { comments: 0, mentions: 0, score: 0 },
   tones: ["#9A4B2A", "#D69A5C", "#56603F", "#EADBBE", "#2C2723"],
   parsed: { ...base, name: "Autumn Tram", sim: "Classic Negative", wb: "Colour temperature 5200K", wbShift: { r: 2, b: -4 }, grain: "Weak", colorChrome: "Strong", colorChromeBlue: "Weak", dr: "DR400", highlights: -1, shadows: 1.5, colour: 3, sharpness: -1, noiseReduction: -4, clarity: -2, notes: [["ISO", "Auto, up to 6400"], ["Exposure compensation", "+1/3 to +1"]] },
+  settings: { filmSimulation: "Classic Negative", dynamicRange: "DR400", grainEffect: "Weak", grainSize: "Small", colorChrome: "Strong", colorChromeFxBlue: "Weak", whiteBalance: "Kelvin", colorTemp: 5200, wbShiftR: 2, wbShiftB: -4, highlightTone: -1, shadowTone: 1.5, color: 3, sharpness: -1, highIsoNr: -4, clarity: -2 },
 };

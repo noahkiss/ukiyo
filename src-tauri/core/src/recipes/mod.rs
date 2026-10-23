@@ -239,23 +239,24 @@ pub(crate) fn norm(s: &str) -> String {
     mapped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The field a label names, if the parser knows it.
+/// The field a label names, if the parser knows it. An abbreviation in parentheses,
+/// "Highlight Tone (H-Tone)", is dropped.
 pub(crate) fn field_for(label: &str) -> Option<Field> {
-    let l = norm(label);
+    let l = norm(&values::without_parens(label));
     let l = l.strip_suffix(" setting").unwrap_or(&l);
     Some(match l {
-        "film simulation" | "film sim" | "simulation" | "film simulation mode" => Field::FilmSimulation,
+        "film simulation" | "film sim" | "simulation" | "film simulation mode" | "base film simulation" => Field::FilmSimulation,
         "dynamic range" | "dr" | "d range" => Field::DynamicRange,
         "d range priority" | "dynamic range priority" | "dr priority" | "dr p" | "priority" | "wide dynamic range" | "wide d range" => Field::DRangePriority,
         "grain effect" | "grain" | "grain effect roughness" | "grain roughness" => Field::Grain,
         "grain size" | "grain effect size" => Field::GrainSize,
-        "color chrome effect" | "color chrome" | "colour chrome effect" | "colour chrome" | "color chrome effect strength" | "col chr effect" | "col chr" | "cc effect" | "chrome fx" | "chrome color fx" | "color chrome fx" | "ccr" | "cc" => Field::ColorChrome,
-        "color chrome fx blue" | "color chrome effect blue" | "color chrome blue" | "colour chrome fx blue" | "colour chrome effect blue" | "color chrome fx blue effect" | "cc fx blue" | "colour chrome blue" | "colour chrome blue effect" | "color chrome blue effect" | "col chr blue" | "col chr fx blue" | "chrome fx blue" | "ccb" => Field::ColorChromeFxBlue,
+        "color chrome effect" | "color chrome" | "colour chrome effect" | "colour chrome" | "color chrome effect strength" | "col chr effect" | "col chr" | "cc effect" | "chrome fx" | "chrome color fx" | "color chrome fx" | "ccr" | "cc" | "colorchrome effect" | "colorchrome" | "chrome effect" | "chrome color effect" => Field::ColorChrome,
+        "color chrome fx blue" | "color chrome effect blue" | "color chrome blue" | "colour chrome fx blue" | "colour chrome effect blue" | "color chrome fx blue effect" | "cc fx blue" | "colour chrome blue" | "colour chrome blue effect" | "color chrome blue effect" | "col chr blue" | "col chr fx blue" | "chrome fx blue" | "ccb" | "colorchrome fx blue" | "colorchrome effect blue" | "colorchrome blue" | "chrome blue effect" | "cc blue" => Field::ColorChromeFxBlue,
         "wb shift" | "white balance shift" | "wb color shift" | "wb colour shift" | "shift" | "color shift" | "wb shift r b" | "wb shift r" | "wb offset" | "auto wb shift" | "awb shift" | "wb shift rb" => Field::WbShift,
-        "white balance" | "wb" | "color temperature" | "colour temperature" | "color temp" | "colour temp" | "kelvin" => Field::WhiteBalance,
-        "highlight" | "highlights" | "highlight tone" | "hightlight" | "hightlight tone" | "highlights tone" | "h tone" | "highlight tones" => Field::Highlight,
-        "shadow" | "shadows" | "shadow tone" | "shadows tone" | "s tone" | "shading tone" | "shadow tones" => Field::Shadow,
-        "tone curve" => Field::ToneCurve,
+        "white balance" | "wb" | "whitebalance" | "color temperature" | "colour temperature" | "color temp" | "colour temp" | "kelvin" => Field::WhiteBalance,
+        "highlight" | "highlights" | "highlight tone" | "hightlight" | "hightlight tone" | "highlights tone" | "h tone" | "htone" | "highlight tones" => Field::Highlight,
+        "shadow" | "shadows" | "shadow tone" | "shadows tone" | "s tone" | "stone" | "shading tone" | "shadow tones" => Field::Shadow,
+        "tone curve" | "curve" => Field::ToneCurve,
         "color" | "colour" | "saturation" | "color saturation" => Field::Color,
         "sharpness" | "sharpening" | "sharpeness" | "sharp" => Field::Sharpness,
         "high iso nr" | "noise reduction" | "nr" | "high iso noise reduction" | "iso nr" | "iso n r" | "high iso n r" | "iso noise reduction" | "noise" | "noise red" | "noise redution" => Field::HighIsoNr,
