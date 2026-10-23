@@ -394,6 +394,11 @@ impl FakeCamera {
     pub fn handle(&self) -> FakeHandle {
         self.handle.clone()
     }
+
+    /// Another connector onto the same fake camera: its state, its clock.
+    pub fn from_handle(handle: FakeHandle, op_cost: Duration) -> Self {
+        Self { handle, op_cost }
+    }
 }
 
 impl FakeHandle {

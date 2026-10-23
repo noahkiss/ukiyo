@@ -110,6 +110,9 @@ macro_rules! ukiyo_api_table {
                     if let Some(on) = patch.keep_awake {
                         $crate::api::call::lab_keep_awake(lab, actor, on);
                     }
+                    if let Some(kind) = patch.transport {
+                        $crate::api::call::lab_transport(lab, actor, kind);
+                    }
                     $crate::api::call::prefs_set(lab.data_dir(), &patch).map(Box::new)
                 };
             }
@@ -123,6 +126,12 @@ macro_rules! ukiyo_api_table {
                 /// power off timer. Remembered in `settings.json`.
                 lab_keep_awake: LabKeepAwake { on: bool } = |lab, actor| {
                     $crate::api::call::lab_keep_awake(lab, actor, on);
+                    Ok(())
+                };
+                /// How `serve` reaches the camera: `usb` or `wifi` (wireless tether). The owner
+                /// closes the session cleanly and looks the other way. Remembered in `settings.json`.
+                lab_transport: LabTransport { kind: $crate::camera::transport::TransportKind } = |lab, actor| {
+                    $crate::api::call::lab_transport(lab, actor, kind);
                     Ok(())
                 };
                 /// The Lab's connect switch: off stops the owner from connecting.
@@ -413,6 +422,10 @@ pub mod call {
         lab.connect(actor, on)
     }
 
+    pub fn lab_transport(lab: &Lab, actor: &str, kind: crate::camera::transport::TransportKind) {
+        lab.transport(actor, kind)
+    }
+
     /// Blocks until the dump is written (at most 60 s).
     pub fn lab_export(lab: &Lab, actor: &str) -> Result<String, Error> {
         lab.export(actor)
@@ -578,6 +591,7 @@ mod tests {
             Request::LabPin { codes: vec![] },
             Request::LabKeepAwake { on: false },
             Request::LabConnect { on: true },
+            Request::LabTransport { kind: crate::camera::transport::TransportKind::Wifi },
             Request::LabExport,
             Request::LabLabel { patch: LabelPatch::default() },
             Request::LabNote { group: None, text: String::new() },

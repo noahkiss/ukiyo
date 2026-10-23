@@ -10,6 +10,7 @@
 
 use super::{write_atomic, Store};
 use crate::api::{Error, ErrorCode};
+use crate::camera::transport::TransportKind;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::{Path, PathBuf};
@@ -48,6 +49,9 @@ pub struct Prefs {
     /// A write the camera refuses with a menu open over the shooting screen gets one
     /// half-press, which closes the menu, and one retry.
     pub close_menu_to_write: bool,
+    /// How `serve` reaches the camera: `usb` or `wifi` (wireless tether).
+    /// `UKIYO_TRANSPORT` overrides it for one run.
+    pub transport: TransportKind,
     /// Keys this build does not know, kept as they were.
     #[serde(flatten)]
     #[specta(skip)]
@@ -64,6 +68,7 @@ impl Default for Prefs {
             keep_awake: true,
             in_use_minutes: 5,
             close_menu_to_write: true,
+            transport: TransportKind::Usb,
             other: Default::default(),
         }
     }
@@ -85,6 +90,8 @@ pub struct PrefsPatch {
     pub in_use_minutes: Option<u32>,
     #[serde(default)]
     pub close_menu_to_write: Option<bool>,
+    #[serde(default)]
+    pub transport: Option<TransportKind>,
 }
 
 impl PrefsPatch {
@@ -134,6 +141,9 @@ impl PrefsPatch {
         if let Some(c) = self.close_menu_to_write {
             p.close_menu_to_write = c;
         }
+        if let Some(t) = self.transport {
+            p.transport = t;
+        }
     }
 }
 
@@ -168,7 +178,8 @@ pub fn update(data_dir: &Path, patch: &PrefsPatch) -> Result<Prefs, Error> {
 }
 
 /// Parses one `KEY=VALUE` from `ukiyo prefs set`: `theme=dark`, `brand-mark=clouds`,
-/// `app-icon=seal`, `keep-awake=on`, `in-use-minutes=10`, `close-menu-to-write=off`.
+/// `app-icon=seal`, `keep-awake=on`, `in-use-minutes=10`, `close-menu-to-write=off`,
+/// `transport=wifi`.
 pub fn parse_pair(patch: &mut PrefsPatch, key: &str, value: &str) -> Result<(), Error> {
     let v = value.trim();
     let flag = || match v.to_ascii_lowercase().as_str() {
@@ -184,10 +195,11 @@ pub fn parse_pair(patch: &mut PrefsPatch, key: &str, value: &str) -> Result<(), 
         "app-icon" => patch.app_icon = Some(v.to_string()),
         "keep-awake" => patch.keep_awake = Some(flag()?),
         "close-menu-to-write" => patch.close_menu_to_write = Some(flag()?),
+        "transport" => patch.transport = Some(TransportKind::parse(v).ok_or_else(|| Error::new(ErrorCode::NotFound, format!("no transport {v:?}")).hint("Pick usb or wifi."))?),
         "in-use-minutes" => patch.in_use_minutes = Some(v.parse().map_err(|_| Error::new(ErrorCode::NotFound, format!("in-use-minutes is a number, not {v:?}")))?),
         k => {
             return Err(Error::new(ErrorCode::NotFound, format!("no preference {k}"))
-                .hint("Pick theme, brand-mark, app-icon, keep-awake, in-use-minutes or close-menu-to-write."))
+                .hint("Pick theme, brand-mark, app-icon, keep-awake, in-use-minutes, close-menu-to-write or transport."))
         }
     }
     Ok(())
@@ -221,7 +233,9 @@ mod tests {
         parse_pair(&mut p, "theme", "Dark").unwrap();
         parse_pair(&mut p, "keep-awake", "off").unwrap();
         parse_pair(&mut p, "in_use_minutes", "10").unwrap();
-        assert_eq!((p.theme, p.keep_awake, p.in_use_minutes), (Some(Theme::Dark), Some(false), Some(10)));
+        parse_pair(&mut p, "transport", "Wi-Fi").unwrap();
+        assert_eq!((p.theme, p.keep_awake, p.in_use_minutes, p.transport), (Some(Theme::Dark), Some(false), Some(10), Some(TransportKind::Wifi)));
+        assert!(parse_pair(&mut p, "transport", "bluetooth").is_err());
         assert!(parse_pair(&mut p, "colour", "red").is_err());
         assert!(parse_pair(&mut p, "theme", "sepia").is_err());
     }

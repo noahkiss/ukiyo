@@ -17,8 +17,11 @@ use crate::camera::owner::{self, ChangeGroup, Config, Event, Link, PropRow, Requ
 use crate::camera::ptp::{self, Value};
 use crate::plan::{self, Applied, Plan, PlanInput, Raw, Stored};
 use crate::recipes::slot;
-use crate::camera::transport::Connector;
+use crate::camera::fake_wifi::FakeWifiCamera;
+use crate::camera::transport::{Connector, TransportKind};
 use crate::camera::usb::UsbConnector;
+use crate::camera::wifi::{WifiConfig, WifiConnector};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use crate::catalog::{Catalog, LabelPatch};
 use crate::library::history::Recorder;
 use crate::library::prefs;
@@ -98,6 +101,40 @@ pub struct Lab {
     /// Plans by id, until applied, discarded or expired.
     plans: Mutex<HashMap<String, Stored>>,
     next_plan: AtomicU32,
+    /// The transport the owner uses now.
+    transport: Mutex<TransportKind>,
+    /// The fake camera's loopback Wi-Fi endpoint, while the fake runs on Wi-Fi.
+    wifi_fake: Mutex<Option<FakeWifiCamera>>,
+}
+
+/// The transport for this run: `UKIYO_TRANSPORT` (`usb`, `wifi`), else the preference.
+pub fn transport_choice(p: &prefs::Prefs) -> TransportKind {
+    std::env::var("UKIYO_TRANSPORT").ok().and_then(|v| TransportKind::parse(&v)).unwrap_or(p.transport)
+}
+
+/// The connector for a transport. The fake camera on Wi-Fi sits behind a loopback endpoint,
+/// returned with it: it runs while it lives.
+fn connector_for(kind: TransportKind, fake: Option<&FakeHandle>) -> (Box<dyn Connector>, Option<FakeWifiCamera>) {
+    const FAKE_OP_COST: Duration = Duration::from_millis(3);
+    match (kind, fake) {
+        (TransportKind::Usb, None) => (Box::new(UsbConnector), None),
+        (TransportKind::Wifi, None) => (Box::new(WifiConnector::start(WifiConfig::default())), None),
+        (TransportKind::Usb, Some(h)) => (Box::new(FakeCamera::from_handle(h.clone(), FAKE_OP_COST)), None),
+        (TransportKind::Wifi, Some(h)) => {
+            let loopback = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0);
+            let c = WifiConnector::start(WifiConfig { listen: loopback, ..WifiConfig::default() });
+            match FakeWifiCamera::start(FakeCamera::from_handle(h.clone(), FAKE_OP_COST), c.tether_port(), Default::default()) {
+                Ok(ep) => {
+                    c.set_targets(vec![ep.target()]);
+                    (Box::new(c), Some(ep))
+                }
+                Err(e) => {
+                    eprintln!("ukiyo: the fake Wi-Fi camera did not start: {e}");
+                    (Box::new(c), None)
+                }
+            }
+        }
+    }
 }
 
 fn wall_ms() -> i64 {
@@ -165,20 +202,19 @@ impl Lab {
 
         let clock: Arc<dyn Clock> = Arc::new(RealClock::new());
         let use_fake = fake_mode.is_some() || std::env::var("UKIYO_FAKE_CAMERA").is_ok_and(|v| v == "1");
-        let (connector, fake): (Box<dyn Connector>, _) = if use_fake {
+        let fake = use_fake.then(|| {
             let mode = if let Some(m) = fake_mode {
                 m
             } else if std::env::var("UKIYO_FAKE_MODE").is_ok_and(|v| v == "rawconv") { FakeMode::RawConv } else { FakeMode::Tether };
-            let cam = FakeCamera::x_t5(clock.clone(), mode).with_op_cost(Duration::from_millis(3));
-            let h = cam.handle();
+            let h = FakeCamera::x_t5(clock.clone(), mode).handle();
             // The fake sleeps after its AUTO POWER OFF time, so keep-awake has work to do.
             h.with(|s| s.auto_sleep = true);
             // `UKIYO_FAKE_AUTO=0` stops the fake's own setting changes, for tests that compare reads.
             let auto = !std::env::var("UKIYO_FAKE_AUTO").is_ok_and(|v| v == "0");
-            (Box::new(cam), Some((h, Arc::new(AtomicBool::new(auto)))))
-        } else {
-            (Box::new(UsbConnector), None)
-        };
+            (h, Arc::new(AtomicBool::new(auto)))
+        });
+        let transport = transport_choice(&settings);
+        let (connector, wifi_fake) = connector_for(transport, fake.as_ref().map(|(h, _)| h));
 
         let emit = Arc::new(emit);
         let sink = {
@@ -190,7 +226,7 @@ impl Lab {
             Box::new(move |e: Event| on_event(e, &mirror, &log, &catalog_dir, &history, &*emit))
         };
         // The first line, before the owner thread can log a status.
-        write_log(&log, serde_json::json!({ "kind": "start", "fake": fake.is_some() }));
+        write_log(&log, serde_json::json!({ "kind": "start", "fake": fake.is_some(), "transport": transport }));
         let cfg = Config {
             in_use_for: Duration::from_secs(u64::from(settings.in_use_minutes.max(1)) * 60),
             close_menu_to_write: settings.close_menu_to_write,
@@ -224,7 +260,27 @@ impl Lab {
             lock: Mutex::new(Some(lock)),
             plans: Mutex::new(HashMap::new()),
             next_plan: AtomicU32::new(1),
+            transport: Mutex::new(transport),
+            wifi_fake: Mutex::new(wifi_fake),
         })
+    }
+
+    /// The transport: USB or Wi-Fi. The owner closes the session cleanly and looks for the
+    /// camera the other way from now on. Saved in `settings.json`.
+    pub fn transport(&self, actor: &str, kind: TransportKind) {
+        if let Err(e) = prefs::update(&self.data_dir, &prefs::PrefsPatch { transport: Some(kind), ..Default::default() }) {
+            eprintln!("ukiyo: settings.json not saved: {e}");
+        }
+        let mut cur = self.transport.lock().unwrap();
+        if *cur == kind {
+            return;
+        }
+        *cur = kind;
+        let (c, endpoint) = connector_for(kind, self.fake.as_ref().map(|(h, _)| h));
+        self.send(Request::UseConnector(c));
+        // The old loopback endpoint (fake camera on Wi-Fi) stops; its socket closes.
+        drop(std::mem::replace(&mut *self.wifi_fake.lock().unwrap(), endpoint));
+        self.log_line(serde_json::json!({ "kind": "transport", "actor": actor, "transport": kind }));
     }
 
     fn send(&self, r: Request) {

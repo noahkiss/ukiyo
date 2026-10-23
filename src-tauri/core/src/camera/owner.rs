@@ -17,7 +17,7 @@
 
 use super::clock::Clock;
 use super::ptp::{self, DeviceInfo, Form, PropDesc, Value};
-use super::transport::{Connector, Reply, Transport, TransportError};
+use super::transport::{Connector, Reply, Transport, TransportError, TransportKind};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::{BTreeMap, HashSet, VecDeque};
@@ -204,6 +204,9 @@ pub struct KeepAwake {
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     pub link: Link,
+    /// How the owner reaches the camera: the USB cable or wireless tether.
+    #[serde(default)]
+    pub transport: TransportKind,
     /// Why the link is in its state, for the status bar ("auto power off", "unplugged").
     pub reason: Option<String>,
     pub model: Option<String>,
@@ -235,6 +238,7 @@ impl Default for Status {
     fn default() -> Self {
         Self {
             link: Link::Searching,
+            transport: TransportKind::Usb,
             reason: None,
             model: None,
             firmware: None,
@@ -409,6 +413,9 @@ pub enum Request {
     /// `Connect`.
     Disconnect,
     Connect,
+    /// Closes the session cleanly and looks for the camera through another connector (USB
+    /// or Wi-Fi) from now on.
+    UseConnector(Box<dyn Connector>),
     /// A clean disconnect, then the thread ends.
     Shutdown,
 }
@@ -554,6 +561,7 @@ pub struct Owner {
 
 impl Owner {
     pub fn new(connector: Box<dyn Connector>, clock: Arc<dyn Clock>, sink: Sink, rx: Receiver<Request>, cfg: Config) -> Self {
+        let status = Status { transport: connector.kind(), ..Status::default() };
         Self {
             connector,
             clock,
@@ -562,7 +570,7 @@ impl Owner {
             queue: RequestQueue::default(),
             cfg,
             phase: Phase::Idle { next_check: Duration::ZERO },
-            status: Status::default(),
+            status,
             last_status: None,
             last_status_at: Duration::ZERO,
             blocked_since: None,
@@ -692,6 +700,21 @@ impl Owner {
                     self.status.link = if self.blocked_since.is_some() { Link::Waiting } else { Link::Searching };
                     self.status.reason = None;
                 }
+            }
+            Request::UseConnector(c) => {
+                let (from, to) = (self.status.transport, c.kind());
+                self.close_clean();
+                self.connector = c;
+                self.status.transport = to;
+                self.status.model = None;
+                self.status.firmware = None;
+                // A clean close: the other connector may open at once.
+                self.blocked_since = None;
+                self.restore = None;
+                self.log(format!("transport: {} -> {}", from.label(), to.label()));
+                let link = if self.stopped { Link::Stopped } else { Link::Searching };
+                self.set_idle(link, None);
+                self.phase = Phase::Idle { next_check: self.clock.now() };
             }
             Request::Shutdown => {
                 self.close_clean();
@@ -1226,10 +1249,15 @@ impl Owner {
         let last_busy = self.session().and_then(|s| s.last_busy);
         let present = e != TransportError::Gone && self.connector.present();
         self.blocked_since = Some(now);
+        let wifi = self.status.transport == TransportKind::Wifi;
         let (link, reason) = if present {
-            (Link::Waiting, format!("USB error: {e}"))
+            (Link::Waiting, format!("{} error: {e}", self.status.transport.label()))
         } else if last_busy.is_some_and(|t| now.saturating_sub(t) <= self.cfg.power_off_window) {
             (Link::Asleep, "auto power off".to_string())
+        } else if wifi {
+            // Over Wi-Fi a camera that powered off and one that left the network look the
+            // same: the socket closes or stops answering.
+            (Link::Searching, "off or out of reach".to_string())
         } else {
             (Link::Searching, "unplugged".to_string())
         };
@@ -1254,6 +1282,9 @@ impl Owner {
         if !present {
             if self.status.link == Link::Waiting {
                 self.status.link = Link::Searching;
+            }
+            if let Some(p) = self.connector.problem() {
+                self.status.reason = Some(p);
             }
             return;
         }
