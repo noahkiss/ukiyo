@@ -136,6 +136,26 @@ fn assemble(mut read: impl FnMut() -> Result<Vec<u8>, TransportError>) -> Result
     Ok((h, buf.split_off(12)))
 }
 
+impl Transport for UsbTransport {
+    fn op(&mut self, code: u16, params: &[u32], data: Option<&[u8]>) -> Result<Reply, TransportError> {
+        self.tid = self.tid.wrapping_add(1);
+        let tid = self.tid;
+        self.write(ptp::command(code, tid, params))?;
+        if let Some(d) = data {
+            self.write(ptp::data(code, tid, d))?;
+        }
+        let mut payload = Vec::new();
+        loop {
+            let (h, body) = self.read_container()?;
+            match h.kind {
+                KIND_DATA => payload = body,
+                KIND_RESPONSE => return Ok(Reply { rc: h.code, data: payload }),
+                k => return Err(io(format!("unexpected container kind {k}"))),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,25 +189,5 @@ mod tests {
     fn a_read_that_ends_early_reports_the_transport_error() {
         let whole = ptp::data(0x1015, 7, &[1, 2, 3, 4, 5]);
         assert_eq!(assemble(reads(&[&whole[..14]])).unwrap_err(), TransportError::Timeout);
-    }
-}
-
-impl Transport for UsbTransport {
-    fn op(&mut self, code: u16, params: &[u32], data: Option<&[u8]>) -> Result<Reply, TransportError> {
-        self.tid = self.tid.wrapping_add(1);
-        let tid = self.tid;
-        self.write(ptp::command(code, tid, params))?;
-        if let Some(d) = data {
-            self.write(ptp::data(code, tid, d))?;
-        }
-        let mut payload = Vec::new();
-        loop {
-            let (h, body) = self.read_container()?;
-            match h.kind {
-                KIND_DATA => payload = body,
-                KIND_RESPONSE => return Ok(Reply { rc: h.code, data: payload }),
-                k => return Err(io(format!("unexpected container kind {k}"))),
-            }
-        }
     }
 }
