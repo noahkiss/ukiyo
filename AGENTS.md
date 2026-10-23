@@ -153,7 +153,8 @@ what comes next.
 - In `app/`: `pnpm build`; run with `pnpm tauri dev` from `app/` (not the repo root).
   `pnpm bundle` builds `Ukiyo.app` with the CLI inside (ad-hoc signed).
 - Release build without upload: `tools/release/release.sh --dry-run` (Apple Silicon).
-  `UKIYO_FAKE_CAMERA=1` uses the fake camera; `UKIYO_FAKE_MODE=rawconv` fakes RAW CONV. mode.
+  `UKIYO_FAKE_CAMERA=1` uses the fake camera; `UKIYO_FAKE_MODE=rawconv` fakes RAW CONV. mode;
+  `UKIYO_FAKE_AUTO=0` stops the fake's own setting changes (the CLI tests set it).
   `pnpm tauri dev` spawns `target/debug/ukiyo serve`, which outlives the window for 120 s
   (`UKIYO_IDLE_EXIT=S` shortens it); `UKIYO_DATA_DIR=DIR` uses another data folder.
   Anything that runs `ukiyo-cli` or `serve` in a test sets `UKIYO_FAKE_CAMERA=1` and a temp

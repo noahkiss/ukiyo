@@ -53,6 +53,7 @@ impl Env {
             .env("UKIYO_CATALOG_DIR", self.cats.path())
             // Long enough that one test's commands share one serve on a loaded machine.
             .env("UKIYO_IDLE_EXIT", "8")
+            .env("UKIYO_FAKE_AUTO", "0")
             .env_remove("UKIYO_FAKE_MODE")
             .stdin(Stdio::null());
         if let Some(m) = self.mode {

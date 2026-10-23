@@ -173,7 +173,9 @@ impl Lab {
             let h = cam.handle();
             // The fake sleeps after its AUTO POWER OFF time, so keep-awake has work to do.
             h.with(|s| s.auto_sleep = true);
-            (Box::new(cam), Some((h, Arc::new(AtomicBool::new(true)))))
+            // `UKIYO_FAKE_AUTO=0` stops the fake's own setting changes, for tests that compare reads.
+            let auto = !std::env::var("UKIYO_FAKE_AUTO").is_ok_and(|v| v == "0");
+            (Box::new(cam), Some((h, Arc::new(AtomicBool::new(auto)))))
         } else {
             (Box::new(UsbConnector), None)
         };
