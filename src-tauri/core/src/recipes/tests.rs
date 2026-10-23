@@ -121,6 +121,57 @@ fn white_balance_forms() {
     assert_eq!(wb("10000K, -7 Red & +8 Blue"), (Some("Kelvin".into()), Some(10000), Some(-7), Some(8), 0));
 }
 
+/// Rows as the recipe database holds them: the letter before its number, Kelvin written
+/// first or bare, the shift after a sentence.
+#[test]
+fn white_balance_with_the_letter_first() {
+    let wb = |v: &str| {
+        let p = parse_text(&format!("White Balance: {v}"));
+        (p.settings.white_balance, p.settings.color_temp, p.settings.wb_shift_r, p.settings.wb_shift_b, p.warnings.len())
+    };
+    assert_eq!(wb("Auto, R+7 B-9"), (Some("Auto".into()), None, Some(7), Some(-9), 0));
+    assert_eq!(wb("6900K, R-7, B-7"), (Some("Kelvin".into()), Some(6900), Some(-7), Some(-7), 0));
+    assert_eq!(wb("Auto, Red -3 Blue +3"), (Some("Auto".into()), None, Some(-3), Some(3), 0));
+    assert_eq!(wb("Auto, Red+2, Blue -4"), (Some("Auto".into()), None, Some(2), Some(-4), 0));
+    assert_eq!(wb("K6300 R-2  B5"), (Some("Kelvin".into()), Some(6300), Some(-2), Some(5), 0));
+    assert_eq!(wb("Kelvin 5200 Shift Red +1 Blue -6"), (Some("Kelvin".into()), Some(5200), Some(1), Some(-6), 0));
+    assert_eq!(wb("6700 K (R +3 B +6)"), (Some("Kelvin".into()), Some(6700), Some(3), Some(6), 0));
+    assert_eq!(wb("10,000K"), (Some("Kelvin".into()), Some(10000), None, None, 0));
+    assert_eq!(wb("10k +2r -5b"), (Some("Kelvin".into()), Some(10000), Some(2), Some(-5), 0));
+    assert_eq!(wb("4000, R +4, B -5"), (Some("Kelvin".into()), Some(4000), Some(4), Some(-5), 0));
+    assert_eq!(wb("7000 R2 B-5"), (Some("Kelvin".into()), Some(7000), Some(2), Some(-5), 0));
+    assert_eq!(wb("Daylight. Shift: +2 Red & -4 Blue. Recipe: Kodachrome 64."), (Some("Daylight".into()), None, Some(2), Some(-4), 0));
+    assert_eq!(wb("Auto WB Shift Red +2 Blue -4"), (Some("Auto".into()), None, Some(2), Some(-4), 0));
+    assert_eq!(wb("Auto (R:3, B:-4)"), (Some("Auto".into()), None, Some(3), Some(-4), 0));
+    assert_eq!(wb("AUTO | R +5 B: -6"), (Some("Auto".into()), None, Some(5), Some(-6), 0));
+    assert_eq!(wb("Shade R2,B3"), (Some("Shade".into()), None, Some(2), Some(3), 0));
+    assert_eq!(wb("Auto Ambience, +1 Red & -2 Blue"), (Some("Auto Ambience Priority".into()), None, Some(1), Some(-2), 0));
+    assert_eq!(wb("Direct Sunlight"), (Some("Daylight".into()), None, None, None, 0));
+    assert_eq!(wb("+2R -4B"), (None, None, Some(2), Some(-4), 1), "no base: one warning, the shift kept");
+    assert_eq!(wb("Auto +1 Red"), (Some("Auto".into()), None, Some(1), None, 1), "one shift: a warning");
+    // Shift lines of their own, the same forms.
+    let sh = |v: &str| {
+        let p = parse_text(&format!("WB Shift: {v}"));
+        (p.settings.wb_shift_r, p.settings.wb_shift_b, p.warnings.len())
+    };
+    assert_eq!(sh("R2, B-3"), (Some(2), Some(-3), 0));
+    assert_eq!(sh("+2R, -4B"), (Some(2), Some(-4), 0));
+    assert_eq!(sh("R+2 -4B"), (Some(2), Some(-4), 0), "mixed: the other regime fills the axis");
+    assert_eq!(sh("R 2 B"), (Some(2), None, 1), "the 2 is not also the blue shift");
+    assert_eq!(sh("+12 Red, -4 Blue"), (None, Some(-4), 1), "past the dial");
+}
+
+#[test]
+fn tone_names_decimal_commas_and_bracketed_labels() {
+    let p = parse_text("Highlight Tone (H-Tone): Medium Hard\nShadow Tone (S-Tone): 2,5\nColor: High (I might turn this down)\nSharpening: Medium Soft\nNoise Reduction: Low\nColorChrome FX Blue: Strong\nClarity (XPro3/XT4): +1");
+    assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+    let s = &p.settings;
+    assert_eq!((s.highlight_tone, s.shadow_tone, s.color, s.sharpness, s.high_iso_nr), (Some(1.0), Some(2.5), Some(2.0), Some(-1.0), Some(-2.0)));
+    assert_eq!((s.color_chrome_fx_blue.as_deref(), s.clarity), (Some("Strong"), Some(1.0)));
+    let p = parse_text("Highlight: +1, Shadow: +2");
+    assert_eq!((p.settings.highlight_tone, p.warnings.len()), (Some(1.0), 1), "a list comma is not a decimal");
+}
+
 #[test]
 fn dynamic_range_and_priority() {
     let p = parse_text("Dynamic Range: DR-Auto\nD-Range Priority: Strong");

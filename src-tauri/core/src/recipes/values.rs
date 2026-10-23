@@ -6,8 +6,18 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 static NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([+-]?)\s*(\d+(?:\.\d+)?|\.\d+)(?:\s*(½))?").unwrap());
+/// "2,5": a decimal comma, only between digits.
+static DECIMAL_COMMA: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d),(\d)").unwrap());
 static PAREN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\([^)]*\)").unwrap());
 static KELVIN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)(\d{4,5})\s*k\b").unwrap());
+/// "K6300", "Kelvin 5200", "K: 5000".
+static KELVIN_FIRST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bk(?:elvin)?\s*:?\s*(\d{4,5})\b").unwrap());
+/// "10k".
+static KELVIN_SHORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(\d{1,2})\s*k$").unwrap());
+/// A bare "5400" or "7700+" where a white balance should be.
+static KELVIN_BARE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d{4,5})\+?$").unwrap());
+/// "10,000": a thousands comma.
+static THOUSANDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d),(\d{3})").unwrap());
 static SHIFT_R: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)([+-]?\s*\d+)\s*(?:red|r)\b").unwrap());
 /// "R:4 B:-5", "R +2, B -4": the letter first.
 static SHIFT_R_FIRST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(?:red|r)\s*[:=]?\s*([+-]?\s*\d+)").unwrap());
@@ -26,8 +36,21 @@ fn ascii_minus(s: &str) -> String {
 }
 
 /// Removes "(Medium-Hard)", "(typically)" and the like.
-fn without_parens(s: &str) -> String {
+pub(crate) fn without_parens(s: &str) -> String {
     PAREN.replace_all(s, "").trim().to_string()
+}
+
+/// A tone given by its menu name, as the first bodies showed it: "Medium-Hard" is +1,
+/// "Low" is -2.
+fn tone_name(v: &str) -> Option<f64> {
+    Some(match norm(v).as_str() {
+        "soft" | "low" => -2.0,
+        "medium soft" | "medium low" => -1.0,
+        "standard" | "std" | "medium" | "normal" => 0.0,
+        "medium hard" | "medium high" => 1.0,
+        "hard" | "high" => 2.0,
+        _ => return None,
+    })
 }
 
 fn signed_num(sign: &str, digits: &str) -> f64 {
@@ -51,9 +74,12 @@ fn num_of(captured: &str) -> f64 {
 /// alongside the number it follows.
 fn tone(value: &str) -> Result<(f64, Option<String>), String> {
     let v = ascii_minus(&without_parens(value));
-    let v = v.trim_start_matches([':', ' ']).to_string();
+    let v = DECIMAL_COMMA.replace_all(v.trim_start_matches([':', ' ']), "$1.$2").into_owned();
     let Some(m) = NUMBER.captures(&v) else {
-        return Err("Not a number".into());
+        return match tone_name(&v) {
+            Some(n) => Ok((n, None)),
+            None => Err("Not a number".into()),
+        };
     };
     let mut n = signed_num(&m[1], &m[2]);
     if m.get(3).is_some() {
@@ -231,14 +257,16 @@ fn d_range_priority(value: &str) -> Result<String, String> {
     }
 }
 
-/// The white balance preset a phrase names.
+/// The white balance preset a phrase names. Words that only say "white balance shift"
+/// around it ("WB Auto", "Daylight. Shift:") are dropped first.
 fn wb_preset(base: &str) -> Option<&'static str> {
-    let n = norm(base);
+    let n = norm(base).replace("flourescent", "fluorescent").replace("fkuorescent", "fluorescent");
+    let n = n.split(' ').filter(|w| !matches!(*w, "wb" | "shift" | "with" | "a" | "color" | "colour")).collect::<Vec<_>>().join(" ");
     Some(match n.as_str() {
         "auto" | "awb" | "auto wb" => "Auto",
         "auto white priority" | "white priority" | "auto white" => "Auto White Priority",
-        "auto ambience priority" | "ambience priority" | "auto ambiance priority" | "ambiance priority" => "Auto Ambience Priority",
-        "daylight" | "fine" | "daylight fine" | "fine daylight" | "sunny" => "Daylight",
+        "auto ambience priority" | "ambience priority" | "auto ambiance priority" | "ambiance priority" | "auto ambience" | "auto ambiance" => "Auto Ambience Priority",
+        "daylight" | "fine" | "daylight fine" | "fine daylight" | "sunny" | "direct sunlight" => "Daylight",
         "shade" | "shade cloudy" | "cloudy" | "cloudy shade" => "Shade",
         "fluorescent 1" | "fluorescent light 1" | "daylight fluorescent" | "fluorescent 1 daylight" => "Fluorescent 1",
         "fluorescent 2" | "fluorescent light 2" | "warm white fluorescent" | "fluorescent 2 warm white" => "Fluorescent 2",
@@ -250,25 +278,59 @@ fn wb_preset(base: &str) -> Option<&'static str> {
     })
 }
 
-/// "Daylight, +2 Red & -4 Blue", "5200K, -1 Red & +3 Blue", "Color Temperature 6500K".
+/// A shift read from text: its value and the span of its text.
+type Shift = Option<(i32, std::ops::Range<usize>)>;
+
+/// The red and blue shifts in `v`. Two regimes: the number before its letter ("+2 Red & -4
+/// Blue", "+2R -4B") or after it ("R+2 B-4", "Red -3 Blue +3", "R:4 B:-5"). The regime that
+/// reads more shifts wins; on a tie, the letter-first one when the text opens with a letter or
+/// holds "R:" or "B:". A shift the other regime reads is taken for an axis the winner lacks,
+/// unless its text overlaps the winner's. A number past ±9 is not a shift.
+fn shifts(v: &str) -> (Shift, Shift) {
+    let read = |re: &Regex| -> Shift {
+        let m = re.captures(v)?;
+        let n = num_of(&m[1]);
+        (n.abs() <= 9.0).then(|| (n as i32, m.get(0).unwrap().range()))
+    };
+    let number_first = (read(&SHIFT_R), read(&SHIFT_B));
+    let letter_first = (read(&SHIFT_R_FIRST), read(&SHIFT_B_FIRST));
+    let count = |p: &(Shift, Shift)| u8::from(p.0.is_some()) + u8::from(p.1.is_some());
+    let opens_with_letter = v.trim_start().chars().next().is_some_and(|c| c.is_ascii_alphabetic()) || LETTER_COLON.is_match(v);
+    let letter_wins = match count(&letter_first).cmp(&count(&number_first)) {
+        std::cmp::Ordering::Greater => true,
+        std::cmp::Ordering::Less => false,
+        std::cmp::Ordering::Equal => opens_with_letter,
+    };
+    let (won, other) = if letter_wins { (letter_first, number_first) } else { (number_first, letter_first) };
+    let apart = |a: &Shift, b: &Shift| !matches!((a, b), (Some((_, x)), Some((_, y))) if x.start < y.end && y.start < x.end);
+    let r = won.0.clone().or_else(|| other.0.clone().filter(|_| apart(&other.0, &won.1)));
+    let b = won.1.clone().or_else(|| other.1.clone().filter(|_| apart(&other.1, &won.0)));
+    (r, b)
+}
+
+/// "Daylight, +2 Red & -4 Blue", "5200K, -1 Red & +3 Blue", "Color Temperature 6500K", "Auto,
+/// R+2 B-4", "K6300 R-2 B5", "10,000K".
 fn white_balance(s: &mut Settings, value: &str) -> Result<(), String> {
     let v = ascii_minus(value);
+    let v = THOUSANDS.replace_all(&v, "$1$2").into_owned();
     let mut problems = Vec::new();
-    if let Some(m) = SHIFT_R.captures(&v) {
-        s.wb_shift_r = Some(num_of(&m[1]) as i32);
+    let (r, b) = shifts(&v);
+    if let Some((n, _)) = &r {
+        s.wb_shift_r = Some(*n);
     }
-    if let Some(m) = SHIFT_B.captures(&v) {
-        s.wb_shift_b = Some(num_of(&m[1]) as i32);
+    if let Some((n, _)) = &b {
+        s.wb_shift_b = Some(*n);
     }
-    if s.wb_shift_r.is_some() != s.wb_shift_b.is_some() {
+    if r.is_some() != b.is_some() {
         problems.push("only one of the red and blue shifts given".to_string());
     }
-    // The base is what comes before the shift: up to the first comma, or the first shift number.
-    let cut = [v.find(','), SHIFT_R.find(&v).map(|m| m.start()), SHIFT_B.find(&v).map(|m| m.start())].into_iter().flatten().min().unwrap_or(v.len());
+    // The base is what comes before the shift: up to the first comma, or the first shift.
+    let cut = [v.find(','), r.map(|x| x.1.start), b.map(|x| x.1.start)].into_iter().flatten().min().unwrap_or(v.len());
     let base = without_parens(&v[..cut]);
-    if let Some(k) = KELVIN.captures(&base) {
+    let kelvin = KELVIN.captures(&base).or_else(|| KELVIN_FIRST.captures(&base)).or_else(|| KELVIN_BARE.captures(&base)).and_then(|k| k[1].parse::<u32>().ok()).or_else(|| KELVIN_SHORT.captures(&base).and_then(|k| k[1].parse::<u32>().ok()).map(|n| n * 1000));
+    if let Some(k) = kelvin {
         s.white_balance = Some("Kelvin".into());
-        s.color_temp = k[1].parse().ok();
+        s.color_temp = Some(k);
     } else if let Some(p) = wb_preset(&base) {
         s.white_balance = Some(p.into());
     } else if let Some(p) = wb_preset(&base.replace('/', " ")) {
@@ -286,13 +348,10 @@ fn white_balance(s: &mut Settings, value: &str) -> Result<(), String> {
 /// A shift line on its own: "1 Red, -9 Blue", "R:4 B:-5", "+2R & -4B".
 fn wb_shift(s: &mut Settings, value: &str) -> Result<(), String> {
     let v = ascii_minus(value);
-    // A value that opens with the letter puts each number after its letter.
-    let letter_first = v.trim_start().chars().next().is_some_and(|c| c.is_ascii_alphabetic()) || LETTER_COLON.is_match(&v);
-    let (re_r, re_b, alt_r, alt_b) = if letter_first { (&*SHIFT_R_FIRST, &*SHIFT_B_FIRST, &*SHIFT_R, &*SHIFT_B) } else { (&*SHIFT_R, &*SHIFT_B, &*SHIFT_R_FIRST, &*SHIFT_B_FIRST) };
-    let r = re_r.captures(&v).or_else(|| alt_r.captures(&v)).map(|m| num_of(&m[1]) as i32);
-    let b = re_b.captures(&v).or_else(|| alt_b.captures(&v)).map(|m| num_of(&m[1]) as i32);
+    let (r, b) = shifts(&v);
+    let (r, b) = (r.map(|x| x.0), b.map(|x| x.0));
     // "WB Shift R: 2 B:-3": the label holds the R, the value starts with its number.
-    let r = r.or_else(|| NUMBER.captures(v.trim()).filter(|_| b.is_some()).map(|m| signed_num(&m[1], &m[2]) as i32));
+    let r = r.or_else(|| NUMBER.captures(v.trim()).filter(|_| b.is_some()).map(|m| signed_num(&m[1], &m[2]) as i32).filter(|n| n.abs() <= 9));
     match (r, b) {
         (None, None) => Err("No red or blue shift".into()),
         (r, b) => {
