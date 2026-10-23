@@ -48,8 +48,6 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
     if (!candidate) ref.current?.querySelector<HTMLElement>(".sheet-body input, .sheet-body textarea")?.focus();
   }, [tab, candidate]);
 
-  const fromResult = fromEntry;
-
   return (
     <dialog ref={ref} className="sheet" aria-labelledby="import-title" onClose={onClose} onCancel={onClose} data-component="recipe-import">
       <div className="sheet-head">
@@ -66,12 +64,12 @@ export function RecipeImport({ onClose, onSave, onWrite }: Props) {
         <>
           <div className="seg" role="tablist" aria-label="Import from">
             {TABS.map(([t, label]) => (
-              <button key={t} type="button" role="tab" aria-selected={tab === t} aria-pressed={tab === t} onClick={() => setTab(t)}>
+              <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
                 {label}
               </button>
             ))}
           </div>
-          {tab === "search" && <SearchTab onPick={(r) => setCandidate(fromResult(r))} />}
+          {tab === "search" && <SearchTab onPick={(r) => setCandidate(fromEntry(r))} />}
           {tab === "link" && <LinkTab onRead={setCandidate} />}
           {tab === "text" && <TextTab onRead={(parsed) => setCandidate({ parsed, source: { label: "Pasted text", url: null }, tones: simTones(parsed.sim) })} />}
         </>
