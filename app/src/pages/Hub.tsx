@@ -26,6 +26,8 @@ type HubData = {
   lens: string | null;
   battery: string | null;
   batteryPct: number | null;
+  /** Connected over Wi-Fi (wireless tether). */
+  wifi: boolean;
   cards: fx.HubCamera["cards"] | null;
   /** Shots left on the card, as the camera reports it. */
   shotsLeft: string | null;
@@ -58,6 +60,7 @@ function fixtureData(): HubData {
     lens: c.lens,
     battery: `${c.batteryPct}%`,
     batteryPct: c.batteryPct,
+    wifi: false,
     cards: c.cards,
     shotsLeft: null,
     shots: { total: s.total, sinceLast: s.sinceLast, lastConnect: s.lastConnect, mechanical: s.mechanical, electronic: s.electronic },
@@ -112,7 +115,10 @@ function liveData(status: ReturnType<typeof useCamera>["status"], live: Live, hi
     const r = code == null ? undefined : live.rows.get(code);
     return connected && r?.available && r.value ? display(entry(live.catalog, r.code), r.value) : null;
   };
-  const battery = read("BatteryLevel");
+  // D36B (BatteryRatioInfo): comma-separated percentages, the body battery first.
+  const ratio = connected ? live.rows.get(0xd36b) : undefined;
+  const ratioPct = ratio?.available && ratio.value?.kind === "str" ? Number.parseInt(ratio.value.v.split(",")[0], 10) : NaN;
+  const battery = read("BatteryLevel") ?? (Number.isFinite(ratioPct) ? `${ratioPct}%` : null);
   const pct = battery?.match(/^(\d+)\s*%$/);
   const prev = hist?.connects.find((c, i) => i > 0 && c.shots != null);
   return {
@@ -123,6 +129,7 @@ function liveData(status: ReturnType<typeof useCamera>["status"], live: Live, hi
     lens: null,
     battery,
     batteryPct: pct ? Number(pct[1]) : null,
+    wifi: connected && status?.transport === "wifi",
     cards: null,
     shotsLeft: read("CaptureRemaining"),
     shots:
@@ -239,6 +246,7 @@ function CameraCard({ d }: { d: HubData }) {
           <div className="big-name">{d.model ?? "No camera"}</div>
           <div className="small muted facts-line">
             {d.firmware && <>Firmware {d.firmware}</>}
+            {d.wifi && <> · Over Wi-Fi</>}
             {d.serialTail && (
               <>
                 {" "}
@@ -258,6 +266,7 @@ function CameraCard({ d }: { d: HubData }) {
               <dd className={d.battery ? undefined : "muted"}>{d.battery ?? "—"}</dd>
             </div>
             {d.batteryPct != null && <Meter pct={d.batteryPct} label="Battery" />}
+            {d.wifi && <span className="tiny muted">Wi-Fi drains the battery faster than USB.</span>}
           </div>
           {d.cards?.map((card) =>
             "empty" in card ? (

@@ -71,6 +71,11 @@ export const commands = {
 	 *  power off timer. Remembered in `settings.json`.
 	 */
 	labKeepAwake: (on: boolean) => __TAURI_INVOKE<void>("lab_keep_awake", { on }),
+	/**
+	 *  How `serve` reaches the camera: `usb` or `wifi` (wireless tether). The owner
+	 *  closes the session cleanly and looks the other way. Remembered in `settings.json`.
+	 */
+	labTransport: (kind: TransportKind) => __TAURI_INVOKE<void>("lab_transport", { kind }),
 	/**  The Lab's connect switch: off stops the owner from connecting. */
 	labConnect: (on: boolean) => __TAURI_INVOKE<void>("lab_connect", { on }),
 	/**  A note in the session log, tied to a change group. */
@@ -743,6 +748,11 @@ export type Prefs = {
 	 *  half-press, which closes the menu, and one retry.
 	 */
 	close_menu_to_write?: boolean,
+	/**
+	 *  How `serve` reaches the camera: `usb` or `wifi` (wireless tether).
+	 *  `UKIYO_TRANSPORT` overrides it for one run.
+	 */
+	transport?: TransportKind,
 };
 
 /**  A change to some preferences. `None` leaves a field alone. */
@@ -753,6 +763,7 @@ export type PrefsPatch = {
 	keep_awake?: boolean | null,
 	in_use_minutes?: number | null,
 	close_menu_to_write?: boolean | null,
+	transport?: TransportKind | null,
 };
 
 /**
@@ -1261,6 +1272,8 @@ export type SourceInfo = {
 
 export type Status = {
 	link: Link,
+	/**  How the owner reaches the camera: the USB cable or wireless tether. */
+	transport?: TransportKind,
 	/**  Why the link is in its state, for the status bar ("auto power off", "unplugged"). */
 	reason: string | null,
 	model: string | null,
@@ -1312,6 +1325,16 @@ export type Step = {
 
 /**  The window's theme. */
 export type Theme = "system" | "light" | "dark";
+
+/**  How the owner reaches the camera. */
+export type TransportKind = 
+/**  The USB cable (CONNECTION MODE: USB TETHER SHOOTING FIXED, USB RAW CONV. ...). */
+"usb" | 
+/**
+ *  Wireless tether (CONNECTION MODE: WIRELESS TETHER SHOOTING FIXED), on the Mac's
+ *  network.
+ */
+"wifi";
 
 export type Trashed = {
 	id: string,

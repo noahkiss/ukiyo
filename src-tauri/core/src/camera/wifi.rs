@@ -370,7 +370,7 @@ pub fn init(s: &mut TcpStream, cfg: &WifiConfig, camera: Ipv4Addr) -> Result<Str
         match u32_at(&p, 4) {
             Some(INIT_CMD_ACK) => {
                 // Ack: connection number, GUID, then the camera name in UTF-16LE.
-                let name: Vec<u16> = p.get(28..).unwrap_or_default().chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|c| *c != 0).collect();
+                let name: Vec<u16> = p.get(28..).unwrap_or_default().as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).take_while(|c| *c != 0).collect();
                 // libfuji: Fuji cameras need at least 50 ms before OpenSession.
                 std::thread::sleep(Duration::from_millis(100));
                 return Ok(String::from_utf16_lossy(&name));

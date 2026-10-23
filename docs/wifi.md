@@ -186,27 +186,43 @@ connected, and a read-only probe (no DF01 write) if the owner can supply the net
 
 ## How a Wi-Fi transport fits the core
 
-The core's seam (`src-tauri/core/src/camera/transport.rs`) already fits:
+Built (stage 1, 2026-10-23; not yet run against the camera): `src-tauri/core/src/camera/wifi.rs`
+behind the seam in `transport.rs`. `ukiyo serve` stays the one owner of every camera session,
+USB and Wi-Fi alike, so the window, CLI and MCP server never open a second one.
 
-- `Transport::op(code, params, data) -> Reply { rc, data }` is one PTP transaction. A
-  `WifiTransport` sends the Fuji container on the command socket and reads data and response
-  packets. The framing is the USB container with a length prefix, so the dataset parsers stay
-  as they are.
-- `Connector::present()` and `open(reset)`: a `WifiConnector` answers `present` from discovery
-  (a PCSS invitation, or a remembered IP that accepts TCP on 55740). `open` does the init and
-  returns the transport. `reset` has no Wi-Fi meaning; the connector ignores it.
-- `TransportError` maps as: socket closed or host unreachable -> `Gone`, read timeout ->
-  `Timeout`, a bad container -> `Io`.
-- Live view and events need two more sockets. They belong to the transport, opened after
-  InitiateOpenCapture and closed with TerminateOpenCapture. The owner sees frames as data, not
-  as a new connection.
-
-The one-owner rule stays. `ukiyo serve` owns every camera session, USB and Wi-Fi alike, so the
-window, CLI and MCP server never open a second one. The owner picks one connector at a time
-per camera; a camera reachable both ways uses one of them. The reconnect rules carry over:
-no tight loops, presence checks every few seconds, a hold after the camera leaves. Wi-Fi adds
-one rule: the init can wait on an on-camera prompt, so the owner must not count that wait as
-a failure.
+- `WifiConnector` keeps a discovery thread. It listens on TCP 51560 all the time and sends the
+  PCSS datagram every 2 s to each broadcast-capable interface (its own address as `HOST`), but
+  only while the owner asks `present()`, which it does every 3 s while idle. `present()` is
+  true while an invitation is under 10 s old. `open()` uses that invitation once: TCP to
+  `DSC:DSCPORT`, the 82-byte init with the GUID for that address, and up to 4 resends 1 s
+  apart on INIT_FAIL 0x2019, on the same socket. Any other INIT_FAIL is a failed open. The init
+  answer may wait 30 s, for a prompt on the camera. `reset` has no Wi-Fi meaning: the
+  connector ignores it, and the owner's once-only reset applies to USB only.
+- `WifiTransport::op` is one PTP transaction: the USB containers (`ptp::command`, `ptp::data`)
+  on the socket, data containers appended, events skipped, until the response. The first
+  operation (OpenSession) uses transaction id 0, as `fujiptpip.Session` does. Each read waits
+  10 s, so a long download keeps going while bytes arrive. Dropping the transport sends the
+  8-byte goodbye.
+- `TransportError` maps: reset, closed, refused -> `Gone`; read timeout -> `Timeout`; anything
+  else, a bad container included -> `Io`. EHOSTUNREACH at once usually means the process has no
+  macOS Local Network permission; the message says so.
+- The owner reports `transport` (`usb`, `wifi`) in its status. A Wi-Fi loss after a busy
+  burst is auto power off (`asleep`); otherwise the reason is "off or out of reach". The 30 s
+  hold after a loss applies, and a camera that powered off sends no invitation, so there is no
+  reconnect loop. AUTO POWER OFF still powers the camera off over Wi-Fi; keep-awake's D381
+  toggle runs the same way as on USB (untested over Wi-Fi).
+- The transport is the `transport` preference (`usb`, `wifi`), `UKIYO_TRANSPORT` for one run,
+  or `lab_transport` / `ukiyo camera transport` / Settings > Camera connection at runtime: the
+  owner closes the session cleanly and takes the other connector.
+- Status shows the body battery from D36B (BatteryRatioInfo, first field) and, over Wi-Fi, that
+  Wi-Fi drains the battery faster than USB (owner: about 1 bar of 5 in 20-30 min with live
+  view).
+- Tests: `camera/fake_wifi.rs` puts the fake X-T5 behind a loopback endpoint that answers PCSS,
+  checks the GUID, answers the first init busy, and passes each container to the fake. With
+  `UKIYO_FAKE_CAMERA=1` and the Wi-Fi transport the Lab runs that endpoint.
+- Later: live view and events. If they need the extra sockets (55741, 55742) they belong to the
+  transport, opened after InitiateOpenCapture; the X-T5 serves frames on the command socket
+  (object 0x80000001), so the owner sees frames as data, not as a new connection.
 
 Smartphone mode adds a Bluetooth step before the Wi-Fi connector: bond, hand-off, join the
 camera's network. Joining a network changes the Mac's own Wi-Fi, so `serve` must ask the owner

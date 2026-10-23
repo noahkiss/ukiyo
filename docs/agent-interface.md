@@ -68,7 +68,7 @@ Out of scope: shooting (no capture or live view), firmware, and anything the app
       The socket calls `dispatch` with the connection's `hello` actor. The CLI and the MCP
       server send their requests over the socket.
     - Method names are the window's command names (`lab_snapshot`, `lab_pin`,
-      `lab_keep_awake`, `lab_connect`, `lab_export`, `lab_label`, `lab_note`, `lab_fake`,
+      `lab_keep_awake`, `lab_connect`, `lab_transport`, `lab_export`, `lab_label`, `lab_note`, `lab_fake`,
       `recipe_parse`, `plan_create`, `plan_show`, `plan_apply`, `plan_discard`, `activity`).
       `activity` is the window's input ping; every request counts as use for keep-awake. New methods
       for the CLI and MCP join the same enums. Stage 4 removed `lab_write`: a camera write
@@ -223,6 +223,7 @@ session for all of them.
 ukiyo status                                   link, mode, model, battery, card, what works now
 ukiyo camera  watch [--code C]... [--for 60s]  the change feed, live
               connect | disconnect             the Lab's connect switch
+              transport [usb|wifi]             how serve reaches the camera
               export                           write a full dump to dumps/
 ukiyo settings [QUERY] [--menu PATH] [--code C]... [--favourites] [--unnamed] [--unconfirmed] [--menus]
               set NAME=VALUE...                one or more settings, through a plan
@@ -402,6 +403,8 @@ $ ukiyo snapshots save before-trip && ukiyo snapshots diff before-trip
   the camera stands. `battery` and `card` show the catalog's BatteryLevel and CaptureRemaining
   rows when the camera reports them (raw values; both are `likely`, and the X-T5 reads them
   in movie mode only). `lens` stays `null`: D36D carries the lens name with its serial.
+  `transport` is `usb` or `wifi`. `battery_percent` is the first field of D36B
+  (BatteryRatioInfo); over Wi-Fi, `battery_note` says that Wi-Fi drains the battery faster.
 - **`settings` needs tether mode** (`needs_tether`, exit 4), except with `--code`, which reads
   any connected mode, like the Lab's table. No camera is exit 3. `QUERY` words must all appear
   in the code, the name (CamelCase split into words), the menu path or the notes; keywords
@@ -449,6 +452,11 @@ $ ukiyo snapshots save before-trip && ukiyo snapshots diff before-trip
   `stopped`; with no `serve` running it does nothing. **`camera connect`** spawns `serve` when
   needed and turns the switch on; the owner then follows its 3 s and 30 s rules.
   **`camera export`** writes the Lab dump and prints its path.
+- **`camera transport usb|wifi`** saves `transport` in `settings.json`, and a running `serve`
+  switches at once (`lab_transport`): the owner closes the session cleanly and looks the other
+  way under its 3 s and 30 s rules. It never starts `serve`. Without a value it prints the
+  transport in use; `UKIYO_TRANSPORT` overrides the preference for one run.
+  `prefs set transport=wifi` and MCP `library_save` (kind `prefs`) do the same.
 - **`log note TEXT [--group N]`** writes into the running session's log. It never starts
   `serve` (a note is no reason to claim the camera), so with none running it fails with
   `unavailable`.
@@ -489,7 +497,8 @@ Reports the connection, the USB mode, and which features work in that mode.
 
 - Best for: the first call in any camera task, and after any `needs_*` error.
 - Input: `{ history?: boolean }`.
-- Returns: link, reason, model, firmware, mode, capture, screen, battery, card space, lens,
+- Returns: link, transport, reason, model, firmware, mode, capture, screen, battery,
+  battery_percent and battery_note (Wi-Fi), card space, lens,
   the owner (`serve`, its pid, fake or real camera), and `available` per feature with the missing requirement.
   With `history: true`: shot counts per day and month, lenses seen, the connect log.
 - Not for property values: use `settings_read`.
@@ -576,7 +585,7 @@ Creates or replaces one item on this Mac. Never writes to the camera.
   - `snapshot` without `item` captures the camera now; `dump` writes a full Lab dump.
   - `recipe` with `from: "cat:<id>"` copies a catalogue recipe into the library; `item` holds
     the editor's fields, checked against the slot ranges.
-  - `favourite` adds a setting by name or code; `prefs` takes `{ theme, brand_mark, app_icon, keep_awake }`.
+  - `favourite` adds a setting by name or code; `prefs` takes `{ theme, brand_mark, app_icon, keep_awake, transport }`.
   - `note` adds a line to the session log, with an optional change group.
 - Returns: `{ id, kind, replaced: boolean, warnings }`.
 - A replaced item keeps its previous version in `library/.trash/`.
@@ -886,7 +895,8 @@ the Connect page's guide in the window.
 
 - No tool and no command turns the camera off, resets USB on demand, or retries a connect.
 - `camera connect` only lifts the Lab's stopped state; the owner then follows its 3 s and 30 s
-  rules.
+  rules. Over Wi-Fi the same rules hold: the owner opens only on a fresh discovery answer, a
+  camera that powered off sends none, and no USB-style reset is tried.
 - A client never retries a failed request in a loop. It reconnects to the socket once if
   `serve` restarted, and spawns `serve` at most once per command.
 - Keep-awake writes D381 only through the owner: a neighbouring timeout and straight back to

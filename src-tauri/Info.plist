@@ -9,5 +9,8 @@
        CFBundleIconFile, set by Tauri, keeps icon.icns for macOS before 26. -->
   <key>CFBundleIconName</key>
   <string>AppIcon</string>
+  <!-- Wireless tether: discovery and the camera connection are on the local network. -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Ukiyo finds and connects to your camera over Wi-Fi when it is set to wireless tether.</string>
 </dict>
 </plist>

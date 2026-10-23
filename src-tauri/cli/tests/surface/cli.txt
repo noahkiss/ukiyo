@@ -1,4 +1,5 @@
 # schema_version 1
+cli.arg camera transport [KIND]
 cli.arg catalog show [CODE]
 cli.arg help modes [MODE]
 cli.arg log note <TEXT>
@@ -38,6 +39,7 @@ cli.command camera
 cli.command camera connect
 cli.command camera disconnect
 cli.command camera export
+cli.command camera transport
 cli.command camera watch
 cli.command catalog
 cli.command catalog show

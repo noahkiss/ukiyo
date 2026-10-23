@@ -55,6 +55,7 @@ impl Env {
             .env("UKIYO_IDLE_EXIT", "8")
             .env("UKIYO_FAKE_AUTO", "0")
             .env_remove("UKIYO_FAKE_MODE")
+            .env_remove("UKIYO_TRANSPORT")
             .stdin(Stdio::null());
         if let Some(m) = self.mode {
             c.env("UKIYO_FAKE_MODE", m);
@@ -527,5 +528,32 @@ fn connect_disconnect_export_and_notes() {
     assert!(e.iter().any(|l| l["kind"] == "note" && l["actor"] == "cli" && l["group"] == 2));
     assert!(e.iter().any(|l| l["kind"] == "export" && l["actor"] == "cli"));
     assert!(e.iter().any(|l| l["kind"] == "connect" && l["on"] == false));
+    env.finish(pid);
+}
+
+/// The transport switch: the fake camera behind a loopback Wi-Fi endpoint, then USB again.
+#[test]
+fn transport_switches_between_usb_and_wifi() {
+    let env = Env::new();
+    let pid = env.pid();
+    let (code, v) = env.json(&["camera", "transport", "wifi"]);
+    assert_eq!((code, v["data"]["serve"].as_bool()), (0, Some(true)), "{v}");
+    wait_until("connected over Wi-Fi", 20, || {
+        let d = &env.json(&["status"]).1["data"];
+        d["transport"] == "wifi" && d["link"] == "connected" && d["model"] == "X-T5"
+    });
+    let (_, s) = env.json(&["status"]);
+    assert!(s["data"]["battery_note"].as_str().is_some_and(|n| n.contains("Wi-Fi")), "{s}");
+    assert!(text(&env.run(&["status"])).contains("over Wi-Fi"));
+    let (_, p) = env.json(&["camera", "transport"]);
+    assert_eq!(p["data"]["saved"], "wifi");
+    assert_eq!(env.json(&["camera", "transport", "usb"]).0, 0);
+    wait_until("connected over USB", 20, || {
+        let d = &env.json(&["status"]).1["data"];
+        d["transport"] == "usb" && d["link"] == "connected"
+    });
+    assert!(env.json(&["status"]).1["data"]["battery_note"].is_null());
+    let (code, _) = env.json(&["camera", "transport", "bluetooth"]);
+    assert_eq!(code, 2, "a usage error");
     env.finish(pid);
 }

@@ -219,7 +219,7 @@ fn session(mut s: TcpStream, cam: &Mutex<FakeCamera>, stop: &AtomicBool, stats: 
             continue;
         }
         let tid = u32::from_le_bytes(p[8..12].try_into().unwrap());
-        let params: Vec<u32> = p[12..].chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+        let params: Vec<u32> = p[12..].as_chunks::<4>().0.iter().map(|c| u32::from_le_bytes(*c)).collect();
         // SetDevicePropValue is the one operation here with a data phase from the client.
         let data = if h.code == ptp::OP_SET_PROP_VALUE {
             match read_packet(&mut s, stop) {

@@ -36,7 +36,9 @@ what comes next.
   `dispatch`; `Error`, `Event`, `call`) and the modules below. Cargo commands in
   `src-tauri/` cover both crates.
 - `src-tauri/core/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
-  `usb` (nusb), `fake` (fake X-T5; shape in `fake_x-t5.json`), `clock`, `owner` (the one
+  `usb` (nusb), `wifi` (wireless tether: PCSS discovery, Fuji init, PTP over TCP), `fake` (fake
+  X-T5; shape in `fake_x-t5.json`), `fake_wifi` (the fake behind a loopback Wi-Fi endpoint),
+  `clock`, `owner` (the one
   connection thread: queue, polling, pause, power-off, reconnect rules, keep-awake D381 toggle,
   menu-close half-press), `owner_tests`.
 - `src-tauri/core/src/recipes/` — the recipe text parser (`mod`, `values`), recipe blocks in post
@@ -74,7 +76,7 @@ what comes next.
   `tests/cli.rs` and `tests/mcp.rs` on the fake camera. Its read views live in core `read.rs`, `modes.rs`,
   `session.rs`. Built so far: `serve`, `status`, `settings`, `camera watch`, `catalog show`,
   `log show`, `help modes`, `settings set`, `owner`, `plan`,
-  `camera connect|disconnect|export`, `log note`, `mcp`, `presets`, `snapshots`,
+  `camera connect|disconnect|export|transport`, `log note`, `mcp`, `presets`, `snapshots`,
   `settings fav`, `prefs`, `trash`, `status --history`, `recipes`.
 - `src-tauri/tauri.bundle.conf.json` — the overlay config for a bundle: adds `ukiyo-cli` as an
   `externalBin` (`Contents/MacOS/ukiyo-cli`) and builds it first with
@@ -144,7 +146,7 @@ what comes next.
   lens serial numbers and owner strings.
 - App data (`~/Library/Application Support/com.nkmkdigital.ukiyo/`): `sessions/*.jsonl`, `dumps/`,
   `settings.json` (theme, brand mark, app icon, `keep_awake`, `in_use_minutes`,
-  `close_menu_to_write`), `library/` (presets, snapshots, recipes, favourites, `.trash/`, `log.jsonl`),
+  `close_menu_to_write`, `transport`), `library/` (presets, snapshots, recipes, favourites, `.trash/`, `log.jsonl`),
   `history/` (per-camera history and its salt), `owner.lock`, `ukiyo.sock`, `serve.log`.
 
 ## Build, test, run
@@ -155,6 +157,8 @@ what comes next.
 - Release build without upload: `tools/release/release.sh --dry-run` (Apple Silicon).
   `UKIYO_FAKE_CAMERA=1` uses the fake camera; `UKIYO_FAKE_MODE=rawconv` fakes RAW CONV. mode;
   `UKIYO_FAKE_AUTO=0` stops the fake's own setting changes (the CLI tests set it).
+  `UKIYO_TRANSPORT=usb|wifi` picks the transport for one run (with the fake: a loopback
+  Wi-Fi endpoint).
   `pnpm tauri dev` spawns `target/debug/ukiyo serve`, which outlives the window for 120 s
   (`UKIYO_IDLE_EXIT=S` shortens it); `UKIYO_DATA_DIR=DIR` uses another data folder.
   Anything that runs `ukiyo-cli` or `serve` in a test sets `UKIYO_FAKE_CAMERA=1` and a temp
