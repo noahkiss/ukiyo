@@ -108,6 +108,9 @@ pub struct FakeState {
     /// SetDevicePropValue answers 0x2019 (busy) this many times before it works, as the
     /// X-T5 does just after a half-press release.
     pub write_busy: u32,
+    /// Every property operation answers 0x2019 until this time: the camera is busy with
+    /// something of its own (writing a card, a half-press window) but stays on the bus.
+    pub busy_until: Option<Duration>,
     /// After a write of one of these codes the camera holds this value instead, as a camera
     /// rule would (ISO 125 forces D-Range 100): the read-back differs from the write.
     pub write_coerce: BTreeMap<u16, Value>,
@@ -364,6 +367,7 @@ impl FakeCamera {
             presence_checks: Vec::new(),
             ops: Vec::new(),
             write_busy: 0,
+            busy_until: None,
             write_coerce: BTreeMap::new(),
             auto_sleep: false,
             idle_since: Duration::ZERO,
@@ -658,6 +662,9 @@ impl Transport for FakeTransport {
                 })),
                 ptp::OP_GET_PROP_DESC | ptp::OP_GET_PROP_VALUE | ptp::OP_SET_PROP_VALUE => {
                     let Some(prop) = prop else { return rc(0x201D) };
+                    if s.busy_until.is_some_and(|t| now < t) {
+                        return rc(ptp::RC_DEVICE_BUSY);
+                    }
                     // Over the shooting screen, the shutter gesture is accepted with a menu open.
                     let gesture = prop == D208 && code == ptp::OP_SET_PROP_VALUE;
                     if s.menu_open && !(prop == D22E && code == ptp::OP_GET_PROP_VALUE && !s.menu_hides_screen) {

@@ -509,6 +509,8 @@ struct Session {
     redescribe: bool,
     ops: u64,
     op_time: Duration,
+    /// The next link check while nothing is readable (`poll_step`).
+    next_link_check: Duration,
 }
 
 enum Phase {
@@ -1313,6 +1315,7 @@ impl Owner {
             redescribe: false,
             ops: 0,
             op_time: Duration::ZERO,
+            next_link_check: now,
         });
         let info = match s.t.op(ptp::OP_GET_DEVICE_INFO, &[], None) {
             Ok(r) if r.rc == ptp::RC_OK => {
@@ -1361,6 +1364,11 @@ impl Owner {
         let codes = s.info.properties.clone();
         let mut props = BTreeMap::new();
         let mut desc_ok = 0usize;
+        // 0x2019 in a row, as in the poll: the camera is busy, or about to power off. Without
+        // this, a busy camera described every property as unavailable and the owner sat on an
+        // empty sweep, sending nothing, never seeing it leave.
+        let mut busy_run = 0u32;
+        let busy_after = self.cfg.busy_after;
         for code in &codes {
             let code = *code;
             let r = match self.op(ptp::OP_GET_PROP_DESC, &[code as u32], None) {
@@ -1370,6 +1378,9 @@ impl Owner {
             if r.rc == ptp::RC_FUJI_MENU {
                 // A menu opened mid-describe: pause, and describe again when it closes.
                 return self.enter_pause(Pause::Menu, true);
+            }
+            if self.busy_mid_describe(r.rc, &mut busy_run, busy_after) {
+                return;
             }
             let mut p = Prop { desc: None, value: None, error: None, available: false, changed: None, changed_wall: None };
             if r.rc == ptp::RC_OK {
@@ -1385,6 +1396,9 @@ impl Owner {
                     Ok(v) => v,
                     Err(e) => return self.lost(e),
                 };
+                if self.busy_mid_describe(v.rc, &mut busy_run, busy_after) {
+                    return;
+                }
                 if v.rc == ptp::RC_OK {
                     p.value = Some(ptp::decode_value(p.datatype(), &v.data));
                     p.available = true;
@@ -1423,6 +1437,29 @@ impl Owner {
         self.status.screen = screen.map(|v| screen_of(&v)).or(Some(Screen::Unknown));
         self.emit(Event::Props(rows));
         self.publish(true);
+    }
+
+    /// Counts a describe answer against the busy rule. `true`: the camera is busy, the owner
+    /// is in the Busy pause and will describe again once D22E answers.
+    fn busy_mid_describe(&mut self, rc: u16, busy_run: &mut u32, busy_after: u32) -> bool {
+        if rc != ptp::RC_DEVICE_BUSY {
+            if rc == ptp::RC_OK {
+                *busy_run = 0;
+            }
+            return false;
+        }
+        *busy_run += 1;
+        let now = self.clock.now();
+        if let Some(s) = self.session() {
+            s.busy_run = *busy_run;
+            s.last_busy = Some(now);
+        }
+        if *busy_run < busy_after {
+            return false;
+        }
+        self.log("camera busy (0x2019) while describing");
+        self.enter_pause(Pause::Busy, true);
+        true
     }
 
     fn enter_pause(&mut self, pause: Pause, redescribe: bool) {
@@ -1467,7 +1504,19 @@ impl Owner {
             self.plan_cycle();
         }
         let Some(code) = self.session().and_then(|s| s.plan.pop_front()) else {
-            // Nothing readable (card reader with no values): idle a little.
+            // Nothing readable (card reader with no values): idle a little, and check the
+            // link now and then. No property read means nothing would ever notice the camera
+            // leaving.
+            let due = self.session().is_some_and(|s| now >= s.next_link_check);
+            if due {
+                let next = now + self.cfg.presence_every;
+                if let Some(s) = self.session() {
+                    s.next_link_check = next;
+                }
+                if let Err(e) = self.op(ptp::OP_GET_DEVICE_INFO, &[], None) {
+                    return self.lost(e);
+                }
+            }
             self.clock.sleep(Duration::from_millis(100));
             return;
         };
