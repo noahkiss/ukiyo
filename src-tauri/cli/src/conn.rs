@@ -17,18 +17,14 @@ const SETTLE: Duration = Duration::from_secs(8);
 /// A `serve` this command just started gets this long to find a camera on the bus.
 const FIRST_LOOK: Duration = Duration::from_secs(4);
 
-/// macOS limits a Unix socket path to 103 bytes (`sun_path`).
-const SOCKET_PATH_MAX: usize = 103;
-
-/// Refuses a data folder whose socket path is too long to bind, before anything is spawned:
-/// otherwise `serve` fails at once and the client waits out its 10 s.
+/// Refuses a data folder whose socket path is too long to bind (`paths::SOCKET_PATH_MAX`),
+/// as a usage error before anything connects or spawns.
 pub fn check_data_dir() -> Result<(), Fail> {
-    let sock = paths::socket_path(&paths::data_dir());
-    let n = sock.as_os_str().len();
-    if n > SOCKET_PATH_MAX {
-        return Err(Fail::usage(format!("the socket path {} is {n} bytes; macOS allows {SOCKET_PATH_MAX}", sock.display())).hint("Set UKIYO_DATA_DIR to a shorter folder."));
-    }
-    Ok(())
+    let data = paths::data_dir();
+    paths::check_socket_path(&data).map_err(|_| {
+        let sock = paths::socket_path(&data);
+        Fail::usage(format!("the socket path {} is {} bytes; macOS allows {}", sock.display(), sock.as_os_str().len(), paths::SOCKET_PATH_MAX)).hint("Set UKIYO_DATA_DIR to a shorter folder.")
+    })
 }
 
 /// A client that spawns `serve` when none runs. With `on_event`, it subscribes.

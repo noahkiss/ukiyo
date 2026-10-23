@@ -29,6 +29,7 @@ use std::time::Duration;
 /// hold open for its whole life (the far side never sees the end of that pipe).
 pub fn spawn_detached(exe: &Path, data_dir: &Path) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt as _;
+    crate::paths::check_socket_path(data_dir)?;
     crate::paths::prepare_data_dir(data_dir)?;
     let log_path = crate::paths::serve_log_path(data_dir);
     if std::fs::metadata(&log_path).is_ok_and(|m| m.len() > 1 << 20) {
