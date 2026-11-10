@@ -14,13 +14,13 @@ The probe ships through TestFlight as the first builds of Ukiyo (bundle ID
 `com.nkmkdigital.ukiyo`). On the device it is named PTP Probe.
 
 1. Install the TestFlight app from the App Store on the iPhone or iPad.
-2. Accept the TestFlight invitation for Ukiyo, from the email or from TestFlight itself. Members
-   of the internal group get every build.
+2. Accept the TestFlight invitation for Ukiyo, from the email or from TestFlight itself. The
+   maintainer sends invitations; without one, build the probe from source (below).
 3. In TestFlight, tap **Install** on the newest build.
 
 No cable install, Developer Mode or profile trust is needed.
 
-## Upload a build
+## Upload a build (maintainer)
 
 Signing settings live in two gitignored files. Never commit them.
 
@@ -35,8 +35,8 @@ cp Local.example.env Local.env             # App Store Connect API key commands
 is the UTC time (`YYYYMMDDHHMM`); raise `MARKETING_VERSION` in `project.yml` by hand. App Store
 Connect takes a few minutes to process a build, then the internal group gets it.
 
-The Mac that uploads needs the Apple Distribution identity in its keychain and the profile
-`match AppStore com.nkmkdigital.ukiyo` installed.
+The Mac that uploads needs the Apple Distribution identity in its keychain and an App Store
+provisioning profile for `com.nkmkdigital.ukiyo` installed (named in `Local.xcconfig`).
 
 Simulator and unsigned builds (compile checks only; the simulator finds no camera). Generate
 the project first (`xcodegen generate`; the `.xcodeproj` and `Info.plist` are gitignored):

@@ -183,7 +183,7 @@ One JSON-RPC 2.0 message per line (`core/src/serve/wire.rs`):
   (`server::MAX_LINE`). Other clients are not affected.- A request is sent once. If the connection drops before the reply, it fails with
   `unavailable` and is not retried, since it may have reached the camera.
 
-Why `serve` and not "the CLI opens the camera itself" (the bm proposal): ten CLI calls in a
+Why `serve` and not "the CLI opens the camera itself" (an earlier proposal): ten CLI calls in a
 script would mean ten USB claims and ten session opens. That is close to the reconnect loop
 that soft-locked the camera once (docs/protocol.md, power). One short-lived owner holds one
 session for all of them.
@@ -788,7 +788,7 @@ the window's Recipes page (`app/src/lib/recipes.ts`, `app/src/views/PlanCard.tsx
 
 
 
-| bm proposal | This design | Reason (mcp-tool-design) |
+| Earlier proposal | This design | Reason |
 |---|---|---|
 | Resources for camera state and the catalogue | Tools `camera_status` and `library_search` | Tools first; live state is not stable context; a large corpus wants search then read. |
 | The CLI's verbs as MCP tools (about 25) | 11 tools | Shrink the surface; tools that return the same thing with other arguments are one tool. |
@@ -798,7 +798,7 @@ the window's Recipes page (`app/src/lib/recipes.ts`, `app/src/views/PlanCard.tsx
 | `snapshot diff` | `library_read` with `compare_to`, or `camera_plan` | No separate tool for a view of the same data. |
 | `props watch` (streaming) | `camera_watch` with a cursor and a bounded wait | A tool call must return; the cursor allows follow-up reads. |
 | `owner get|set` | CLI sugar only; MCP uses `settings_read` and `camera_plan` | Owner strings are properties; no sibling tool. |
-| The CLI opens the camera itself when the app is closed | The CLI spawns `ukiyo serve`, one owner for many calls | Not from the skill: the reconnect rule in docs/protocol.md. |
+| The CLI opens the camera itself when the app is closed | The CLI spawns `ukiyo serve`, one owner for many calls | The reconnect rule in docs/protocol.md. |
 
 ## 5. Safety
 
@@ -1075,7 +1075,7 @@ work lands, since both touch `src-tauri/src/lib.rs`.
   `v<version>` on origin; it creates the GitHub release if needed and attaches the files, and
   never replaces an attached zip, archive or signature. `--app PATH` skips the build and
   checks and packages a bundle that is already built and signed.
-- **Keys.** The updater keypair lives in 1Password, read through op-connect into the
+- **Keys.** The maintainer keeps the updater keypair in a secret store and reads it into the
   environment for one run; it is never written to a file. The release reads
   `UKIYO_UPDATER_PUBKEY`, `TAURI_SIGNING_PRIVATE_KEY` and
   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for a key without a password).

@@ -467,10 +467,10 @@ mod tests {
 
     #[test]
     fn guid_and_init_match_the_python_tools() {
-        // fujiptpip.fuji_guid("192.168.1.23") = prefix + bytes 23, 1, 168, 192.
-        let g = fuji_guid(Ipv4Addr::new(192, 168, 1, 23));
+        // fuji_guid("192.0.2.23") = prefix + the address bytes reversed: 23, 2, 0, 192.
+        let g = fuji_guid(Ipv4Addr::new(192, 0, 2, 23));
         assert_eq!(&g[..12], &GUID_PREFIX);
-        assert_eq!(&g[12..], &[23, 1, 168, 192]);
+        assert_eq!(&g[12..], &[23, 2, 0, 192]);
         let r = init_request("ukiyo-probe", &g);
         assert_eq!(r.len(), INIT_LEN);
         assert_eq!(&r[..12], &[82, 0, 0, 0, 1, 0, 0, 0, 0xF2, 0xE4, 0x53, 0x8F]);
@@ -484,12 +484,12 @@ mod tests {
 
     #[test]
     fn invites_parse() {
-        let peer = Ipv4Addr::new(10, 0, 0, 9);
-        let i = parse_invite("NOTIFY * HTTP/1.1\r\nDSC: 10.0.0.5\r\nCAMERANAME: X-T5\r\nDSCPORT: 15740\r\n\r\n", peer).unwrap();
-        assert_eq!(i, Invite { ip: Ipv4Addr::new(10, 0, 0, 5), port: 15740, camera: Some("X-T5".into()) });
+        let peer = Ipv4Addr::new(198, 51, 100, 9);
+        let i = parse_invite("NOTIFY * HTTP/1.1\r\nDSC: 198.51.100.5\r\nCAMERANAME: X-T5\r\nDSCPORT: 15740\r\n\r\n", peer).unwrap();
+        assert_eq!(i, Invite { ip: Ipv4Addr::new(198, 51, 100, 5), port: 15740, camera: Some("X-T5".into()) });
         assert_eq!(parse_invite("DSCPORT: 15740\r\n", peer).unwrap().ip, peer, "no DSC: the peer");
-        assert!(parse_invite("NOTIFY * HTTP/1.1\r\nDSC: 10.0.0.5\r\n", peer).is_none());
-        let d = String::from_utf8(pcss_datagram(Ipv4Addr::new(10, 0, 0, 2))).unwrap();
-        assert!(d.starts_with("DISCOVERY * HTTP/1.1\r\nHOST: 10.0.0.2\r\n") && d.contains("SERVICE: PCSS/1.0"));
+        assert!(parse_invite("NOTIFY * HTTP/1.1\r\nDSC: 198.51.100.5\r\n", peer).is_none());
+        let d = String::from_utf8(pcss_datagram(Ipv4Addr::new(198, 51, 100, 2))).unwrap();
+        assert!(d.starts_with("DISCOVERY * HTTP/1.1\r\nHOST: 198.51.100.2\r\n") && d.contains("SERVICE: PCSS/1.0"));
     }
 }

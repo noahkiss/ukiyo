@@ -236,7 +236,7 @@ USB and Wi-Fi alike, so the window, CLI and MCP server never open a second one.
   - A large RAF downloads in the owner thread at about 2.3 MB/s; polling waits meanwhile.
 - `cargo run -p ukiyo-core --example wifi_probe [WAIT_S]` is a read-only probe through
   `WifiConnector` (discovery, init, OpenSession, GetDeviceInfo, D36B, D16E). It takes
-  `owner.lock`. 2026-10-23 on m1p: no camera answered discovery in 45 s (camera off or not in
+  `owner.lock`. 2026-10-23 on a dev Mac: no camera answered discovery in 45 s (camera off or not in
   wireless tether).
 - Later: live view and events. If they need the extra sockets (55741, 55742) they belong to the
   transport, opened after InitiateOpenCapture; the X-T5 serves frames on the command socket

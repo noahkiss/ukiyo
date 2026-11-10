@@ -1,0 +1,7 @@
+# Built-in hygiene rules these files trip on purpose.
+# fetch.rs: the test proves private and tailnet hosts are refused.
+src-tauri/core/src/recipes/fetch.rs	private-ipv4
+src-tauri/core/src/recipes/fetch.rs	cgnat-ipv4
+src-tauri/core/src/recipes/fetch.rs	tailnet-ipv6
+# run_wifi_tests.py: the camera access point's fixed gateway address.
+tools/wifi/run_wifi_tests.py	private-ipv4

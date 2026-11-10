@@ -112,7 +112,8 @@ what comes next.
   into `Assets.car`, `icon.icns` and the PNG fallbacks (all committed). Rerun it after any `.icon`
   change.
 - `tools/art/camera_art.py [SRC_ROOT]` — builds the Hub camera art (`app/src/assets/camera/`)
-  from the generated drawings in `image-output.local/` (not in git). `uv run -q camera_art.py`.
+  from source drawings in `SRC_ROOT` (default `image-output.local/`, not in git). The drawings
+  are not published; the committed art is the source of truth. `uv run -q camera_art.py`.
 - `tools/ptp/` — Python discovery scripts (uv inline deps, pyusb). Every script takes Ukiyo's
   `owner.lock` first (`owner_lock.py`, through `PTP()`) and refuses while the app, `ukiyo serve`
   or any `ukiyo` command owns the camera. Run from that directory with
