@@ -2,154 +2,36 @@
 
 A Mac app for managing a Fujifilm X-series camera over USB: a recipe library that writes the
 C1-C7 custom slots, and camera settings edited from the computer instead of the on-camera menus.
-Stage: v0 Lab (live property mapper) built; not yet run against hardware. `docs/roadmap.md` has
-what comes next.
+The v0 Lab (live property mapper) is built and has not yet run against hardware.
+`docs/roadmap.md` has what comes next.
 
 ## Layout
 
-- `docs/protocol.md` — what is known about the camera's PTP interface. Update it with every finding.
-- `docs/catalog.md` — the property catalog format.
-- `docs/menus.md` — menu sets compared across bodies; X-T5 menu items mapped to catalog codes.
-  `docs/fuji-vendor-ptp.md` and `docs/mapping-sources.md` — what open sources and Fuji's own tools
-  say about vendor codes.
-- `docs/agent-interface.md` — the `ukiyo` CLI and MCP server (stages 1-8 built): the shared owner,
-  tools, plans, write safety, packaging and the release.
-- `app/` — the window: React + TypeScript + Vite (pnpm, Node from `.node-version`).
-  `src/App.tsx` the shell and hash routes (`#/hub`, `#/settings/appearance`), `src/shell/`
-  (Sidebar with the brand-mark slot, page head, camera chip, icons, ModeNotice: the wrong-USB-mode notice, the menu, playback and MOVIE notices, and the switch walkthrough with each body's menu path), `src/pages/` (Hub, Recipes,
-  Settings with Appearance, Connect, and Lab: Lab state and keys; it stays mounted while hidden),
-  `src/views/` (the Lab's StatusBar, PropTable, ChangeFeed, LabelPanel with the write box,
-  FakeBar; PlanCard, a plan before it is written, for Settings and Recipes), `src/lib/` (`camera.tsx` live status for every page, `live.ts` the camera's properties and
-  catalog, `plans.ts` plan then apply, `prefs.tsx` theme, brand mark and app icon choices in
-  `settings.json` (local storage in the browser preview), `decode.ts` value display, `links.ts` opens `target=_blank` links in the browser, `catalog.ts` the bundled recipe
-  catalogue as library recipes, `recipes.ts` the recipe library, slot reads and slot plans), `src/fixtures/` sample data
-  for the browser preview (see its README), `src/styles/` (`tokens.css` light and dark
-  tokens, then base, shell, pages, lab), `src/assets/` (bundled OFL fonts with licences, camera
-  art, brand marks, app icons and the camera's Wi-Fi status icons (`status/`, shown on Connect)
-  as light and dark webp; `camera/index.ts` maps a model to its
-  art, with a generic body for unknown models). `src/bindings.ts` generated (do not edit;
-  `UKIYO_UPDATE_BINDINGS=1 cargo test bindings`). Dev server pinned to 4823 (strictPort). In a
-  browser outside Tauri, `?camera=tether|rawconv|cardreader|movie|menu|playback` previews a camera state and
-  `?model=X-H2S` another body.
-- `src-tauri/core/` — `ukiyo-core`, the workspace member with no Tauri: `src/api.rs`
-  (`ukiyo_api_table!`, the method table, which makes `Request`, `Response`, `METHODS` and
-  `dispatch`; `Error`, `Event`, `call`) and the modules below. Cargo commands in
-  `src-tauri/` cover both crates.
-- `src-tauri/core/src/camera/` — `ptp` (framing, datasets), `transport` (Connector/Transport seam),
-  `usb` (nusb), `wifi` (wireless tether: PCSS discovery, Fuji init, PTP over TCP), `fake` (fake
-  X-T5; shape in `fake_x-t5.json`), `fake_wifi` (the fake behind a loopback Wi-Fi endpoint),
-  `clock`, `owner` (the one
-  connection thread: queue, polling, pause, power-off, reconnect rules, keep-awake D381 toggle,
-  menu-close half-press), `owner_tests`.
-- `src-tauri/core/src/recipes/` — the recipe text parser (`mod`, `values`), recipe blocks in post
-  HTML (`html`), name and sensor from a post title (`post`), the catalogue formats and the
-  de-duplicating merge and popularity (`catalogue`), sensor families (`family`), one adapter
-  per recipe site (`sources/`), the C1-C7 slot fields and their encoding (`slot`), a post read
-  by URL (`fetch`), the catalogue compiled in (`bundle`), `tests` on real sample blocks.
-  `docs/recipes.md` covers it and the credits.
-- `src-tauri/core/examples/recipes_refresh.rs` — reads each source's feed into
-  `catalog/recipes/sources/<id>.json` and merges them into `catalog/recipes/catalog.json`;
-  caches pages in `local/recipe-feeds/<id>/`.
-- `src-tauri/core/src/catalog.rs` — catalog load, label, save. `src-tauri/core/src/lab.rs` — the
-  Lab (mirror, session log with actors, export, settings, stored plans and their apply, fake
-  controls). `src-tauri/core/src/plan.rs` — plans: build and gate, order by the catalog's `requires` and
-  `resets` (`sequence`), slot plans, stale check; tests in `plan/tests.rs`.
-  `src-tauri/core/src/library/` — presets, snapshots, favourites, the trash (`mod`), recipes (`recipes`), `prefs`
-  (`settings.json`), `snapshot`, `history` (per camera, by a salted serial digest); tests in
-  `library/tests.rs`. `src-tauri/core/src/evidence.rs` — the rules on a label from an agent (no
-  `confirmed` without a change this session, no camera strings). `src-tauri/src/lib.rs` — Tauri
-  commands (`tauri_commands!` expands the method table; all but `recipe_parse` and `prefs_get` forward to `ukiyo serve` over `ukiyo.sock`), `specta_builder`;
-  `main.rs` runs `serve` when argv[1] is `serve`; `src-tauri/src/events.rs` the four Tauri events;
-  `src-tauri/src/updater.rs` the app's own updates (tauri-plugin-updater; off without the
-  updater key and in debug builds).
-- `src-tauri/core/src/serve/` — `lock` (`owner.lock`; `Lab::start` takes it), `wire` (the socket
-  protocol), `server` (`ukiyo serve`: socket, events, idle exit), `client` (connect, spawn on
-  demand, reconnect), `mod` (`spawn_detached`, the `serve` subcommand).
-  `src-tauri/core/src/paths.rs` — the data folder, its move from `app.ukiyo`, `UKIYO_DATA_DIR`.
-- `src-tauri/cli/` — the `ukiyo` CLI (bin `ukiyo-cli`): `main.rs` (clap), `cmds.rs`, `writes.rs` (the write commands), `library.rs` (presets, snapshots, favourites, prefs,
-  trash), `recipes.rs` (the recipe commands), `mcp.rs` (`ukiyo mcp`, the stdio MCP server, actor
-  `mcp:<client>`), `mcp_tools.rs` (the tool listing; surface guard against
-  `tests/surface/mcp_tools.json`, update with `UKIYO_UPDATE_SURFACE=1 cargo test -p ukiyo-cli
-  surface`), `schema.rs` (`SCHEMA_VERSION`, deprecations, and the guard over
-  `tests/surface/mcp.txt` and `cli.txt`; the same update command), `conn.rs` (the
-  socket client; spawns `serve`, never USB), `out.rs` (`--json` envelope, exit codes);
-  `tests/cli.rs` and `tests/mcp.rs` on the fake camera. Its read views live in core `read.rs`, `modes.rs`,
-  `session.rs`. Built so far: `serve`, `status`, `settings`, `camera watch`, `catalog show`,
-  `log show`, `help modes`, `settings set`, `owner`, `plan`,
-  `camera connect|disconnect|export|transport|capture`, `log note`, `mcp`, `presets`, `snapshots`,
-  `settings fav`, `prefs`, `trash`, `status --history`, `recipes`.
-- `src-tauri/tauri.bundle.conf.json` — the overlay config for a bundle: adds `ukiyo-cli` as an
-  `externalBin` (`Contents/MacOS/ukiyo-cli`) and builds it first with
-  `tools/release/cli_sidecar.sh` into `src-tauri/binaries/` (gitignored). Not in
-  `tauri.conf.json`: in a debug build tauri-build would overwrite `target/debug/ukiyo-cli`.
-- `tools/release/release.sh [--dry-run] [--app PATH]` — builds the bundle (or takes a signed one), checks it, and writes the arm64
-  zip, the updater archive, its signature and `latest.json` to `local/release/<version>/`;
-  without `--dry-run` it attaches them to the GitHub release. Keys come from the environment
-  (`UKIYO_UPDATER_PUBKEY`, `TAURI_SIGNING_PRIVATE_KEY`); `tauri.conf.json` holds a placeholder
-  pubkey.
-- `tools/release/tauri.sh` — the Tauri CLI with the bundle overlay and the updater public key on
-  `build`; release.sh and the release workflow both build through it.
-- `.github/workflows/ci.yml` — clippy and `cargo test` (fake camera) on macOS, `pnpm build`
-  through noahkiss/workflows `node-ci`. `release.yml` — on a `v*` tag, or dispatched as a dry
-  run: `tauri-macos-build`, `macos-sign-notarize`, `release.sh --no-upload --app`,
-  `release-attach`; secrets in the `release` environment.
-- `src-tauri/capabilities/links.json` — the hosts the window may open links on; generated by
-  `UKIYO_UPDATE_LINK_HOSTS=1 cargo test link_hosts`.
-- `catalog/recipes/` — the bundled recipe catalogue: `sources/<id>.json` per site, the
-  merged `catalog.json`, and `reddit.json` (Reddit counts for the popularity score). Settings and links only, no photos or post text.
-- `catalog/menus/<model>.json` — each body's menus, options, ranges and defaults from the owner's
-  manual; format in `docs/catalog.md` (Menu sets). `tools/catalog/menus_fetch.py [SLUG ...]
-  [--offline]` rebuilds them from fujifilm-dsc.com (caches in `local/manuals/`; needs pdftotext).
-- `catalog/<model>.json` — the shareable property catalog. Dev builds write labels here;
-  `UKIYO_CATALOG_DIR` overrides.
-- `tools/catalog/seed_xt5.py LOCAL_DIR [--force]` — seeds `catalog/x-t5.json` and the fake shape
-  from `local/` dumps.
-- `tools/catalog/makernote_diff.py PHOTO... [--steps S] [--log L]` — FujiFilm MakerNote changes
-  between photos shot one step apart, paired with a guided session's PTP changes (needs exiftool).
-  `backup_diff.py BLOB...` — changed byte runs between backups. Neither touches the camera.
-- `tools/art/app_icon_layers.py` and `app_icon_alternates.py` build the Liquid Glass `.icon`
-  sources from the finals; `tools/art/build_app_icon.sh` compiles `src-tauri/icons/AppIcon.icon`
-  into `Assets.car`, `icon.icns` and the PNG fallbacks (all committed). Rerun it after any `.icon`
-  change.
-- `tools/art/camera_art.py [SRC_ROOT]` — builds the Hub camera art (`app/src/assets/camera/`)
-  from source drawings in `SRC_ROOT` (default `image-output.local/`, not in git). The drawings
-  are not published; the committed art is the source of truth. `uv run -q camera_art.py`.
-- `tools/ptp/` — Python discovery scripts (uv inline deps, pyusb). Every script takes Ukiyo's
-  `owner.lock` first (`owner_lock.py`, through `PTP()`) and refuses while the app, `ukiyo serve`
-  or any `ukiyo` command owns the camera. Run from that directory with
-  `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib uv run -q <script>.py`.
-  - `read_presets.py` — read C1-C7 (RAW CONV. mode).
-  - `dump_props.py OUT.json` — every property descriptor or value.
-  - `watch_props.py PROPS.json NAMES.json LOG` — poll and log changes.
-  - `set_prop.py CODE VALUE` — write one uint16 property, with read before and after.
-  - `guided_map.py STEPS [--dry-run DUMP.json]` — guided mapping session: a dialog names one
-    change per step (`steps/<name>.json`); the script diffs every property, keeps the camera awake
-    with the D381 toggle, and writes a log, summary and proposed catalog patch to `local/mapping/`.
-    A steps file with `"mode": "movie"` runs with the STILL/MOVIE switch on MOVIE; a
-    `"restore": true` step lists what changed since the start.
-  - `read_backup.py` — read the camera's settings backup blob into `local/backup/`.
-- `tools/catalog/makernote_diff.py` and `backup_diff.py` — diff ExifTool MakerNote fields and
-  backup blobs between two shots or two backups, to map settings PTP does not name.
-    A steps file's `"mode": "movie"` runs with the STILL/MOVIE switch on MOVIE; a `"restore": true`
-    step lists every changed item with its start value.
-  - `read_backup.py LABEL` — the settings backup (object handle 0, RAW CONV. mode) to
-    `local/backup/`. Read-only.
-- `tools/wifi/` — guided Wi-Fi and Bluetooth test run (uv inline deps): `run_wifi_tests.py
-  [--dry-run]`, `fujiptpip.py` (Fuji PTP over TCP), `macnet.py`, `ble.py`, `fakecam.py`. Logs to
-  `local/wifi-test/`. `docs/wifi.md` covers what sources say and the Wi-Fi transport sketch.
-  `tether_probe.py [--wait S]` — read-only wireless tether probe without dialogs.
-  `liveview_demo.py` — live view and Take photo in a browser page over wireless tether
-  (http://127.0.0.1:4917/). Both take `owner.lock` like `tools/ptp`.
-- `tools/ios-ptp-probe/` — iOS/iPadOS test app (XcodeGen, ImageCaptureCore): can a phone read
-  and write the camera's PTP properties over USB-C? Signing from gitignored `Local.xcconfig`; see
-  its README.
-- `local/` — gitignored. Raw dumps, logs and the working property map. They contain camera and
-  lens serial numbers and owner strings.
-- App data (`~/Library/Application Support/com.nkmkdigital.ukiyo/`): `sessions/*.jsonl`, `dumps/`,
-  `settings.json` (theme, brand mark, app icon, `keep_awake`, `in_use_minutes`,
-  `close_menu_to_write`, `transport`), `library/` (presets, snapshots, recipes, favourites, `.trash/`, `log.jsonl`),
-  `history/` (per-camera history and its salt), `shots/` (shots from the tether buffer, by
-  date; their EXIF holds the camera serial), `owner.lock`, `ukiyo.sock`, `serve.log`.
+`docs/layout.md` maps the source tree and the app's data folder. Read it before you add a module.
+The main parts:
+
+- `app/` — the window: React + TypeScript + Vite (pnpm, Node from `.node-version`). Dev server
+  pinned to 4823 (strictPort). `src/bindings.ts` is generated; do not edit it.
+- `src-tauri/core/` — `ukiyo-core`, no Tauri: camera transport and owner, catalog, plans,
+  library, recipes, `ukiyo serve`. `src-tauri/src/` — the Tauri shell. `src-tauri/cli/` — the
+  `ukiyo` CLI and MCP server (`docs/agent-interface.md`).
+- `catalog/` — the shareable property catalog, menu sets and the bundled recipe catalogue.
+- `tools/` — Python discovery scripts (`ptp/`, `wifi/`, `catalog/`), art and release scripts.
+- `local/` — gitignored dumps and logs. They contain camera and lens serial numbers and owner
+  strings.
+- `docs/protocol.md` — what is known about the camera's PTP interface. Update it with every
+  finding.
+
+## Generated files
+
+Regenerate these with the command; do not hand-edit them.
+
+| File | Command |
+|---|---|
+| `app/src/bindings.ts` | `UKIYO_UPDATE_BINDINGS=1 cargo test bindings` (in `src-tauri/`) |
+| `src-tauri/cli/tests/surface/*` (CLI and MCP surface guards) | `UKIYO_UPDATE_SURFACE=1 cargo test -p ukiyo-cli surface` (in `src-tauri/`) |
+| `src-tauri/capabilities/links.json` | `UKIYO_UPDATE_LINK_HOSTS=1 cargo test link_hosts` (in `src-tauri/`) |
+| `src-tauri/icons/` compiled icons | `tools/art/build_app_icon.sh`, after any `.icon` change |
 
 ## Build, test, run
 
@@ -169,8 +51,10 @@ what comes next.
 ## Rules for touching the camera
 
 - Read before you write; write only properties whose meaning is confirmed, and read back.
-- One process owns the USB connection: `ukiyo serve`, which holds `owner.lock`. Quit any Ukiyo.app
-  built before stage 2 (17e2c0c) first; it opens USB without the lock.
+- One process owns the USB connection: `ukiyo serve`, which holds `owner.lock`. Quit any old
+  Ukiyo.app build that predates the lock (before 17e2c0c); it opens USB without the lock.
+- `tools/ptp/` and `tools/wifi/` scripts take `owner.lock` too. Run them from their directory with
+  `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib uv run -q <script>.py`.
 - Never reconnect in a tight loop or reset USB on every connect (see protocol.md, power).
 - Never commit current values, serials or owner strings to `catalog/`.
 - Every camera write from the window, CLI or MCP is a plan; there is no direct write method.

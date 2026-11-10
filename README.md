@@ -117,7 +117,7 @@ cargo clippy --all-targets -- -D warnings
 cd ../app && pnpm build
 ```
 
-`AGENTS.md` maps the source tree. `docs/agent-interface.md` covers the CLI and the MCP server.
+`docs/layout.md` maps the source tree. `docs/agent-interface.md` covers the CLI and the MCP server.
 
 ## How the connection works
 
